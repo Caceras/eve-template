@@ -4,13 +4,20 @@ import { parseJsonObject, type JsonObject } from "#shared/json.js";
 
 export const SLACK_APP_MANIFEST_TYPE = "https://docs.slack.dev/reference/app-manifest/";
 
+export interface SlackAppManifestOptions {
+  /** Additional Slack bot OAuth scopes required by this channel. */
+  readonly botScopes?: readonly string[];
+  /** Additional Slack Events API bot events delivered to this channel. */
+  readonly botEvents?: readonly string[];
+}
+
 export interface SlackAppManifestBuildDefinition {
   readonly build: (channelName: string) => JsonObject;
 }
 
-export function defineSlackAppManifest(input: {
-  readonly botName?: string;
-}): SlackAppManifestBuildDefinition {
+export function defineSlackAppManifest(
+  input: SlackAppManifestOptions & { readonly botName?: string },
+): SlackAppManifestBuildDefinition {
   return {
     build(channelName) {
       const name = (input.botName ?? channelName).slice(0, 35);
@@ -25,9 +32,13 @@ export function defineSlackAppManifest(input: {
           },
           bot_user: { display_name: name },
         },
-        oauth_config: { scopes: { bot: ["app_mentions:read", "chat:write"] } },
+        oauth_config: {
+          scopes: { bot: unique(["app_mentions:read", "chat:write"], input.botScopes) },
+        },
         settings: {
-          event_subscriptions: { bot_events: ["app_mention"] },
+          event_subscriptions: {
+            bot_events: unique(["app_mention"], input.botEvents),
+          },
           org_deploy_enabled: false,
           socket_mode_enabled: false,
           token_rotation_enabled: false,
@@ -43,4 +54,11 @@ export function buildSlackAppManifest(value: unknown, channelName: string): Json
   const build = (value as { readonly build?: unknown }).build;
   if (typeof build !== "function") return undefined;
   return parseJsonObject(build(channelName));
+}
+
+function unique(
+  baseline: readonly string[],
+  additional: readonly string[] = [],
+): readonly string[] {
+  return [...new Set([...baseline, ...additional])];
 }
