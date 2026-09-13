@@ -21,6 +21,53 @@ describe("prewarmAppSandboxes", () => {
     vi.unstubAllEnvs();
   });
 
+  it("loads a Dockerfile from the stable authored root for isolated compiler artifacts", async () => {
+    const appRoot = await createScratchDirectory("eve-prewarm-authored-dockerfile-");
+    const agentRoot = join(appRoot, "agent");
+    await mkdir(join(agentRoot, "sandbox"), { recursive: true });
+    await writeFile(
+      join(appRoot, "package.json"),
+      JSON.stringify({ name: "dockerfile-prewarm-test", type: "module" }),
+    );
+    await writeFile(join(agentRoot, "agent.ts"), 'export default { model: "openai/gpt-5.4" };');
+    await writeFile(join(agentRoot, "instructions.md"), "Use the sandbox.");
+    await writeFile(join(agentRoot, "sandbox", "Dockerfile"), "FROM alpine:3.21\n");
+    await writeFile(
+      join(agentRoot, "sandbox", "sandbox.ts"),
+      [
+        'import { defineSandbox } from "eve/sandbox";',
+        'import { MicrosandboxSandbox } from "eve/sandbox/microsandbox";',
+        "export const environment = MicrosandboxSandbox.dockerfile();",
+        "export default defineSandbox(() => environment.create());",
+      ].join("\n"),
+    );
+    const compilerAppRoot = join(appRoot, ".eve", "builds", "isolated", "compiler");
+    await compileAgentInWorkspace({
+      artifactLocations: {
+        publishedRoot: join(compilerAppRoot, ".eve"),
+        writeRoot: join(compilerAppRoot, ".eve"),
+      },
+      startPath: appRoot,
+    });
+    const dockerfilePaths: string[] = [];
+
+    await prewarmAppSandboxes({
+      appRoot,
+      compiledArtifactsSource: createDiskRuntimeCompiledArtifactsSource(compilerAppRoot, {
+        moduleMapLoaderPath: resolvePackageSourceFilePath(
+          "src/internal/authored-module-map-loader.ts",
+        ),
+        sandboxAppRoot: appRoot,
+      }),
+      dispatch: async ({ context }) => {
+        if (context.dockerfile !== undefined) dockerfilePaths.push(context.dockerfile.path);
+        return { reused: false };
+      },
+    });
+
+    expect(dockerfilePaths).toEqual([join(agentRoot, "sandbox", "Dockerfile")]);
+  });
+
   it("loads workspace seeds from an invocation-owned compiler directory", async () => {
     vi.stubEnv("VERCEL", "1");
     vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_isolated_build_prewarm");

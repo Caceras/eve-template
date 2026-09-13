@@ -43,7 +43,6 @@ interface PrewarmTarget {
 }
 
 interface NodeSandbox extends RuntimeRegisteredSandbox {
-  readonly agentRoot?: string;
   readonly definition: Extract<
     RuntimeRegisteredSandbox["definition"],
     { readonly kind: "independent" }
@@ -250,56 +249,58 @@ async function collectPrewarmTargets(input: {
   const targets: PrewarmTarget[] = [];
 
   await Promise.all(
-    collectNodeSandboxes(input.graph).map(
-      async ({ agentRoot, definition, nodeId, workspaceResourceRoot }) => {
-        const dockerfile =
-          definition.environment.kind === "dockerfile" && agentRoot !== undefined
-            ? await resolveSandboxDockerfile(agentRoot)
-            : undefined;
-        const templatePlan = createRuntimeSandboxTemplatePlan({
-          definition,
-          workspaceResourceRoot,
-        });
-        const provider = getSandboxEnvironmentRuntime(definition.environment);
-        const preparation = getSandboxEnvironmentPreparation(definition.environment);
-        const templateKey = await createRuntimeSandboxTemplateKey({
-          providerName: definition.environment.provider,
-          compiledArtifactsSource: input.compiledArtifactsSource,
-          configurationHash: getSandboxEnvironmentConfigurationHash(definition.environment),
-          nodeId,
-          sourceId: definition.sourceId,
-          templatePlan,
-        });
+    collectNodeSandboxes(input.graph).map(async ({ definition, nodeId, workspaceResourceRoot }) => {
+      const resolvedAgentRoot =
+        nodeId === ROOT_RUNTIME_AGENT_NODE_ID
+          ? join(input.appRoot, "agent")
+          : join(input.appRoot, "agent", nodeId);
+      const dockerfile =
+        definition.environment.kind === "dockerfile"
+          ? await resolveSandboxDockerfile(resolvedAgentRoot)
+          : undefined;
+      const templatePlan = createRuntimeSandboxTemplatePlan({
+        definition,
+        workspaceResourceRoot,
+      });
+      const provider = getSandboxEnvironmentRuntime(definition.environment);
+      const preparation = getSandboxEnvironmentPreparation(definition.environment);
+      const templateKey = await createRuntimeSandboxTemplateKey({
+        providerName: definition.environment.provider,
+        compiledArtifactsSource: input.compiledArtifactsSource,
+        configurationHash: getSandboxEnvironmentConfigurationHash(definition.environment),
+        nodeId,
+        sourceId: definition.sourceId,
+        templatePlan,
+      });
 
-        if (templateKey === null) {
-          return;
-        }
+      if (templateKey === null) {
+        return;
+      }
 
-        const seedFiles = await loadResourceRootSeedFiles({
-          compileDirectoryPath: input.compileDirectoryPath,
-          workspaceResourceRoot,
-        });
-        targets.push({
-          context: {
-            appRoot: input.appRoot,
-            dockerfile,
-            resources: createSandboxProviderResources({
-              resourcesKey: workspaceResourceRoot.contentHash,
-              resourcesPath:
-                workspaceResourceRoot.contentHash === undefined
-                  ? undefined
-                  : `${input.compileDirectoryPath}/${workspaceResourceRoot.logicalPath}`,
-              seedFiles,
-            }),
-            runPreparation: async (sandbox) => await preparation?.(sandbox),
-            templateName: templateKey,
-          },
-          label: formatLabel(nodeId),
-          provider,
-          signature: `${definition.environment.provider}:${nodeId}:${templateKey}`,
-        });
-      },
-    ),
+      const seedFiles = await loadResourceRootSeedFiles({
+        compileDirectoryPath: input.compileDirectoryPath,
+        workspaceResourceRoot,
+      });
+      targets.push({
+        context: {
+          appRoot: input.appRoot,
+          dockerfile,
+          resources: createSandboxProviderResources({
+            resourcesKey: workspaceResourceRoot.contentHash,
+            resourcesPath:
+              workspaceResourceRoot.contentHash === undefined
+                ? undefined
+                : `${input.compileDirectoryPath}/${workspaceResourceRoot.logicalPath}`,
+            seedFiles,
+          }),
+          runPreparation: async (sandbox) => await preparation?.(sandbox),
+          templateName: templateKey,
+        },
+        label: formatLabel(nodeId),
+        provider,
+        signature: `${definition.environment.provider}:${nodeId}:${templateKey}`,
+      });
+    }),
   );
 
   // Template keys factor in nodeId (see runtime/sandbox/keys.ts), so each
@@ -356,7 +357,6 @@ function collectNodeSandboxes(graph: ResolvedAgentGraphBundle): readonly NodeSan
     return [
       {
         ...registered,
-        agentRoot: node.agent?.metadata.agentRoot,
         definition: registered.definition,
         nodeId,
       },
