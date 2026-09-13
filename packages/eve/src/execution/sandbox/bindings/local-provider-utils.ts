@@ -5,7 +5,10 @@ import { dirname, join } from "node:path";
 import { bufferToStream, streamToBuffer } from "#execution/sandbox/stream-utils.js";
 import { WORKSPACE_ROOT } from "#runtime/workspace/types.js";
 import { resolveSandboxModelPath } from "#shared/skill-paths.js";
-import type { SandboxSeedFile } from "#shared/sandbox-backend.js";
+export interface SandboxSeedFile {
+  readonly content: string | Uint8Array;
+  readonly path: string;
+}
 import type {
   InternalSandboxSession,
   SandboxProcess,

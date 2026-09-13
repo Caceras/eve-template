@@ -8,7 +8,7 @@ last_updated: "2026-09-11"
 
 ## Default sandbox
 
-The default sandbox keeps its observable behavior: backend selection, template
+The default sandbox keeps its observable behavior: provider selection, template
 prewarm, workspace and skill seeding, one persistent sandbox per eve session,
 and restoration. Its implementation moves onto the same environment and
 constructor protocol as authored sandboxes:
@@ -49,11 +49,10 @@ An exported environment is an immutable, build-prepared base plus constructors
 for named persistent sandboxes:
 
 ```ts
-interface SandboxEnvironment<TBuilt> {
-  readonly built: TBuilt;
-  readonly revision: string;
-  create(params?): Promise<Sandbox>;
-  getOrCreate(params: { name: string }): Promise<Sandbox>;
+interface SandboxEnvironment<CreateOptions> {
+  readonly provider: string;
+  create(options?: CreateOptions): Promise<RuntimeSandboxSession>;
+  getOrCreate(options: CreateOptions & { name: string }): Promise<RuntimeSandboxSession>;
 }
 ```
 
@@ -68,8 +67,10 @@ type ExperimentalVercelDockerfileArtifact = {
 };
 ```
 
-The environment does not own mutable sandbox state. It supplies the image and
-mounts from which each named persistent sandbox is created.
+The environment does not own mutable sandbox state. eve computes its revision
+from the authored source, provider options, prepared resources, and Dockerfile
+when present. Provider build artifacts remain opaque behind the provider
+contract rather than becoming author-visible environment fields.
 
 The snapshot-backed Vercel environment uses a different immutable base:
 
@@ -83,6 +84,105 @@ type VercelSnapshotArtifact = {
 environment consumes that artifact when `create()` or `getOrCreate()` runs.
 `defineSandbox` only requires the callback to return an eve-owned `Sandbox`, so
 it does not need to understand snapshots, images, or Drives.
+
+## Custom providers with `defineSandboxProvider`
+
+Built-in and third-party providers use the same `defineSandboxProvider()` contract. The contract is the only boundary between sandbox orchestration and provider-specific code: eve owns names, environment generations, preparation locks, resource descriptors, persisted metadata, and shared-configuration validation; the provider owns its native image or snapshot preparation, named lookup or creation, reconnection, and lifecycle operations.
+
+A custom provider defines its immutable environment options, per-sandbox create options, and persisted provider metadata:
+
+```ts
+import { defineSandboxProvider } from "eve/sandbox/provider";
+
+export const AcmeSandbox = defineSandboxProvider<
+  { image: string; region: string },
+  { networkPolicy?: "allow-all" | "deny-all" },
+  { remoteId: string }
+>({
+  name: "acme",
+
+  environment(options) {
+    const driver = createAcmeDriver(options);
+
+    async function resourceMounts(resources) {
+      const mounts = {};
+      for (const resource of [resources.workspace, resources.skills]) {
+        if (!resource) continue;
+        const volume = resource.path
+          ? await driver.volumes.uploadDirectory({ key: resource.key, path: resource.path })
+          : await driver.volumes.get(resource.key);
+        mounts[resource.mountPath] = { volume, readOnly: true };
+      }
+      return mounts;
+    }
+
+    return {
+      async prepare(ctx) {
+        const temporary = await driver.createTemporary({
+          mounts: await resourceMounts(ctx.resources),
+          name: ctx.templateName,
+        });
+        const sandbox = adaptAcmeSandbox(temporary);
+        await sandbox.run({
+          command: [
+            "cp -a /eve/resources/workspace/. /workspace/ 2>/dev/null || true",
+            'mkdir -p "$HOME/.agents"',
+            'ln -s /eve/resources/skills "$HOME/.agents/skills" 2>/dev/null || true',
+          ].join("\\n"),
+        });
+        await ctx.runPreparation(sandbox);
+        await driver.saveTemplate(ctx.templateName, temporary);
+        return { reused: false };
+      },
+
+      async getOrCreate(ctx) {
+        const remote = await driver.getOrCreate({
+          existingId: ctx.existing?.remoteId,
+          mounts: await resourceMounts(ctx.resources),
+          name: ctx.sandboxName,
+          networkPolicy: ctx.options.networkPolicy,
+          template: ctx.templateName,
+        });
+
+        return ctx.handle({
+          sandbox: adaptAcmeSandbox(remote),
+          metadata: { remoteId: remote.id },
+          stop: () => remote.stop(),
+          shutdown: () => remote.stop(),
+          delete: () => remote.delete(),
+        });
+      },
+    };
+  },
+});
+```
+
+Agent authors then use the custom provider exactly like a built-in provider:
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { AcmeSandbox } from "../lib/acme-sandbox";
+
+export const environment = AcmeSandbox.environment({
+  image: "acme/node@sha256:...",
+  region: "iad1",
+  prepare: async (sandbox) => {
+    await sandbox.run({ command: "install-agent-dependencies" });
+  },
+});
+
+export default defineSandbox(({ session }) =>
+  environment.create({
+    networkPolicy: policyFor(session),
+  }),
+);
+```
+
+`environment({ prepare })` is the only preparation shape. There are no separate provider `prepare()` constructors and no provider-specific bootstrap hooks. The provider uploads, mounts, or writes `ctx.resources`, then `ctx.runPreparation(sandbox)` invokes the authored callback before the provider captures its template.
+
+The object returned by `environment.create()` or `environment.getOrCreate()` is the real eve `RuntimeSandboxSession`. The selector may call its filesystem, process, network-policy, and lifecycle methods before returning it. Provider-specific creation fields, such as Vercel resources, network policy, timeout, or Drive mounts, belong to the provider's typed create options.
+
+Vercel, Docker, microsandbox, just-bash, and default selection must themselves be defined through `defineSandboxProvider()`. Built-ins may use provider-specific drivers, but they may not bypass the provider contract to call sandbox orchestration, key derivation, registries, or session state directly.
 
 ## One sandbox per eve session
 
@@ -154,11 +254,11 @@ or snapshot and mounts:
 
 ```ts
 await Sandbox.getOrCreate({
-  name: providerName(environment.revision, session.id),
-  image: environment.built.image,
+  name: providerName(environmentRevision, session.id),
+  image: prepared.image,
   mounts: {
-    "/eve/resources/skills": environment.built.skills,
-    "/eve/resources/workspace": environment.built.workspace,
+    "/eve/resources/skills": prepared.skills,
+    "/eve/resources/workspace": prepared.workspace,
   },
   persistent: true,
 });
@@ -215,8 +315,10 @@ handle on that session.
 Build-time imperative preparation still receives a temporary sandbox directly:
 
 ```ts
-export const environment = VercelSandbox.prepare(async (sandbox) => {
-  await sandbox.run({ command: "sudo apt-get install -y jq" });
+export const environment = VercelSandbox.environment({
+  prepare: async (sandbox) => {
+    await sandbox.run({ command: "sudo apt-get install -y jq" });
+  },
 });
 ```
 
@@ -257,8 +359,10 @@ preparation, workspace, and skills are captured in a Vercel Sandbox snapshot:
 import { defineSandbox } from "eve/sandbox";
 import { VercelSandbox } from "eve/sandbox/vercel";
 
-export const environment = VercelSandbox.prepare(async (sandbox) => {
-  await sandbox.run({ command: "sudo apt-get install -y jq" });
+export const environment = VercelSandbox.environment({
+  prepare: async (sandbox) => {
+    await sandbox.run({ command: "sudo apt-get install -y jq" });
+  },
 });
 
 export default defineSandbox(({ session }) => {
@@ -347,13 +451,11 @@ private writes in its persistent filesystem.
 import { defineSandbox } from "eve/sandbox";
 import { DockerSandbox } from "eve/sandbox/docker";
 
-export const environment = DockerSandbox.dockerfile();
-
-export default defineSandbox(() => {
-  return environment.create({
-    networkPolicy: "deny-all",
-  });
+export const environment = DockerSandbox.dockerfile({
+  networkPolicy: "deny-all",
 });
+
+export default defineSandbox(() => environment.create());
 ```
 
 `eve build` runs `docker build` and binds the resulting local image to the
@@ -373,11 +475,11 @@ across eve sessions.
 An existing image bypasses Dockerfile preparation:
 
 ```ts
-export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...");
-
-export default defineSandbox(() => {
-  return environment.create({ networkPolicy: "deny-all" });
+export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...", {
+  networkPolicy: "deny-all",
 });
+
+export default defineSandbox(() => environment.create());
 ```
 
 ## microsandbox with a Dockerfile
@@ -447,8 +549,10 @@ export default defineSandbox(() => {
 It may expose imperative preparation for its virtual filesystem:
 
 ```ts
-export const environment = JustBashSandbox.prepare(async (sandbox) => {
-  await sandbox.writeTextFile({ path: "config.json", content: "{}" });
+export const environment = JustBashSandbox.environment({
+  prepare: async (sandbox) => {
+    await sandbox.writeTextFile({ path: "config.json", content: "{}" });
+  },
 });
 
 export default defineSandbox(() => {
@@ -469,7 +573,7 @@ return environment.getOrCreate({
 });
 ```
 
-eve automatically combines that name with `environment.revision`. A Dockerfile,
+eve automatically combines that name with `environmentRevision`. A Dockerfile,
 image, prepared snapshot, static skill, or workspace seed change can produce a
 new revision without requiring authored naming logic.
 
@@ -573,23 +677,23 @@ defineSandbox((ctx) => Sandbox | Promise<Sandbox>);
 
 VercelSandbox.environment().create(params);
 VercelSandbox.environment().getOrCreate({ name, ...params });
-VercelSandbox.prepare(callback).create(params);
+VercelSandbox.environment({ prepare }).create(params);
 
 ExperimentalVercelDockerfile().create(params);
 ExperimentalVercelDockerfile().getOrCreate({ name, ...params });
 
-DockerSandbox.image(reference).create(params);
-DockerSandbox.dockerfile().create(params);
-DockerSandbox.prepare(callback).create(params);
+DockerSandbox.image(reference, { prepare }).create();
+DockerSandbox.dockerfile({ prepare }).create();
+DockerSandbox.environment({ prepare }).create();
 
-MicrosandboxSandbox.dockerfile().create(params);
-MicrosandboxSandbox.dockerfile().getOrCreate({ name, ...params });
+MicrosandboxSandbox.dockerfile({ prepare }).create();
+MicrosandboxSandbox.dockerfile().getOrCreate({ name });
 
 ExperimentalDockerfileSandbox().create(params);
 ExperimentalDockerfileSandbox().getOrCreate({ name, ...params });
 
-JustBashSandbox.environment().create(params);
-JustBashSandbox.prepare(callback).create(params);
+JustBashSandbox.environment().create();
+JustBashSandbox.environment({ prepare }).create();
 ```
 
 Both Vercel environments return the same eve-owned `Sandbox`. The separate
