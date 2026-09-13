@@ -149,6 +149,14 @@ default prefix is `eve/memory/file`; documents are stored privately under
 the generic environment defaults directly. Leave `oidcToken` unset on Vercel
 so the Blob SDK can manage token refresh.
 
+Concurrent writes to the same document use optimistic versioning. The built-in
+`vercelBlob()` backend reads with identity encoding so Vercel returns the
+object's strong etag instead of a weaker CDN-compressed variant. If you drive
+`@vercel/blob` directly in your own code, request identity encoding (or strip a
+`W/` prefix from the etag), because HTTP `If-Match` only matches strong etags:
+a weak etag like `W/"..."` makes a conditional write fail as if there were a
+conflict.
+
 ### Custom backend
 
 Implement `MemoryDocumentBackend` from `eve/memory/file` to keep the document in
