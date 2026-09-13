@@ -66,7 +66,14 @@ provider: fileMemory({ maxCharacters: 8_000 });
 ```
 
 Saving text identical to an existing entry is a no-op. Concurrent writes to the
-same document use optimistic versioning and retry on conflict.
+same document use optimistic versioning and retry on conflict. The built-in
+`vercelBlob()` backend signals a lost race by throwing
+`MemoryDocumentConflictError`; detect a conflict with `instanceof` or
+`MemoryDocumentConflictError.is(...)`, never by comparing `error.name`. Some
+error classes (including `@vercel/blob`'s precondition errors) do not set a
+matching `.name`, so a name check silently misses the conflict and a retry loop
+can keep running against a stale copy or let concurrent writers overwrite each
+other.
 
 ## Storage backends
 
