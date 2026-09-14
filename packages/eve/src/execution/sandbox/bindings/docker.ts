@@ -37,12 +37,15 @@ import { buildSandboxSession } from "#execution/sandbox/session.js";
 import {
   isSandboxPreparedArtifactRecord,
   providerResourceRoot,
+  providerResourceTargetFiles,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
-  type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
-import type { DockerSandboxCreateOptions } from "#public/sandbox/docker-sandbox.js";
+import type {
+  DockerSandboxEnvironmentOptions,
+  DockerSandboxRuntimeOptions,
+} from "#public/sandbox/docker-sandbox.js";
 
 export {
   DOCKER_TEMPLATE_IMAGE_REPOSITORY,
@@ -69,9 +72,9 @@ export const DOCKER_PROVIDER_NAME = "docker";
  *   container and the next `create` restarts it with state intact.
  */
 export function createDockerSandboxProvider(
-  createOptions?: DockerSandboxCreateOptions,
+  createOptions?: DockerSandboxEnvironmentOptions,
   dockerCli?: DockerCli,
-): SandboxProviderImplementation<undefined, Record<string, unknown>> {
+): SandboxProviderImplementation<DockerSandboxRuntimeOptions, Record<string, unknown>> {
   const cli = dockerCli ?? createDockerCli();
   const options = resolveDockerSandboxOptions(createOptions);
   const optionsHash = createDockerSandboxOptionsHash(options);
@@ -146,11 +149,6 @@ export function createDockerSandboxProvider(
         const buildContainerIdentity = await resolveDockerHandleIdentity(cli, buildContainerName);
         context.log?.("preparing base runtime inside container");
         await runDockerBaseSetup(cli, buildContainerIdentity);
-        if (options.networkPolicy !== "allow-all") {
-          context.log?.("applying network policy");
-          await setDockerNetworkPolicy(cli, buildContainerIdentity, options.networkPolicy);
-        }
-
         const templateSession = buildSandboxSession(
           createDockerInternalSession({
             cli,
@@ -161,7 +159,10 @@ export function createDockerSandboxProvider(
         );
 
         if (resourcesPath === undefined) {
-          await writeSandboxSeedFiles(templateSession, providerSeedFiles(context.resources));
+          await writeSandboxSeedFiles(
+            templateSession,
+            providerResourceTargetFiles(context.resources),
+          );
         } else {
           context.log?.("hydrating workspace and skills from read-only resources");
           await hydrateSandboxFromImmutableResources(templateSession);
@@ -202,6 +203,7 @@ export function createDockerSandboxProvider(
     },
     async getOrCreate(context, prepared) {
       await ensureDaemon();
+      const networkPolicy = context.options.networkPolicy ?? "allow-all";
       const containerName = getDockerContainerName(context.existing) ?? context.sandboxName;
 
       const inspect = await cli.run([
@@ -248,7 +250,7 @@ export function createDockerSandboxProvider(
             cli,
             containerName,
             image,
-            initialNetworkPolicy: prepared === undefined ? "allow-all" : options.networkPolicy,
+            initialNetworkPolicy: prepared === undefined ? "allow-all" : networkPolicy,
             options,
             resourcesPath:
               resourceRoot.key === undefined
@@ -273,8 +275,8 @@ export function createDockerSandboxProvider(
 
         if (prepared === undefined) {
           await runDockerBaseSetup(cli, containerName);
-          if (options.networkPolicy !== "allow-all") {
-            await setDockerNetworkPolicy(cli, containerName, options.networkPolicy);
+          if (networkPolicy !== "allow-all") {
+            await setDockerNetworkPolicy(cli, containerName, networkPolicy);
           }
         }
       }
@@ -313,19 +315,6 @@ function readPreparedDockerImage(
 ): string | undefined {
   if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
   return typeof artifact.imageReference === "string" ? artifact.imageReference : undefined;
-}
-
-function providerSeedFiles(resources: SandboxProviderResources) {
-  return [
-    ...(resources.workspace?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.workspace?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-    ...(resources.skills?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.skills?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-  ];
 }
 
 function getDockerContainerName(metadata: Record<string, unknown> | undefined): string | undefined {

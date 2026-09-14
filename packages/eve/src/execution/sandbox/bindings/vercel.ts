@@ -15,10 +15,10 @@ import type {
 } from "#shared/sandbox-session.js";
 import {
   isSandboxPreparedArtifactRecord,
+  providerResourceTargetFiles,
   type SandboxPreparedArtifact,
   type SandboxProviderHandle,
   type SandboxProviderImplementation,
-  type SandboxProviderResources,
   type SandboxProviderTags,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
@@ -168,13 +168,12 @@ export function createVercelSandbox(
       let outcome: EnsureTemplateOutcome;
       try {
         outcome = await ensureTemplateWithUnavailableRetry({
-          force: context.force,
           runPreparation: context.runPreparation,
           createOptions,
           createSandbox,
           loadSandboxModule,
           log: context.log,
-          seedFiles: providerSeedFiles(context.resources),
+          seedFiles: providerResourceTargetFiles(context.resources),
           templateKey: context.templateName,
         });
       } catch (error) {
@@ -225,7 +224,6 @@ interface EnsureTemplateOutcome {
 type VercelSeedFile = { readonly content: string | Uint8Array; readonly path: string };
 
 interface EnsureTemplateInput {
-  readonly force?: boolean;
   readonly runPreparation?: (sandbox: SandboxSession) => void | Promise<void>;
   readonly createOptions: VercelCreateOptions;
   readonly createSandbox: CreateVercelSandbox;
@@ -266,10 +264,7 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
   const tags = resolveVercelSandboxTags(input.createOptions.tags, input.tags);
   const authorSnapshotId = extractAuthorSnapshotId(input.createOptions);
 
-  if (
-    sandbox !== null &&
-    (input.force === true || isUnprovisionedTerminalTemplateSandbox(sandbox, authorSnapshotId))
-  ) {
+  if (sandbox !== null && isUnprovisionedTerminalTemplateSandbox(sandbox, authorSnapshotId)) {
     await sandbox.delete();
     sandbox = null;
   }
@@ -529,19 +524,6 @@ function createVercelInternalSandboxSession(
       });
     },
   };
-}
-
-function providerSeedFiles(resources: SandboxProviderResources): VercelSeedFile[] {
-  return [
-    ...(resources.workspace?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.workspace?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-    ...(resources.skills?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.skills?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-  ];
 }
 
 async function writeVercelSandboxSeedFiles(input: {

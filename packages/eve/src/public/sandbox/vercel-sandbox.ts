@@ -1,4 +1,5 @@
 import type * as Vercel from "#compiled/@vercel/sandbox-drives/index.js";
+import type { SandboxNetworkOptions } from "#shared/sandbox-network-policy.js";
 
 type VercelCreateOptions = NonNullable<Parameters<typeof Vercel.Sandbox.create>[0]>;
 
@@ -67,4 +68,5 @@ export type VercelSandboxRuntimeOptions = Omit<
   VercelSandboxCreateOptions,
   "image" | "source" | "tags"
 > &
+  SandboxNetworkOptions &
   VercelSandboxMountOptions;

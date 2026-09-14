@@ -4,10 +4,7 @@ import {
   withRuntimeSandboxLifecycle,
 } from "#context/build-callback-context.js";
 import { trackActiveSandboxHandle } from "#execution/sandbox/active-handles.js";
-import { waitForDevelopmentSandboxPrewarm } from "#execution/sandbox/development-prewarm.js";
-import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
-import { waitForSandboxTemplatePrewarmLock } from "#execution/sandbox/template-prewarm-lock.js";
-import { isEveDevEnvironment } from "#internal/application/optional-package-install.js";
+import { isEveDevEnvironment } from "#internal/application/dev-environment.js";
 import {
   getRuntimeCompiledArtifactsSandboxAppRoot,
   type RuntimeCompiledArtifactsSource,
@@ -105,24 +102,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
     });
 
-    if (keys.templateKey !== null) {
-      const log = (message: string) =>
-        logDevelopmentSandbox(
-          `eve: sandbox template "${formatNodeLabel(input.nodeId)}" (${provider.providerName}): ${message}`,
-        );
-      await waitForDevelopmentSandboxPrewarm({
-        appRoot,
-        compiledArtifactsSource: input.compiledArtifactsSource,
-        log,
-      });
-      await waitForSandboxTemplatePrewarmLock({
-        appRoot,
-        log,
-        providerName: provider.providerName,
-        templateKey: keys.templateKey,
-      });
-    }
-
     const existing =
       persisted?.providerName === provider.providerName && persisted.sessionKey === keys.sessionKey
         ? persisted
@@ -156,14 +135,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     opening = withDevelopmentSandboxProgress(
       `eve: opening sandbox session "${formatNodeLabel(input.nodeId)}" on provider "${provider.providerName}"...`,
       `eve: opening sandbox session "${formatNodeLabel(input.nodeId)}" on provider "${provider.providerName}"`,
-      async () =>
-        await getOrCreateWithRepair({
-          appRoot,
-          compiledArtifactsSource: input.compiledArtifactsSource,
-          create,
-          providerName: provider.providerName,
-          templateName: keys.templateKey,
-        }),
+      create,
     ).catch((error: unknown) => {
       opening = undefined;
       throw error;
@@ -340,46 +312,11 @@ async function resolveProviderPreparedArtifact(input: {
   });
   if (artifact === undefined) {
     throw new SandboxTemplateNotProvisionedError({
-      forceRebuild: false,
       providerName: input.providerName,
       templateKey: input.templateName,
     });
   }
   return { artifact, templateName: input.templateName };
-}
-
-async function getOrCreateWithRepair(input: {
-  readonly appRoot: string;
-  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly create: () => Promise<RuntimeProviderHandle>;
-  readonly providerName: string;
-  readonly templateName: string | null;
-}): Promise<RuntimeProviderHandle> {
-  try {
-    return await input.create();
-  } catch (error) {
-    if (
-      input.templateName === null ||
-      input.compiledArtifactsSource.kind !== "disk" ||
-      !SandboxTemplateNotProvisionedError.is(error)
-    ) {
-      throw error;
-    }
-    await prewarmAppSandboxes({
-      appRoot: input.appRoot,
-      compiledArtifactsSource: input.compiledArtifactsSource,
-      force: error.forceRebuild !== false,
-      log: logDevelopmentSandbox,
-    });
-    await waitForSandboxTemplatePrewarmLock({
-      appRoot: input.appRoot,
-      log: (message) => logDevelopmentSandbox(`eve: ${message}`),
-      providerName: input.providerName,
-      templateKey: input.templateName,
-    });
-    logDevelopmentSandbox("eve: sandbox template is ready; retrying sandbox creation...");
-    return await input.create();
-  }
 }
 
 function logDevelopmentSandbox(message: string): void {

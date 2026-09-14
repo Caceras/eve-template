@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 
 import { DEFAULT_EVE_SANDBOX_IMAGE } from "#execution/sandbox/bindings/eve-image.js";
 import type {
-  DockerSandboxCreateOptions,
-  DockerSandboxNetworkPolicy,
+  DockerSandboxEnvironmentOptions,
   DockerSandboxPullPolicy,
 } from "#public/sandbox/docker-sandbox.js";
 
@@ -20,7 +19,6 @@ export const DEFAULT_DOCKER_SANDBOX_IMAGE = DEFAULT_EVE_SANDBOX_IMAGE;
 export interface ResolvedDockerSandboxOptions {
   readonly env: Readonly<Record<string, string>>;
   readonly image: string;
-  readonly networkPolicy: DockerSandboxNetworkPolicy;
   readonly pullPolicy: DockerSandboxPullPolicy;
 }
 
@@ -28,12 +26,11 @@ export interface ResolvedDockerSandboxOptions {
  * Applies defaults to `docker(opts)`.
  */
 export function resolveDockerSandboxOptions(
-  options: DockerSandboxCreateOptions = {},
+  options: DockerSandboxEnvironmentOptions = {},
 ): ResolvedDockerSandboxOptions {
   return {
     env: options.env ?? {},
     image: options.image ?? DEFAULT_DOCKER_SANDBOX_IMAGE,
-    networkPolicy: options.networkPolicy ?? "allow-all",
     pullPolicy: options.pullPolicy ?? "if-not-present",
   };
 }
@@ -49,7 +46,6 @@ function dockerOptionsForHash(options: ResolvedDockerSandboxOptions): Record<str
   return {
     env: sortStringRecord(options.env),
     image: options.image,
-    networkPolicy: options.networkPolicy,
     pullPolicy: options.pullPolicy,
   };
 }

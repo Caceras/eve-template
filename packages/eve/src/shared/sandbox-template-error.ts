@@ -1,18 +1,12 @@
 export class SandboxTemplateNotProvisionedError extends Error {
-  readonly forceRebuild: boolean;
   readonly providerName: string;
   readonly templateKey: string;
 
-  constructor(input: {
-    readonly forceRebuild?: boolean;
-    readonly providerName: string;
-    readonly templateKey: string;
-  }) {
+  constructor(input: { readonly providerName: string; readonly templateKey: string }) {
     super(
       `Sandbox template "${input.templateKey}" is not provisioned for provider "${input.providerName}". Run \`eve build\` before serving traffic.`,
     );
     this.name = "SandboxTemplateNotProvisionedError";
-    this.forceRebuild = input.forceRebuild ?? true;
     this.providerName = input.providerName;
     this.templateKey = input.templateKey;
   }

@@ -20,7 +20,6 @@ export function createSandboxProviderHarness<Options extends object | undefined>
     async prepare(input: {
       readonly appRoot: string;
       readonly dockerfile?: SandboxDockerfileInput;
-      readonly force?: boolean;
       readonly log?: (message: string) => void;
       readonly resourcesKey?: string;
       readonly resourcesPath?: string;
@@ -34,7 +33,6 @@ export function createSandboxProviderHarness<Options extends object | undefined>
       const result = await implementation.prepare({
         appRoot: input.appRoot,
         dockerfile: input.dockerfile,
-        force: input.force,
         log: input.log,
         resources: createSandboxProviderResources({
           ...input,

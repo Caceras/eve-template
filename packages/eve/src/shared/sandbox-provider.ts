@@ -37,6 +37,24 @@ export interface SandboxProviderResources {
   readonly workspace?: SandboxProviderResourceTree;
 }
 
+export interface SandboxProviderTargetFile {
+  readonly content: string | Uint8Array;
+  readonly path: string;
+}
+
+export function providerResourceTargetFiles(
+  resources: SandboxProviderResources,
+): SandboxProviderTargetFile[] {
+  return [resources.workspace, resources.skills].flatMap((resource) =>
+    resource === undefined
+      ? []
+      : resource.files.map((file) => ({
+          content: file.content,
+          path: `${resource.targetPath}/${file.relativePath}`,
+        })),
+  );
+}
+
 export type SandboxPreparedArtifact =
   | null
   | boolean
@@ -54,7 +72,6 @@ export function isSandboxPreparedArtifactRecord(
 export interface SandboxProviderPrepareContext {
   readonly appRoot: string;
   readonly dockerfile?: SandboxDockerfileInput;
-  readonly force?: boolean;
   readonly log?: (message: string) => void;
   readonly resources: SandboxProviderResources;
   runPreparation(sandbox: SandboxSession): Promise<void>;

@@ -103,7 +103,6 @@ interface PrewarmSandboxesInput {
   readonly appRoot: string;
   readonly compileDirectoryPath: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly force?: boolean;
   readonly graph: ResolvedAgentGraphBundle;
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxProviderPrepareDispatch;
@@ -211,7 +210,6 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
 export async function prewarmAppSandboxes(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource?: RuntimeCompiledArtifactsSource;
-  readonly force?: boolean;
   readonly loadAgentGraph?: (
     input: Readonly<{
       compiledArtifactsSource: RuntimeDiskCompiledArtifactsSource;
@@ -239,7 +237,6 @@ export async function prewarmAppSandboxes(input: {
       .compileDirectoryPath,
     compiledArtifactsSource,
     dispatch: input.dispatch,
-    force: input.force,
     graph,
     log: input.log,
     onPrewarmSignature: input.onPrewarmSignature,
@@ -311,7 +308,6 @@ async function collectPrewarmTargets(input: {
   readonly appRoot: string;
   readonly compileDirectoryPath: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly force?: boolean;
   readonly graph: ResolvedAgentGraphBundle;
 }): Promise<readonly PrewarmTarget[]> {
   const targets: PrewarmTarget[] = [];
@@ -353,7 +349,6 @@ async function collectPrewarmTargets(input: {
         context: {
           appRoot: input.appRoot,
           dockerfile,
-          force: input.force,
           resources: createSandboxProviderResources({
             resourcesKey: workspaceResourceRoot.contentHash,
             resourcesPath:

@@ -1,5 +1,8 @@
 import { createMicrosandboxSandboxProvider } from "#execution/sandbox/bindings/local.js";
-import type { MicrosandboxSandboxCreateOptions } from "#public/sandbox/microsandbox-sandbox.js";
+import type {
+  MicrosandboxSandboxCreateOptions,
+  MicrosandboxSandboxRuntimeOptions,
+} from "#public/sandbox/microsandbox-sandbox.js";
 import type { SandboxEnvironment } from "#shared/sandbox-environment.js";
 import {
   defineSandboxProvider,
@@ -12,21 +15,26 @@ type MicrosandboxEnvironmentInput =
   SandboxProviderEnvironmentOptions<MicrosandboxEnvironmentOptions>;
 type DockerfileEnvironmentInput = Omit<MicrosandboxEnvironmentInput, "image">;
 
-const provider = defineSandboxProvider<MicrosandboxEnvironmentOptions, undefined>({
+const provider = defineSandboxProvider<
+  MicrosandboxEnvironmentOptions,
+  MicrosandboxSandboxRuntimeOptions
+>({
   name: "microsandbox",
   environment: (options) => createMicrosandboxSandboxProvider(options),
 });
 
 export const MicrosandboxSandbox = {
   ...provider,
-  dockerfile(options: DockerfileEnvironmentInput = {}): SandboxEnvironment<undefined> {
+  dockerfile(
+    options: DockerfileEnvironmentInput = {},
+  ): SandboxEnvironment<MicrosandboxSandboxRuntimeOptions> {
     const environment = provider.environment(options);
     return Object.defineProperty(environment, "kind", { value: "dockerfile" });
   },
   image(
     reference: string,
     options: DockerfileEnvironmentInput = {},
-  ): SandboxEnvironment<undefined> {
+  ): SandboxEnvironment<MicrosandboxSandboxRuntimeOptions> {
     const environment = provider.environment({ ...options, image: reference });
     return Object.defineProperty(environment, "kind", { value: "image" });
   },

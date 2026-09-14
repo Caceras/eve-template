@@ -61,7 +61,7 @@ function createMicrosandboxHandle(
     ...input,
     context: {
       handle: (providerHandle) => providerHandle,
-      options: undefined,
+      options: {},
       resources: {},
       ...input.context,
     },

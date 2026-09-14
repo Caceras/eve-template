@@ -24,3 +24,8 @@ import type * as Vercel from "#compiled/@vercel/sandbox/index.js";
  * no binaries to govern).
  */
 export type SandboxNetworkPolicy = Vercel.NetworkPolicy;
+
+/** Initial network configuration shared by network-capable sandbox providers. */
+export interface SandboxNetworkOptions {
+  readonly networkPolicy?: SandboxNetworkPolicy;
+}

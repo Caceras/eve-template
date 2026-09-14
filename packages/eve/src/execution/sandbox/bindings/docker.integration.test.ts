@@ -21,7 +21,10 @@ import {
   resolveDockerSandboxOptions,
 } from "#execution/sandbox/bindings/docker-options.js";
 import { dockerTemplateImageReference } from "#execution/sandbox/bindings/docker-templates.js";
-import type { DockerSandboxCreateOptions } from "#public/sandbox/docker-sandbox.js";
+import type {
+  DockerSandboxEnvironmentOptions,
+  DockerSandboxRuntimeOptions,
+} from "#public/sandbox/docker-sandbox.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
 import { createSandboxProviderHarness } from "#internal/testing/sandbox-provider-harness.js";
 import { useTemporaryDirectories } from "#internal/testing/use-temporary-app-roots.js";
@@ -99,11 +102,12 @@ function createFakeDockerCli(
 
 function createEngine(input: {
   readonly cli: DockerCli;
-  readonly options?: DockerSandboxCreateOptions;
+  readonly options?: DockerSandboxEnvironmentOptions;
+  readonly runtimeOptions?: DockerSandboxRuntimeOptions;
 }) {
   return createSandboxProviderHarness(
     createDockerSandboxProvider(input.options, input.cli),
-    undefined,
+    input.runtimeOptions ?? {},
     { preparedArtifact: () => ({ imageReference: TEMPLATE_IMAGE }) },
   );
 }
@@ -550,7 +554,7 @@ describe("Docker provider create", () => {
 describe("docker session primitives", () => {
   async function createRunningSessionHandle(input: {
     readonly respond?: (args: readonly string[]) => FakeResponse | undefined;
-    readonly options?: DockerSandboxCreateOptions;
+    readonly options?: DockerSandboxEnvironmentOptions;
   }) {
     const appRoot = await createScratchDirectory("eve-docker-sandbox-");
     const { calls, cli, killedStreams } = createFakeDockerCli((args) => {
@@ -757,7 +761,7 @@ describe("docker session primitives", () => {
 
     await createEngine({
       cli,
-      options: { networkPolicy: "deny-all" },
+      runtimeOptions: { networkPolicy: "deny-all" },
     }).getOrCreate({
       appRoot,
       sandboxName: SESSION_KEY,

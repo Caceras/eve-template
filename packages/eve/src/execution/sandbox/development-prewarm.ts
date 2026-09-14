@@ -19,6 +19,15 @@ const pendingDevelopmentPrewarms = new Map<string, DevelopmentPrewarmRecord>();
 const retainedDevelopmentPrewarmLogs = new Map<string, readonly string[]>();
 const completedDevelopmentPrewarmSignatures = new Map<string, string>();
 
+export async function prewarmDevelopmentSandboxes(input: {
+  readonly appRoot: string;
+  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+  readonly log?: (message: string) => void;
+}): Promise<void> {
+  startDevelopmentSandboxPrewarmInBackground(input);
+  await waitForDevelopmentSandboxPrewarm(input);
+}
+
 export function startDevelopmentSandboxPrewarmInBackground(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;

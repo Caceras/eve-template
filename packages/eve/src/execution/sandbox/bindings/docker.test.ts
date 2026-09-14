@@ -25,7 +25,7 @@ describe("Docker sandbox deletion", () => {
     };
     const provider = createSandboxProviderHarness(
       createDockerSandboxProvider(undefined, dockerCli),
-      undefined,
+      {},
     );
     const handle = await provider.getOrCreate({
       appRoot: "/tmp/eve-app",
@@ -61,7 +61,7 @@ describe("Docker sandbox deletion", () => {
     };
     const backend = createSandboxProviderHarness(
       createDockerSandboxProvider(undefined, dockerCli),
-      undefined,
+      {},
     );
     const oldHandle = await backend.getOrCreate({
       appRoot: "/tmp/eve-app",

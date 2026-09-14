@@ -39,7 +39,7 @@ export const environment = DefaultSandbox.environment();
 export default defineSandbox(() => environment.create());
 ```
 
-`environment.create()` creates a persistent sandbox owned by the current eve session. The callback can configure the real sandbox before returning it:
+`environment.create()` creates a persistent sandbox owned by the current eve session. Pass options for the live sandbox to `create()`, then configure the returned sandbox before returning it:
 
 ```ts
 import { defineSandbox } from "eve/sandbox";
@@ -54,11 +54,11 @@ export default defineSandbox(async ({ session }) => {
 });
 ```
 
-The environment export is required because `eve build` prepares its immutable template inputs before a session exists.
+The environment export is required because `eve build` prepares immutable environment inputs before a session exists.
 
 ### Prepare a reusable environment
 
-Set the environment's `prepare` option for setup that every new sandbox inherits:
+Use the environment's `prepare` option for setup every new sandbox inherits:
 
 ```ts
 import { defineSandbox } from "eve/sandbox";
@@ -76,7 +76,9 @@ export const environment = VercelSandbox.environment({
 export default defineSandbox(() => environment.create());
 ```
 
-Vercel environments use the existing snapshot-backed template lifecycle. Docker and microsandbox use local image/template storage.
+`prepare` is the build-time replacement for the removed `bootstrap` callback. eve runs it while creating a reusable provider artifact, not once for each live session sandbox. Vercel captures a snapshot; Docker captures an image; microsandbox captures a VM snapshot; and just-bash captures a filesystem template.
+
+At runtime, eve passes the recorded artifact directly to the provider when it creates a live sandbox. Runtime does not rebuild or repair a missing artifact. A missing image, snapshot, or template fails with rebuild or redeploy guidance.
 
 ### Share a named sandbox
 
@@ -88,7 +90,9 @@ export default defineSandbox(({ session }) =>
 );
 ```
 
-eve namespaces the authored name with the sandbox definition, environment generation, and constructor configuration. Calls that reuse a name with the built-in environments must use the same configuration; conflicting calls fail. Named sandboxes have provider-owned lifetime, so an attached eve session cannot delete or stop one. Do not write per-user credentials into a shared filesystem or apply per-session network policy changes to it.
+eve namespaces the authored name with the sandbox definition, environment generation, and constructor configuration. Calls that reuse a name must use the same configuration; conflicting calls fail. Named sandboxes have provider-owned lifetime, so an attached eve session cannot delete or stop one.
+
+Do not write per-user credentials into a shared filesystem. A named sandbox also has one network boundary for every attached eve session: use one stable network policy rather than deriving it from the current caller.
 
 ### Share a parent sandbox
 
@@ -96,14 +100,15 @@ A declared subagent can use its dispatching parent's sandbox explicitly:
 
 ```ts title="agent/subagents/reviewer/sandbox.ts"
 import { defineParentSandbox } from "eve/sandbox";
+
 export default defineParentSandbox();
 ```
 
 An inheriting subagent cannot declare its own managed workspace or skill files.
 
-## Seed workspace files and skills
+## Managed workspace and skills
 
-Use the folder layout when the sandbox needs authored files:
+Use the sandbox directory for authored workspace seeds:
 
 ```text
 agent/sandbox/
@@ -112,37 +117,25 @@ agent/sandbox/
     schema.sql
 ```
 
-Files under `workspace/` seed writable `/workspace`. Skills are available under `$HOME/.agents/skills`. Docker and microsandbox stage compiled workspace and skill resources through content-addressed read-only mounts under `/eve/resources`, then copy workspace seed files into writable `/workspace` when the template is prepared.
+Files under `agent/sandbox/workspace/` seed writable `/workspace`. eve copies the seed when it prepares a new environment generation. Existing live sandbox state is not overwritten by later seed changes.
 
-## Environments
-
-| Import                                                | Environment                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `DefaultSandbox` from `eve/sandbox`                   | Vercel on Vercel, then Docker, microsandbox, or just-bash according to availability. |
-| `VercelSandbox` from `eve/sandbox/vercel`             | Snapshot-backed Vercel Sandbox.                                                      |
-| `DockerSandbox` from `eve/sandbox/docker`             | A local Docker container.                                                            |
-| `MicrosandboxSandbox` from `eve/sandbox/microsandbox` | A local microsandbox VM.                                                             |
-| `JustBashSandbox` from `eve/sandbox/just-bash`        | A pure-JavaScript shell and virtual filesystem.                                      |
-
-### Existing images
-
-Docker and microsandbox accept existing OCI images:
+Agent skills are compiled into a separate resource tree and exposed at `$HOME/.agents/skills`. Providers receive both trees with explicit metadata:
 
 ```ts
-import { defineSandbox } from "eve/sandbox";
-import { DockerSandbox } from "eve/sandbox/docker";
-
-export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...", {
-  networkPolicy: "deny-all",
-});
-export default defineSandbox(() => environment.create());
+interface SandboxProviderResourceTree {
+  key: string; // Content-addressed identity.
+  files: ResourceFile[];
+  path?: string; // Materialized build-time source.
+  mountPath: string; // Read-only provider mount under /eve/resources.
+  targetPath: string; // /workspace or $HOME/.agents/skills.
+}
 ```
 
-Use `MicrosandboxSandbox.image()` for microsandbox. Vercel does not use the local OCI-image path.
+Docker and microsandbox mount the compiled trees read-only under `/eve/resources`, copy workspace seeds into writable `/workspace`, and expose skills read-only where possible. Vercel's snapshot environment writes workspace and skill contents before capturing its snapshot. Custom providers decide whether to upload, mount, or write each tree, but must expose the final target paths before authored preparation runs.
 
-### Custom providers
+## Custom providers
 
-Define a reusable provider with `defineSandboxProvider()` from `eve/sandbox/provider`. Its `environment()` implementation prepares provider-native templates and implements named persistent creation; eve supplies stable names, resources, and persisted metadata.
+Define a provider with `defineSandboxProvider()` from `eve/sandbox/provider`. The four generic parameters describe environment options, live sandbox options, persisted handle metadata, and the prepared artifact:
 
 ```ts
 import { defineSandboxProvider } from "eve/sandbox/provider";
@@ -154,8 +147,9 @@ export const AcmeSandbox = defineSandboxProvider<
   { templateId: string }
 >({
   name: "acme",
-  environment(options: { image: string }) {
+  environment(options) {
     const client = createAcmeClient(options);
+
     return {
       async prepare(ctx) {
         const temporary = await client.createTemporary({
@@ -163,25 +157,24 @@ export const AcmeSandbox = defineSandboxProvider<
           name: ctx.templateName,
         });
         const sandbox = adaptAcmeSandbox(temporary);
-        await sandbox.run({
-          command: [
-            "cp -a /eve/resources/workspace/. /workspace/ 2>/dev/null || true",
-            'mkdir -p "$HOME/.agents"',
-            'ln -s /eve/resources/skills "$HOME/.agents/skills" 2>/dev/null || true',
-          ].join("\\n"),
-        });
+        await hydrateResources(sandbox, ctx.resources);
         await ctx.runPreparation(sandbox);
         const template = await client.saveTemplate(ctx.templateName, temporary);
-        return { artifact: { templateId: template.id }, reused: false };
+
+        return {
+          artifact: { templateId: template.id },
+          reused: false,
+        };
       },
+
       async getOrCreate(ctx, prepared) {
-        const templateId = prepared?.artifact.templateId;
         const remote = await client.getOrCreate({
           existingId: ctx.existing?.remoteId,
-          mounts: await uploadResources(ctx.resources),
           name: ctx.sandboxName,
-          templateId,
+          networkPolicy: ctx.options.networkPolicy,
+          templateId: prepared?.artifact.templateId,
         });
+
         return ctx.handle({
           sandbox: adaptAcmeSandbox(remote),
           metadata: { remoteId: remote.id },
@@ -195,51 +188,110 @@ export const AcmeSandbox = defineSandboxProvider<
 });
 ```
 
-Built-in and custom providers use this same contract. `prepare()` returns a JSON-serializable environment artifact that eve writes into build output. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument when the environment was prepared, or `undefined` otherwise. The fourth `defineSandboxProvider` generic types that artifact for both methods. Providers consume it instead of reconstructing prepared resource identifiers.
+`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument, or `undefined` when the environment has no prepared inputs. The fourth generic gives both methods the provider's exact artifact type.
 
-`ctx.resources.workspace` and `ctx.resources.skills` each provide a content key, optional materialized source path, relative files, a read-only mount path under `/eve/resources`, and the final agent-visible target (`/workspace` or `$HOME/.agents/skills`). A provider can upload files directly or mount native volumes, but it must make the resources available at those target paths before calling `ctx.runPreparation()`. Keep provider SDK types behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
+`ctx.options` contains options for the live sandbox. `ctx.existing` contains persisted metadata for reconnecting that sandbox. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
-### A colocated Dockerfile
+## Providers
 
-Docker and microsandbox can build `agent/sandbox/Dockerfile`:
+### Default
 
-```text
-agent/sandbox/
-  Dockerfile
-  sandbox.ts
-  workspace/
+`DefaultSandbox.environment()` selects Vercel on Vercel, then Docker, microsandbox, or just-bash according to local availability:
+
+```ts
+import { DefaultSandbox, defineSandbox } from "eve/sandbox";
+
+export const environment = DefaultSandbox.environment();
+export default defineSandbox(() => environment.create());
 ```
+
+The default preserves eve's standard sandbox behavior and does not expose provider-specific live creation options.
+
+### Vercel
+
+`VercelSandbox.environment()` uses the snapshot-backed Vercel Sandbox lifecycle:
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { VercelSandbox } from "eve/sandbox/vercel";
+
+export const environment = VercelSandbox.environment({
+  prepare: async (sandbox) => {
+    await sandbox.run({ command: "pnpm install --frozen-lockfile" });
+  },
+});
+
+export default defineSandbox(() =>
+  environment.create({
+    networkPolicy: {
+      allow: {
+        "api.github.com": [],
+      },
+    },
+    resources: { vcpus: 4 },
+  }),
+);
+```
+
+During build, eve prepares a temporary Vercel Sandbox and records the resulting snapshot ID. Session creation starts a new persistent named Vercel Sandbox directly from that snapshot ID; it does not look up the temporary template Sandbox.
+
+Pass network policy, compute resources, timeout, and Drive mounts to `create()` or `getOrCreate()`. The initial policy applies to the new live Vercel Sandbox. Vercel supports domain allowlists and credential transforms. You can later call `sandbox.setNetworkPolicy()` on a dedicated sandbox.
+
+### Docker
+
+Docker accepts its default image, an existing image, or a colocated Dockerfile:
 
 ```ts
 import { defineSandbox } from "eve/sandbox";
 import { DockerSandbox } from "eve/sandbox/docker";
 
-export const environment = DockerSandbox.dockerfile();
+export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...");
+
+export default defineSandbox(() => environment.create({ networkPolicy: "deny-all" }));
+```
+
+Use `DockerSandbox.dockerfile()` to build `agent/sandbox/Dockerfile`. Image, pull policy, environment variables, and `prepare` belong to the environment. The initial `"allow-all"` or `"deny-all"` policy belongs to the live container and is passed to `create()` or `getOrCreate()`.
+
+A session-owned container keeps writable state in its container filesystem. A stopped container restarts with that state. A named shared container exposes the same filesystem and network boundary to every attached eve session.
+
+### microsandbox
+
+microsandbox runs a local VM from its default image, an existing OCI image, or a colocated Dockerfile:
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { MicrosandboxSandbox } from "eve/sandbox/microsandbox";
+
+export const environment = MicrosandboxSandbox.dockerfile({
+  setup: { autoInstall: false },
+});
+
+export default defineSandbox(() => environment.create({ networkPolicy: "deny-all" }));
+```
+
+Supported hosts are macOS on Apple Silicon and Linux with glibc and KVM. Image, CPU, memory, pull policy, environment variables, VM setup, and `prepare` belong to the environment. Network policy belongs to the live VM and is passed to `create()` or `getOrCreate()`.
+
+`eve build` builds a Dockerfile image when present, prepares a VM, and records its snapshot and image references. Session creation uses those recorded values directly. Writable VM state persists through the provider's session snapshot lifecycle.
+
+### just-bash
+
+`JustBashSandbox.environment()` provides a pure-JavaScript shell and virtual filesystem:
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { JustBashSandbox } from "eve/sandbox/just-bash";
+
+export const environment = JustBashSandbox.environment();
 export default defineSandbox(() => environment.create());
 ```
 
-Use `MicrosandboxSandbox.dockerfile()` for microsandbox. `eve build` hashes the Dockerfile context, builds the image with Docker, and reuses it until an input changes. microsandbox publishes that local image through its development registry before creating a VM. A Docker daemon is required for both Dockerfile build paths.
+just-bash supports filesystem preparation but cannot run OCI images or Dockerfiles. It has no network isolation and rejects `setNetworkPolicy()`.
 
 ## Lifecycle
 
 Session-owned sandboxes persist across turns and deployments while their provider state remains available. `sandbox.stop()` stops compute without deleting persisted state. `sandbox.delete()` removes a session-owned sandbox; the next `ctx.getSandbox()` creates a fresh sandbox from the current environment.
 
-Changing sandbox source, preparation code, Dockerfile content, or workspace resources produces a new environment generation. Existing durable sessions retain their recorded sandbox state; new sessions use the current generation.
-
-## Network policy
-
-Declare immutable local policies on the environment. Vercel can also resolve policy and resource options when it creates a session:
-
-```ts
-export const environment = DockerSandbox.environment({ networkPolicy: "deny-all" });
-export default defineSandbox(() => environment.create());
-```
-
-```ts
-return vercelEnvironment.create({ networkPolicy: "deny-all" });
-```
-
-Vercel and microsandbox support domain policies and credential transforms. Docker supports `"allow-all"` and `"deny-all"`. just-bash has no network isolation. You can call `setNetworkPolicy()` later on a dedicated sandbox, but shared named sandboxes must use one policy for every attached session.
+Changing sandbox source, preparation code, Dockerfile content, environment options, workspace resources, or skills produces a new environment generation. Existing durable sessions retain their recorded sandbox state; new sessions use the current generation.
 
 ## What to read next
 

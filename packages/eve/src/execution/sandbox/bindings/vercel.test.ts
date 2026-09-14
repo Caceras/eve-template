@@ -971,46 +971,17 @@ describe("createVercelSandbox", () => {
     });
   });
 
-  it("invalidates and rebuilds a Vercel template when its snapshot expired before session create", async () => {
-    const staleTemplate = createMockSandbox({
-      name: "template-key",
-      snapshotId: "expired-template-snapshot",
-    });
-    const freshTemplate = createMockSandbox({ name: "template-key" });
-    const sessionSandbox = createMockSandbox({ name: "session-key" });
-    let templateDeleted = false;
-    vi.mocked(staleTemplate.delete).mockImplementation(async () => {
-      templateDeleted = true;
-    });
-
+  it("reports an unavailable prepared snapshot without mutating the build template", async () => {
     const snapshotExpiredError = Object.assign(
       new Error("Vercel sandbox create API returned 410"),
-      {
-        json: {
-          error: {
-            code: "bad_request",
-            message: "Resource is gone.",
-          },
-        },
-        response: { status: 410 },
-      },
+      { response: { status: 410 } },
     );
-    const create = vi
-      .fn()
-      .mockRejectedValueOnce(snapshotExpiredError)
-      .mockResolvedValueOnce(freshTemplate)
-      .mockResolvedValueOnce(sessionSandbox);
-    const get = vi.fn().mockImplementation(async ({ name }: { name: string }) => {
-      if (name === "template-key") {
-        return templateDeleted ? null : staleTemplate;
-      }
-      if (name === "session-key") {
-        return null;
-      }
-      return null;
-    });
-    const sandboxModule = { Sandbox: { create, get } };
-
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn().mockRejectedValueOnce(snapshotExpiredError),
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
     const backend = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
@@ -1023,35 +994,17 @@ describe("createVercelSandbox", () => {
         templateName: "template-key",
       }),
     ).rejects.toBeInstanceOf(SandboxTemplateNotProvisionedError);
-    expect(staleTemplate.delete).not.toHaveBeenCalled();
 
-    const prewarmResult = await backend.prepare({
-      appRoot: "/tmp/test-app-root",
-      force: true,
-      seedFiles: [],
-      templateName: "template-key",
-    });
-    await backend.getOrCreate({
-      appRoot: "/tmp/test-app-root",
-      sandboxName: "session-key",
-      templateName: "template-key",
-    });
-
-    expect(prewarmResult).toMatchObject({ reused: false });
-    expect(freshTemplate.snapshot).toHaveBeenCalledTimes(1);
-    expect(create).toHaveBeenCalledTimes(3);
-    expect(create.mock.calls[0]?.[0]).toMatchObject({
-      name: "session-key",
-      source: { snapshotId: "expired-template-snapshot", type: "snapshot" },
-    });
-    expect(create.mock.calls[1]?.[0]).toMatchObject({
-      name: "template-key",
-      persistent: true,
-    });
-    expect(create.mock.calls[2]?.[0]).toMatchObject({
-      name: "session-key",
-      source: { snapshotId: "template-key-snapshot", type: "snapshot" },
-    });
+    expect(sandboxModule.Sandbox.get).toHaveBeenCalledTimes(1);
+    expect(sandboxModule.Sandbox.get).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "session-key" }),
+    );
+    expect(sandboxModule.Sandbox.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "session-key",
+        source: { snapshotId: "expired-template-snapshot", type: "snapshot" },
+      }),
+    );
   });
 
   it("does not invalidate the shared template when a fresh session initialization returns 410", async () => {

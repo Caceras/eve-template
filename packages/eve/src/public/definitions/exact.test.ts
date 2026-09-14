@@ -480,9 +480,9 @@ function typeOnlyFixtures(): void {
     return sandbox;
   });
   defineSandbox(({ session }) => environment.getOrCreate({ name: `session-${session.id}` }));
-  const dockerEnvironment = DockerSandbox.environment({ networkPolicy: "deny-all" });
-  defineSandbox(() => dockerEnvironment.create());
-  dockerEnvironment.getOrCreate({ name: "team-acme" });
+  const dockerEnvironment = DockerSandbox.environment();
+  defineSandbox(() => dockerEnvironment.create({ networkPolicy: "deny-all" }));
+  dockerEnvironment.getOrCreate({ name: "team-acme", networkPolicy: "deny-all" });
 
   defineTool({
     description: "Fetch current weather for a city.",

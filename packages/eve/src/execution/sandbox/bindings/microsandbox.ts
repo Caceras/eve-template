@@ -8,7 +8,10 @@ import {
   resolveMicrosandboxOptions,
 } from "#execution/sandbox/bindings/microsandbox-options.js";
 import { createStableHash } from "#execution/sandbox/bindings/microsandbox-runtime.js";
-import type { MicrosandboxSandboxCreateOptions } from "#public/sandbox/microsandbox-sandbox.js";
+import type {
+  MicrosandboxSandboxCreateOptions,
+  MicrosandboxSandboxRuntimeOptions,
+} from "#public/sandbox/microsandbox-sandbox.js";
 import type { SandboxProviderImplementation } from "#shared/sandbox-provider.js";
 
 export { pruneMicrosandboxTemplates } from "#execution/sandbox/bindings/microsandbox-templates.js";
@@ -17,7 +20,7 @@ export const MICROSANDBOX_PROVIDER_NAME = "microsandbox";
 
 export function createMicrosandboxSandboxProvider(
   createOptions: MicrosandboxSandboxCreateOptions = {},
-): SandboxProviderImplementation<undefined, Record<string, unknown>> {
+): SandboxProviderImplementation<MicrosandboxSandboxRuntimeOptions, Record<string, unknown>> {
   const options = resolveMicrosandboxOptions(createOptions);
   const optionsHash = createStableHash(JSON.stringify(microsandboxOptionsForHash(options))).slice(
     0,

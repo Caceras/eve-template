@@ -1,4 +1,7 @@
-import type { SandboxNetworkPolicy } from "#shared/sandbox-network-policy.js";
+import type {
+  SandboxNetworkOptions,
+  SandboxNetworkPolicy,
+} from "#shared/sandbox-network-policy.js";
 
 /**
  * Options accepted by microsandbox environment constructors.
@@ -38,6 +41,10 @@ export interface MicrosandboxSandboxCreateOptions {
     readonly autoInstall?: boolean;
     readonly skipVerify?: boolean;
   };
-  /** Initial network policy applied to sandboxes after framework setup. */
+}
+
+/** Options applied when eve creates one live microsandbox VM. */
+export interface MicrosandboxSandboxRuntimeOptions extends SandboxNetworkOptions {
+  /** Initial network policy for this VM. @default "allow-all" */
   readonly networkPolicy?: SandboxNetworkPolicy;
 }

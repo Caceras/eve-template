@@ -295,8 +295,8 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
     async () => {
       const appRoot = await createScratchDirectory("eve-docker-scenario-");
       const engine = createSandboxProviderHarness(
-        createDockerSandboxProvider({ image: TEST_IMAGE, networkPolicy: "deny-all" }),
-        undefined,
+        createDockerSandboxProvider({ image: TEST_IMAGE }),
+        { networkPolicy: "deny-all" },
       );
       // Create from the suite's prewarmed template: bash is already
       // baked in there, which a `--network none` container could not

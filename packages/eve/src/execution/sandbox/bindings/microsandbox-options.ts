@@ -1,6 +1,5 @@
 import { DEFAULT_EVE_SANDBOX_IMAGE } from "#execution/sandbox/bindings/eve-image.js";
 import type { MicrosandboxSandboxCreateOptions } from "#public/sandbox/microsandbox-sandbox.js";
-import type { SandboxNetworkPolicy } from "#shared/sandbox-network-policy.js";
 
 export const MICROSANDBOX_DEFAULT_IMAGE = DEFAULT_EVE_SANDBOX_IMAGE;
 export const MICROSANDBOX_DEFAULT_CPUS = 1;
@@ -18,7 +17,6 @@ export interface ResolvedMicrosandboxOptions {
   readonly env: Readonly<Record<string, string>>;
   readonly image: string;
   readonly memoryMiB: number;
-  readonly networkPolicy?: SandboxNetworkPolicy;
   readonly pullPolicy: "always" | "if-missing" | "never";
   readonly setup: {
     readonly autoInstall: boolean;
@@ -37,7 +35,6 @@ export function resolveMicrosandboxOptions(
     env: options?.env ?? {},
     image: options?.image ?? MICROSANDBOX_DEFAULT_IMAGE,
     memoryMiB: options?.memoryMiB ?? MICROSANDBOX_DEFAULT_MEMORY_MIB,
-    networkPolicy: options?.networkPolicy,
     pullPolicy: options?.pullPolicy ?? MICROSANDBOX_DEFAULT_PULL_POLICY,
     setup: {
       autoInstall: options?.setup?.autoInstall ?? true,

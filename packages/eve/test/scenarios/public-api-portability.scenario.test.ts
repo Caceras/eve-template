@@ -87,7 +87,7 @@ export const environment = process.env.VERCEL === "1"
   ? VercelSandbox.environment({ resources: { vcpus: 2 } })
   : DefaultSandbox.environment({ docker: { image: "ghcr.io/vercel/eve:latest" } });
 void Drive;
-void DockerSandbox.dockerfile({ networkPolicy: "deny-all" });
+void DockerSandbox.dockerfile().create({ networkPolicy: "deny-all" });
 void DockerSandbox.image("ghcr.io/acme/agent:latest");
 void JustBashSandbox.environment();
 void MicrosandboxSandbox.dockerfile();

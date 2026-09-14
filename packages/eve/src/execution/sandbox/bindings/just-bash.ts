@@ -28,9 +28,9 @@ import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
   isSandboxPreparedArtifactRecord,
+  providerResourceTargetFiles,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
-  type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
 import type { JustBashSandboxCreateOptions } from "#public/sandbox/just-bash-sandbox.js";
@@ -83,7 +83,10 @@ export function createJustBashSandboxProvider(
       );
 
       try {
-        await writeSandboxSeedFiles(templateSession, providerSeedFiles(context.resources));
+        await writeSandboxSeedFiles(
+          templateSession,
+          providerResourceTargetFiles(context.resources),
+        );
         context.log?.("running sandbox preparation");
         await context.runPreparation(
           createLoggingSandboxSession({ log: context.log, session: templateSession }),
@@ -213,19 +216,6 @@ export async function pruneJustBashSandboxTemplates(input: {
 function readPreparedTemplateRootPath(artifact: SandboxPreparedArtifact): string | undefined {
   if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
   return typeof artifact.templateRootPath === "string" ? artifact.templateRootPath : undefined;
-}
-
-function providerSeedFiles(resources: SandboxProviderResources) {
-  return [
-    ...(resources.workspace?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.workspace?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-    ...(resources.skills?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.skills?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-  ];
 }
 
 function resolveTemplateRootPath(cacheDirectory: string, templateKey: string): string {

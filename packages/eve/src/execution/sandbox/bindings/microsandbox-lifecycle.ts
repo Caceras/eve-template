@@ -33,6 +33,7 @@ import {
   writeTemplateMetadata,
 } from "#execution/sandbox/bindings/microsandbox-metadata.js";
 import type { ResolvedMicrosandboxOptions } from "#execution/sandbox/bindings/microsandbox-options.js";
+import type { MicrosandboxSandboxRuntimeOptions } from "#public/sandbox/microsandbox-sandbox.js";
 import {
   connectMicrosandbox,
   createPreparedMicrosandbox,
@@ -56,6 +57,7 @@ import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
   isSandboxPreparedArtifactRecord,
   providerResourceRoot,
+  providerResourceTargetFiles,
   type SandboxPreparedArtifact,
   type SandboxProviderCreateContext,
   type SandboxProviderHandle,
@@ -150,7 +152,7 @@ export async function prewarmMicrosandboxTemplate(input: {
     log: input.context.log,
     module,
     name: temporarySandboxName,
-    networkPolicy: templateOptions.networkPolicy,
+    networkPolicy: "allow-all",
     options: templateOptions,
     resourcesPath,
     sessionKey: input.context.templateName,
@@ -166,7 +168,10 @@ export async function prewarmMicrosandboxTemplate(input: {
 
   try {
     if (resourcesPath === undefined) {
-      await writeSandboxSeedFiles(templateSession, providerSeedFiles(input.context.resources));
+      await writeSandboxSeedFiles(
+        templateSession,
+        providerResourceTargetFiles(input.context.resources),
+      );
     } else {
       input.context.log?.("hydrating workspace and skills from read-only resources");
       await hydrateSandboxFromImmutableResources(templateSession);
@@ -217,7 +222,10 @@ export async function prewarmMicrosandboxTemplate(input: {
 
 export async function createMicrosandboxHandle(input: {
   readonly providerName: string;
-  readonly context: SandboxProviderCreateContext<undefined, Record<string, unknown>>;
+  readonly context: SandboxProviderCreateContext<
+    MicrosandboxSandboxRuntimeOptions,
+    Record<string, unknown>
+  >;
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
   readonly prepared?: SandboxProviderPreparedArtifact;
@@ -239,10 +247,12 @@ export async function createMicrosandboxHandle(input: {
       ),
     ));
   const image = existingMetadata?.image ?? templateMetadata?.image;
-  const options =
-    image === undefined
-      ? input.options
-      : { ...input.options, image, pullPolicy: "always" as const };
+  const options = {
+    ...input.options,
+    image: image ?? input.options.image,
+    networkPolicy: input.context.options.networkPolicy,
+    pullPolicy: image === undefined ? input.options.pullPolicy : ("always" as const),
+  };
   const module = await loadMicrosandboxModule({
     appRoot: input.context.appRoot,
     options,
@@ -410,19 +420,6 @@ function createHandle(
       await sandbox.shutdown();
     },
   };
-}
-
-function providerSeedFiles(resources: SandboxProviderResources) {
-  return [
-    ...(resources.workspace?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.workspace?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-    ...(resources.skills?.files.map((file) => ({
-      content: file.content,
-      path: `${resources.skills?.targetPath}/${file.relativePath}`,
-    })) ?? []),
-  ];
 }
 
 function resolveProviderResourcesPath(
