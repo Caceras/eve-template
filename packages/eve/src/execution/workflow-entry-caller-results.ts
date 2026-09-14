@@ -7,10 +7,12 @@ export interface CallerTaskResults {
   readonly taskIds: Set<string>;
 }
 
+/** Starts caller-scoped tracking so workflow-entry can defer settlement for turn-owned tasks. */
 export function createCallerTaskResults(): CallerTaskResults {
   return { deliveredTaskIds: new Set(), taskIds: new Set() };
 }
 
+/** Preserves the caller until terminal deliveries cover the dispatched turn's task cohort. */
 export function observeCallerTaskResults(input: {
   readonly delivery: HookPayload;
   readonly results: CallerTaskResults;
@@ -38,6 +40,7 @@ export function observeCallerTaskResults(input: {
   }
 }
 
+/** Tells workflow-entry whether the current caller must remain parked for an outstanding result. */
 export function hasPendingCallerTaskResults(results: CallerTaskResults): boolean {
   return (
     results.taskIds.size > 0 &&
@@ -45,6 +48,7 @@ export function hasPendingCallerTaskResults(results: CallerTaskResults): boolean
   );
 }
 
+/** Ends caller-scoped tracking so a later caller cannot inherit prior delivery obligations. */
 export function clearCallerTaskResults(results: CallerTaskResults): void {
   results.taskIds.clear();
   results.deliveredTaskIds.clear();

@@ -1080,6 +1080,7 @@ describe("workflowEntry", () => {
                   task: { views: [nestedTaskTerminalView()] },
                 },
               ],
+              // Agent receives background task result before turn ended
               taskDeliveryId: "task_nested:ready:completed",
             },
           ],
@@ -1168,6 +1169,7 @@ describe("workflowEntry", () => {
                   task: { views: [nestedTaskTerminalView()] },
                 },
               ],
+              // Agent receives background task result after turn ended
               taskDeliveryId: "task_nested:ready:completed",
             },
           ],
