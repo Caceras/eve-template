@@ -17,7 +17,7 @@ const execFileAsync = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../../..");
 const repoRoot = resolve(packageRoot, "../..");
-const NODE_VERSION = "24.19.0";
+export const NODE_VERSION = "24.19.0";
 const ARCHES = ["x64", "arm64"] as const;
 
 export type EveSource =
@@ -32,6 +32,7 @@ export type EveSource =
 export function createEveHarness(source: EveSource): Harness {
   return {
     name: source.kind === "local" ? "eve@local" : `eve@${source.version}`,
+    credentials: ["AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
     prepare: (ctx) => prepare(source, ctx),
     command: (ctx) => `sh ${ctx.installDir}/run.sh`,
     env: (ctx: HarnessRunContext) => ({
@@ -163,7 +164,7 @@ async function packLocalEve(artifacts: string): Promise<string> {
   return resolve(artifacts, packed.filename);
 }
 
-async function ensureNode(nodeDir: string, arch: (typeof ARCHES)[number]): Promise<void> {
+export async function ensureNode(nodeDir: string, arch: (typeof ARCHES)[number]): Promise<void> {
   const archDir = join(nodeDir, arch);
   const target = join(archDir, "node");
   if (await exists(target)) return;

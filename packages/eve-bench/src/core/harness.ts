@@ -5,6 +5,8 @@
  */
 export interface Harness {
   readonly name: string;
+  /** Host environment names allowed to cross into this harness process. */
+  readonly credentials?: readonly string[];
   prepare(ctx: HarnessPrepareContext): Promise<HarnessBundle>;
   /** Optional per-task host paths uploaded into the install directory before `command` runs. */
   stage?(ctx: { readonly taskDir: string }): readonly string[];

@@ -8,6 +8,24 @@ import { z } from "zod";
 import { taskRoot } from "../task-path.js";
 
 const execAsync = promisify(exec);
+const ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "TZ",
+  "TERM",
+];
+
+function commandEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ENV_KEYS) if (process.env[key] !== undefined) env[key] = process.env[key];
+  return env;
+}
 
 export default defineTool({
   approval: never(),
@@ -20,7 +38,7 @@ export default defineTool({
     try {
       const { stdout, stderr } = await execAsync(command, {
         cwd: taskRoot(),
-        env: process.env,
+        env: commandEnv(),
         maxBuffer: 10 * 1024 * 1024,
         signal: ctx.abortSignal,
       });

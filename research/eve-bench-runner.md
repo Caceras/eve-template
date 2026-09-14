@@ -1,7 +1,7 @@
 ---
 issue: TODO
 status: approved
-last_updated: "2026-09-09"
+last_updated: "2026-09-14"
 ---
 
 # eve-bench: a zero-dependency benchmark runner
@@ -99,6 +99,8 @@ an instruction. It is a spawned shell, nothing more:
 ```ts
 interface Harness {
   readonly name: string;
+  /** Host environment names allowed to cross into this harness process. */
+  readonly credentials?: readonly string[];
   /** Runs once per job on the host; returns a directory to place in the container. */
   prepare(ctx: { model: string; cacheDir: string }): Promise<{ dir: string; provenance?: object }>;
   /** Optional per-task host paths uploaded into the install directory. */
@@ -126,8 +128,10 @@ and no bundler is involved. It writes `/logs/agent/events.ndjson` and
 
 An `oracle` harness runs each task's `solution/solve.sh` via `stage`. It
 validates the runner without a model and is the reward ceiling a real harness
-is measured against. A harness wrapping another CLI agent is the same
-interface and enables side-by-side comparison.
+is measured against. The same contract supports a source snapshot of an e0
+application and explicitly versioned pi, OpenCode, and Codex CLI bundles.
+Hermes remains unsupported until its Python environment and provider routing
+can be pinned.
 
 ### Trial lifecycle
 
@@ -150,7 +154,9 @@ removal is unconditional. Each trial writes to its own directory:
   container.log      docker output for the trial
 ```
 
-Resume skips trial directories that already contain a `trial.json`.
+Resume accepts existing trials only when the job identity matches the harness,
+model, bundle provenance, dataset, task content, and attempt count. Malformed or
+mismatched records fail closed instead of being overwritten.
 
 ### Result schema
 
@@ -198,8 +204,10 @@ and write it; nothing else is stable.
 ```
 eve-bench tasks sync <lock>                     fetch a pinned dataset
 eve-bench tasks list --cohort smoke             print task names
+eve-bench prepare --harness <name> --model <id>   build a harness without model calls
 eve-bench run --cohort smoke --model zai/glm-5.2 [--attempts 3] [--concurrency 8] [--task fix-git ...]
-              [--harness eve|oracle] [--eve local|<version>] [--job <name>]   # same --job resumes
+              [--harness eve|e0|oracle|pi|opencode|codex] [--eve local|<version>]
+              [--agent <e0-app>] [--version <cli-version>] [--native-build] [--job <name>]
 eve-bench report <job> [--format console|json|junit]
 eve-bench diff <base-job> <candidate-job>       per-task reward deltas
 ```
@@ -214,8 +222,8 @@ container only for the harness exec, never written to disk.
   directory as an artifact, and posts `eve-bench diff` against the base
   branch's artifact.
 - Humans: the same CLI with the console reporter.
-- Agents: `src/tools/` exposes `run_trial`, `get_result`, and `diff` as eve
-  tools over `core`; they return the schema above.
+- Agents: `src/tools/` exposes run, result, task-list, and diff tools over
+  `core`; they return the same schemas as the CLI.
 
 ## Invariants
 
@@ -234,5 +242,4 @@ container only for the harness exec, never written to disk.
 - Reusing eve's `SandboxBackend` for the environment. The benchmark must not
   depend on the surface it measures.
 - Uploading results to a hosted dashboard.
-- `src/tools/` (eve tools over `core`) and the CI workflow. Both consume the
-  result schema above and follow once the CLI has run a full dataset.
+- A hosted results dashboard. Job directories remain local or CI artifacts.

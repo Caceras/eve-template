@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
 import { finished } from "node:stream/promises";
@@ -129,12 +129,19 @@ export async function runTrial(input: TrialInput): Promise<TrialResult> {
     reward,
     agent,
     verifier,
-    ...(usage ? { usage } : {}),
-    ...(error ? { error } : {}),
     startedAt,
     finishedAt: new Date().toISOString(),
   };
-  await writeFile(join(input.dir, "trial.json"), `${JSON.stringify(result, null, 2)}\n`);
+  if (usage) Object.assign(result, { usage });
+  if (error) Object.assign(result, { error });
+  const target = join(input.dir, "trial.json");
+  const temporary = join(input.dir, `trial.${process.pid}.tmp`);
+  try {
+    await writeFile(temporary, `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });
+    await rename(temporary, target);
+  } finally {
+    await rm(temporary, { force: true });
+  }
   return result;
 }
 

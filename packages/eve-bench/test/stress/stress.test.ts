@@ -200,7 +200,7 @@ test(
 );
 
 test(
-  "abort: exits 130, writes a partial result, cleans up, and resumes with a new task set",
+  "abort: exits 130, cleans up, and rejects a different resume identity",
   { timeout },
   async () => {
     const job = "stress-abort";
@@ -228,11 +228,9 @@ test(
       await waitFor(async () => (await dockerNames(job)).length === 0, 15_000, "abort cleanup");
 
       const resumed = await runCli(job, [taskDir("abort-resume")], [], false);
-      assertPassed(resumed);
-      const result = await readResult(job);
-      assert.equal(result.trials.length, 1);
-      assert.equal(result.trials[0]?.task, "stress-abort-resume");
-      assert.equal(result.trials[0]?.reward, 1);
+      assert.equal(resumed.code, 1);
+      assert.match(resumed.stderr, /resume identity differs/);
+      assert.deepEqual(await dockerNames(job), []);
     } finally {
       if (child.exitCode === null) child.kill("SIGKILL");
       await cleanupContainers(job);

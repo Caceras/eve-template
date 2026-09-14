@@ -15,6 +15,7 @@ import {
   lock,
   paths,
   selectHarness,
+  selectNativeBuild,
   selectTasks,
 } from "./options.ts";
 
@@ -23,8 +24,11 @@ const USAGE = `eve-bench: zero-dependency Terminal-Bench runner for eve
   eve-bench tasks sync [--dataset <name>]        fetch pinned datasets into .generated/datasets
   eve-bench tasks list [--cohort <name>]         print task names
   eve-bench run --model <id> [--cohort <name>] [--task <name>...] [--task-dir <path>...] [--attempts N]
-                [--concurrency N] [--harness eve|oracle] [--eve local|<version>] [--job <name>]
+                [--concurrency N] [--harness eve|e0|oracle|pi|opencode|codex] [--job <name>]
+                [--eve local|<version>] [--agent <e0-app>] [--version <cli-version>]
+                [--reasoning <level>] [--base-url <https-url>] [--native-build]
                 [--format console|json|junit]
+  eve-bench prepare --harness <name> --model <id> [harness options]  build/cache without model calls
   eve-bench report <job> [--format console|json|junit]
   eve-bench diff <base-job> <candidate-job> [--json]
 
@@ -38,8 +42,9 @@ try {
     case "tasks":
       await tasks(subcommand, rest);
       break;
+    case "prepare":
     case "run":
-      await run(subcommand === undefined ? [] : [subcommand, ...rest]);
+      await run(subcommand === undefined ? [] : [subcommand, ...rest], command === "prepare");
       break;
     case "report":
       await report(subcommand, rest);
@@ -83,7 +88,7 @@ async function tasks(sub: string | undefined, args: string[]): Promise<void> {
   throw new Error(`unknown tasks subcommand: ${sub ?? "(none)"}\n${USAGE}`);
 }
 
-async function run(args: string[]): Promise<void> {
+async function run(args: string[], prepareOnly = false): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
@@ -96,14 +101,35 @@ async function run(args: string[]): Promise<void> {
       concurrency: { type: "string", default: "4" },
       eve: { type: "string", default: "local" },
       harness: { type: "string", default: "eve" },
+      agent: { type: "string" },
+      version: { type: "string" },
+      "base-url": { type: "string" },
+      reasoning: { type: "string" },
+      "native-build": { type: "boolean", default: false },
       job: { type: "string" },
       format: { type: "string", default: "console" },
       json: { type: "boolean" },
     },
   });
-  const harness = selectHarness(values.harness, values.eve);
+  const attempts = positiveInteger(values.attempts, "--attempts");
+  const concurrency = positiveInteger(values.concurrency, "--concurrency");
+  const harness = selectHarness(values.harness, values.eve, {
+    ...values,
+    baseUrl: values["base-url"],
+  });
   const model = values.model ?? (harness.name === "oracle" ? "none" : undefined);
   if (!model) throw new Error("--model is required");
+  if (prepareOnly) {
+    const bundle = await harness.prepare({ model, cacheDir: join(paths.generatedRoot, "cache") });
+    process.stdout.write(`${JSON.stringify(bundle, null, 2)}\n`);
+    return;
+  }
+  const forwardEnv = forwardedEnv(harness.credentials ?? []);
+  if (harness.credentials?.length && Object.keys(forwardEnv).length === 0) {
+    throw new Error(
+      "No model credentials exported. Set AI_GATEWAY_API_KEY (or the eve model's provider credentials); use prepare for a model-free build.",
+    );
+  }
   const selection = await selectTasks({ ...values, taskDir: values["task-dir"] });
   const datasetTaskDirs = selection.tasks.length
     ? await taskDirs(
@@ -111,8 +137,9 @@ async function run(args: string[]): Promise<void> {
         selection.tasks,
       )
     : [];
-  const loaded = await Promise.all(
-    [...datasetTaskDirs, ...selection.taskDirs].map((dir) => loadTask(dir)),
+  const loaded = await selectNativeBuild(
+    await Promise.all([...datasetTaskDirs, ...selection.taskDirs].map((dir) => loadTask(dir))),
+    values["native-build"],
   );
   const name = values.job ?? defaultJobName(`${harness.name}-${model}`);
   const controller = new AbortController();
@@ -131,9 +158,9 @@ async function run(args: string[]): Promise<void> {
     tasks: loaded,
     harness,
     model,
-    attempts: Number(values.attempts),
-    concurrency: Number(values.concurrency),
-    forwardEnv: forwardedEnv(),
+    attempts,
+    concurrency,
+    forwardEnv,
     signal: controller.signal,
     onLog: (message) => process.stderr.write(`${message}\n`),
     onTrial: (trial, resumed) => {
@@ -175,6 +202,13 @@ async function diff(base: string | undefined, args: string[]): Promise<void> {
     await readJobResult(jobDir(candidate)),
   );
   process.stdout.write(values.json ? `${JSON.stringify(deltas, null, 2)}\n` : formatDiff(deltas));
+}
+
+function positiveInteger(value: string, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1)
+    throw new Error(`${name} must be a positive integer`);
+  return parsed;
 }
 
 function reportFormat(value: string | undefined): ReportFormat {
