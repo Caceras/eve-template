@@ -1,4 +1,4 @@
-import type { SessionAuthContext, SessionTraceContext } from "#channel/types.js";
+import type { SessionAuthContext, SessionParent, SessionTraceContext } from "#channel/types.js";
 import type { Session } from "#channel/session.js";
 import { resolveForwardedPrincipal } from "#channel/forwarded-principal.js";
 import {
@@ -48,8 +48,11 @@ import type { CancelTurnResponse } from "#protocol/cancel-turn.js";
 import type { ClearResponse } from "#protocol/clear-session.js";
 import type { CompactResponse } from "#protocol/compact-session.js";
 import type { ResetResponse } from "#protocol/reset-session.js";
-import { parseTraceparent } from "#protocol/traceparent.js";
-import { readForwardedAudienceBaggage } from "#protocol/baggage.js";
+import { parseTraceparent, readAgentDispatchTraceContext } from "#protocol/traceparent.js";
+import {
+  readForwardedAudienceBaggage,
+  readForwardedParentSessionBaggage,
+} from "#protocol/baggage.js";
 import { readConversationBaggage } from "#tracing/conversation-context.js";
 import {
   FAIL_CLOSED_FORWARDED_TRACE_ASSERTION,
@@ -151,10 +154,55 @@ export function eveChannel(input: EveChannelInput): EveChannel {
 
         const body = parseCreateBody(payload);
         if (body instanceof Response) return body;
-        const parsedParentTraceContext =
+        const forwardedParentSession =
+          body.callback === undefined
+            ? "absent"
+            : readForwardedParentSessionBaggage(req.headers.get("baggage"));
+        let parent: SessionParent | undefined;
+        if (typeof forwardedParentSession === "object") {
+          if (forwardedParentSession.callId !== body.callback?.callId) {
+            log.warn("ignoring remote parent lineage with a mismatched callback", {
+              forwarder: authResult.principalId,
+            });
+          } else {
+            let accepted = forwarded.accepted;
+            if (!accepted && input.trustedForwarders !== undefined) {
+              try {
+                accepted = await input.trustedForwarders(authResult);
+              } catch (error) {
+                const errorId = logError(log, "trustedForwarders handler failed", error, {
+                  forwarder: authResult.principalId,
+                });
+                return Response.json(
+                  { error: "trustedForwarders handler failed.", errorId, ok: false },
+                  { status: 500 },
+                );
+              }
+            }
+            if (accepted) {
+              parent = forwardedParentSession;
+            } else {
+              log.warn("ignoring remote parent lineage from an untrusted forwarder", {
+                forwarder: authResult.principalId,
+              });
+            }
+          }
+        } else if (forwardedParentSession === "malformed") {
+          log.warn("ignoring malformed remote parent lineage", {
+            forwarder: authResult.principalId,
+          });
+        }
+        const transportParentTraceContext =
           body.callback === undefined
             ? undefined
             : parseTraceparent(req.headers.get("traceparent"));
+        const parsedParentTraceContext =
+          body.callback === undefined
+            ? undefined
+            : (readAgentDispatchTraceContext(
+                req.headers.get("tracestate"),
+                transportParentTraceContext,
+              ) ?? transportParentTraceContext);
 
         const policyRejection = checkUploadPolicy(body, uploadPolicy);
         if (policyRejection !== null) return policyRejection;
@@ -189,13 +237,13 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         }
 
         const forwardedTraceAssertion =
-          parsedParentTraceContext === undefined
+          transportParentTraceContext === undefined
             ? "absent"
             : readForwardedAudienceBaggage(req.headers.get("baggage"));
         const acceptsForwardedTracePolicy =
           forwarded.accepted &&
-          parsedParentTraceContext !== undefined &&
-          (parsedParentTraceContext.traceFlags & 1) === 1;
+          transportParentTraceContext !== undefined &&
+          (transportParentTraceContext.traceFlags & 1) === 1;
         const acceptedForwardedTracePolicy = !acceptsForwardedTracePolicy
           ? undefined
           : typeof forwardedTraceAssertion === "object"
@@ -266,6 +314,7 @@ export function eveChannel(input: EveChannelInput): EveChannel {
               body.callback === undefined
                 ? undefined
                 : readConversationBaggage(req.headers.get("baggage")),
+            parent,
             parentTraceContext,
             title: messageResult.title,
           });

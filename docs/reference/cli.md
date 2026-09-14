@@ -56,7 +56,7 @@ Creates a new agent app or adds an agent to an existing app. Always installs dep
 
 Coding-agent launches and non-interactive terminals cannot answer the location prompt and fail before writing. Pass a new directory name, such as `eve init my-agent`, in those environments.
 
-After scaffolding, a human terminal usually continues into `eve dev`. If a coding-agent REPL is on `PATH`, the handoff menu can open it instead or exit without starting either process. Coding-agent launches print the next steps instead of opening the TUI, so the session does not get stuck. Fresh projects use the parent workspace's package manager when there is one; otherwise they use the manager that launched `eve init`.
+After scaffolding, a human terminal usually continues into `eve dev`. Enable the self-modification subagent to edit your agent from the dev session. Otherwise, if a coding-agent REPL is on `PATH`, you can launch it to make changes instead of opening the TUI. Fresh projects use the parent workspace's package manager when there is one; otherwise they use the manager that launched `eve init`.
 
 | Flag                   | Type   | Default                    | Description                                                                                                              |
 | ---------------------- | ------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -308,7 +308,7 @@ Reads the immutable OTLP/JSON segments under `.eve/traces/v1`, so `eve dev` need
 
 Span rows carry inline metrics when the span recorded them — `↑input`/`↓output` token counts, gateway cost, and the tool name for `execute_tool` spans — and the header aggregates models, token totals, cost, and error count across the trace's step spans. `--verbose` expands each span under its tree row: status (with the error message on failures), timing, ids, every attribute (prompts, responses, and tool payloads as transcripts or pretty-printed JSON), and every span event with its offset from span start. `--json` prints the same records as JSON, one object per selected trace.
 
-Every subagent activation starts its own trace. The first child's `invoke_agent` root links to the dispatching caller with `eve.link.type=agent.dispatch`; remote agents carry that caller context over `traceparent`. Later turns also start fresh traces without repeating the initial caller link. All related sessions retain the same `gen_ai.conversation.id`, and `agent.subagent.name` labels the child invocation.
+Every subagent activation starts its own trace. The first child's `invoke_agent` root links to the dispatching caller with `eve.link.type=agent.dispatch`; remote agents preserve that caller in W3C `tracestate` even when HTTP `traceparent` advances through platform ingress. Later turns also start fresh traces without repeating the initial caller link. All related sessions retain the same `gen_ai.conversation.id`, and `agent.subagent.name` labels the child invocation.
 
 Each `agent()` call inside an authored workflow has its own `agent.action` caller span, including sequential, parallel, and background calls. A workflow tool that coordinates one of those calls has an enclosing `invoke_workflow <tool>` span; a workflow tool without agent calls remains `agent.action`. The tool also keeps its `execute_tool <tool>` span. Only agent execution uses `invoke_agent`.
 

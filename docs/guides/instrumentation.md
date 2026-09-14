@@ -56,7 +56,7 @@ Three more fields control what eve and the AI SDK record inside those spans (see
 
 eve records metadata without model, tool, or memory-record content by default. Enable either content category only after reviewing the exporter and its data-retention path.
 
-In the provider layout, eve stamps each span with `gen_ai.conversation.id`, which stays fixed across local and remote activations, including independent remote root workflows. Query this attribute to find the conversation's exported, retained traces; it does not grant access or control trace parenting. On Vercel, `vercel.session_id` additionally identifies the current Workflow run. See [Query exported traces](#query-exported-traces) for the cross-backend workflow.
+In the provider layout, eve stamps each span with `gen_ai.conversation.id`, which stays fixed across local and remote activations, including independent remote root workflows. Query this attribute to find the conversation's exported, retained traces; it does not grant access or control trace parenting. On Vercel, `vercel.session_id` identifies the verified root session, while `agent.run.id` identifies the current agent run. See [Query exported traces](#query-exported-traces) for the cross-backend workflow.
 
 You are responsible for ensuring any observability or eval provider is approved for the data exported to it.
 
@@ -154,6 +154,15 @@ Every memory span includes `gen_ai.operation.name` and `gen_ai.memory.store.id`.
 
 `gen_ai.memory.records` contains recalled record content only when `recordInputs` is enabled. eve classifies recalled records as input content because they become part of the model context. eve does not set `gen_ai.memory.query.text` because a memory provider receives structured conversation messages, not a standalone search-query string. The `agent.memory.slot` and `agent.memory.phase` attributes identify the eve slot and lifecycle boundary without adding either to the span name.
 
+Messages in `gen_ai.input.messages` include a `kind` for user-role entries.
+New human input uses `user`; framework-authored input uses namespaced kinds
+such as `context.instruction` and `execution.background_task`. When resuming
+history saved before eve 0.54, entries without a kind use `legacy.unknown`:
+the old format did not reliably distinguish human input from framework input.
+Their content and metadata remain unchanged, and already classified entries
+retain their kind. Unknown legacy entries are not replayed as the latest human
+request after compaction.
+
 ## Agent trace contract
 
 The provider layout and zero-config local tracing emit the following spans.
@@ -184,7 +193,14 @@ the failure outcome, error status, and error type. The initiating turn can
 finish or be cancelled while the action remains open. Ending the session closes
 an action whose task never reported a terminal result.
 
-Schema v4 removes the session-long `agent.session` root and duplicate agent session and lineage attributes. Every eve span carries `agent.trace.schema.version=4` and `gen_ai.conversation.id`; Vercel deployments additionally carry `vercel.session_id`.
+Schema v4 removes the session-long `agent.session` root. Every run-associated
+eve span carries `agent.trace.schema.version=4`, `agent.run.id`, and
+`gen_ai.conversation.id`; the pre-session `agent.channel.request` span is the
+exception. Vercel deployments additionally carry
+`vercel.session_id`, which stays fixed to the root session across local and
+trusted remote subagents. Remote lineage is accepted only when the receiver's
+`trustedForwarders` predicate approves the authenticated caller. Child
+activation roots carry `agent.parent_run.id` and `agent.parent_call.id`.
 Only activations use the `invoke_agent` operation. A workflow tool invocation
 that coordinates at least one nested agent uses `invoke_workflow`, with its
 path-derived tool name in `gen_ai.workflow.name`. Durable workflow tools without
@@ -198,8 +214,10 @@ A conversation remains durable state; `gen_ai.conversation.id` joins the activat
 
 Each activation owns a fresh trace identity, including local and remote
 subagents. The first child activation links to its caller with
-`eve.link.type=agent.dispatch`; incoming `traceparent` provides that link, not
-the child trace ID. Later turns do not reuse the original caller link.
+`eve.link.type=agent.dispatch`; remote dispatch preserves that caller separately
+in W3C `tracestate` while HTTP intermediaries update `traceparent`. Older peers
+fall back to the incoming transport context. Later turns do not reuse the
+original caller link.
 Conversation baggage is independent of execution lineage and trace-policy
 ceilings, which remain in force across the boundary.
 
@@ -250,7 +268,8 @@ This workflow applies to schema v4 from the [instrumentation provider layout](./
 | Agent activations        | `agent.trace.schema.version=4` and `gen_ai.operation.name=invoke_agent` |
 | One logical conversation | `gen_ai.conversation.id=<conversation ID>`                              |
 | One turn                 | Both `gen_ai.conversation.id` and `agent.turn.id`                       |
-| One Vercel Workflow run  | `vercel.session_id=<session ID>`                                        |
+| One Vercel root session  | `vercel.session_id=<root session ID>`                                   |
+| One agent run            | `agent.run.id=<run ID>`                                                 |
 | Delegated dispatches     | `agent.invocation.role=caller`                                          |
 
 Start with an activation filter for latency, failure, or turn-count dashboards. Every activation is a trace root. Within a conversation, group by trace ID, order activations by `agent.turn.sequence` or start time, and open the selected trace ID. Child activations link to their caller with `eve.link.type=agent.dispatch`; remote workflows keep their own execution lineage, so use conversation IDs and caller links for cross-deployment correlation.
@@ -279,7 +298,7 @@ invoke_agent support                 session=S, turn=turn_1, conversation=S
 
 The conversation filter finds all three retained traces. eve initializes the conversation ID once and carries it through the existing parent context for local dispatch and `eve.conversation.id` baggage for remote dispatch. Remote session creation does not carry execution lineage or add authorization requirements for tracing. Existing authentication, principal forwarding, and root-session limits remain unchanged.
 
-`traceparent` carries the caller's trace and span IDs for the causal link; adopting it as the child's parent would instead keep both in the same trace. Resolved trace-policy decisions and trusted remote content ceilings continue across this boundary independently of correlation, and an unsampled caller cannot be widened into a sampled child. No synthetic session span is needed.
+Remote dispatch records the caller's span ID in eve's W3C `tracestate` entry because HTTP intermediaries may advance `traceparent` to their own request span. The receiver combines that prior parent with the current trace identity for the causal link and retains the transport context for `channel.request`; adopting either as the child's parent would instead keep both in the same trace. Resolved trace-policy decisions and trusted remote content ceilings continue across this boundary independently of correlation, and an unsampled caller cannot be widened into a sampled child. No synthetic session span is needed.
 
 Activation duration is elapsed time for that activation, including waits inside it, not the lifetime of the conversation or CPU time. Idle time between ended activations is not part of their durations. For token totals, choose one level: filter to `chat` model spans and sum `gen_ai.usage.*`, or filter to activations and sum their `agent.usage.input_tokens` and `agent.usage.output_tokens`. Exclude caller summaries from the activation total. Query cache usage on model spans. Do not add model, step, activation, and caller counters together.
 
