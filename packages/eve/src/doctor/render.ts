@@ -1,4 +1,9 @@
-import { createCliTheme, renderCliBanner, type CliTheme } from "#cli/ui/output.js";
+import {
+  createCliTheme,
+  renderCliBanner,
+  sanitizeForTerminal,
+  type CliTheme,
+} from "#cli/ui/output.js";
 
 import type { DoctorResult } from "./doctor.js";
 import type { Diagnostic, DiagnosticStatus } from "./types.js";
@@ -20,11 +25,11 @@ function statusText(theme: CliTheme, status: DiagnosticStatus, text: string): st
 
 function renderDiagnostic(theme: CliTheme, diagnostic: Diagnostic): string[] {
   return [
-    `${statusText(theme, diagnostic.status, SYMBOLS[diagnostic.status])} ${diagnostic.summary}`,
+    `${statusText(theme, diagnostic.status, SYMBOLS[diagnostic.status])} ${sanitizeForTerminal(diagnostic.summary)}`,
     ...diagnostic.remediation.map((item) =>
       item.kind === "command"
-        ? `    ${theme.muted("Run:")} ${theme.info(item.command)}`
-        : `    ${item.message}`,
+        ? `    ${theme.muted("Run:")} ${theme.info(sanitizeForTerminal(item.command))}`
+        : `    ${sanitizeForTerminal(item.message)}`,
     ),
   ];
 }
@@ -32,7 +37,7 @@ function renderDiagnostic(theme: CliTheme, diagnostic: Diagnostic): string[] {
 function section(title: string, diagnostics: readonly Diagnostic[], theme: CliTheme): string[] {
   if (diagnostics.length === 0) return [];
   return [
-    theme.accent(title),
+    theme.accent(sanitizeForTerminal(title)),
     ...diagnostics.flatMap((diagnostic) => renderDiagnostic(theme, diagnostic)),
     "",
   ];
@@ -49,7 +54,7 @@ export function renderDoctorHuman(
   const vercel = result.diagnostics.filter((diagnostic) => diagnostic.id.startsWith("vercel."));
   const git = result.diagnostics.filter((diagnostic) => diagnostic.id.startsWith("git."));
   const agents = result.agents.flatMap((agent) => [
-    theme.accent(result.scope === "workspace" ? agent.name : "Agent"),
+    theme.accent(sanitizeForTerminal(result.scope === "workspace" ? agent.name : "Agent")),
     ...agent.diagnostics.flatMap((diagnostic) => renderDiagnostic(theme, diagnostic)),
     "",
   ]);

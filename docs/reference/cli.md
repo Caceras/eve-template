@@ -149,7 +149,7 @@ When setup is skipped, cancelled, or needs more input after installation, eve pr
 eve doctor [path] [--offline] [--json]
 ```
 
-Runs read-only checks for the current project or a supplied path. It checks the active Node.js version, eve project discovery, package-manager selection and conflicting lockfiles, dependency installation, Vercel CLI authentication, and Git state. The default Vercel check runs a bounded, non-interactive `vercel whoami` probe. It never opens a browser, logs in, changes files, installs packages, or evaluates authored code.
+Runs read-only checks for the current project or a supplied path. It checks the active Node.js version, eve project discovery, package-manager selection and conflicting lockfiles, dependency installation, Vercel CLI authentication, and Git state. The default Vercel check runs a bounded, non-interactive `vercel whoami` probe. The checks do not change project files, open a browser, log in, install packages, or evaluate authored code.
 
 In an `agents/` workspace, run `eve doctor` from the workspace root to inspect the shared environment and every discovered workspace member. From a member directory, it reports the shared environment and that member only. Results identify the agent that each agent-specific diagnostic affects.
 

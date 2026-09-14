@@ -34,7 +34,7 @@ export type PackageManagerFacts =
 
 export type DependencyFacts =
   | { readonly kind: "installed" }
-  | { readonly kind: "missing" }
+  | { readonly kind: "missing"; readonly dependencies: readonly string[] }
   | { readonly kind: "not-applicable" }
   | { readonly kind: "unavailable"; readonly message: string };
 

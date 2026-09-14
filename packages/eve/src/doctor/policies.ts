@@ -1,4 +1,5 @@
 import semver from "#compiled/semver/index.js";
+import type { PackageManagerSource } from "#setup/package-manager.js";
 
 import type {
   DependencyFacts,
@@ -9,6 +10,17 @@ import type {
   PackageManagerFacts,
   VercelFacts,
 } from "./types.js";
+
+function packageManagerSourceDescription(source: PackageManagerSource): string {
+  switch (source) {
+    case "package-manager-field":
+      return "from the packageManager field in package.json";
+    case "lockfile":
+      return "from a lockfile";
+    case "default":
+      return "by default";
+  }
+}
 
 export function nodeDiagnostic(facts: NodeFacts, nodeEngine: string): Diagnostic {
   if (facts.kind === "unavailable")
@@ -53,7 +65,7 @@ export function packageManagerDiagnostic(facts: PackageManagerFacts): Diagnostic
     return {
       id: "package.manager",
       status: "warn",
-      summary: `Selected ${facts.manager}, but multiple package-manager lockfiles are present: ${facts.lockfiles.join(", ")}.`,
+      summary: `Selected ${facts.manager}, but lockfiles for another package manager are present: ${facts.lockfiles.join(", ")}.`,
       remediation: [
         {
           kind: "message",
@@ -64,7 +76,7 @@ export function packageManagerDiagnostic(facts: PackageManagerFacts): Diagnostic
   return {
     id: "package.manager",
     status: "pass",
-    summary: `Selected ${facts.manager} as the package manager (${facts.source}).`,
+    summary: `Selected ${facts.manager} as the package manager ${packageManagerSourceDescription(facts.source)}.`,
     remediation: [],
   };
 }
@@ -89,8 +101,7 @@ export function dependencyDiagnostic(facts: DependencyFacts, manager: string): D
       return {
         id: "package.dependencies",
         status: "fail",
-        summary:
-          "Project dependencies are not installed; commands that load project code may fail.",
+        summary: `Project dependencies are not installed: ${facts.dependencies.join(", ")}.`,
         remediation: [{ kind: "command", command: `${manager} install` }],
       };
     case "unavailable":

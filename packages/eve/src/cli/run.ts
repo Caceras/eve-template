@@ -12,6 +12,7 @@ import type { CliApplicationContext } from "#cli/application-command.js";
 import { agentCommand } from "#cli/agent-command.js";
 import { findCliApplicationRoot, resolveCliApplicationProject } from "#cli/application-root.js";
 import { eveCliBanner } from "#cli/banner.js";
+import { registerDoctorCommand } from "#cli/commands/register-doctor-command.js";
 import { registerIntegrationCommands } from "#cli/commands/register-integration-commands.js";
 import { registerProjectCommands } from "#cli/commands/register-project-commands.js";
 import { registerRegistryCommands } from "#cli/commands/register-registry-commands.js";
@@ -211,16 +212,7 @@ export function createCliProgram(
     });
 
   registerRegistryCommands({ program, logger, applicationContext });
-
-  program
-    .command("doctor [path]")
-    .description("Diagnose eve project, environment, and Vercel readiness.")
-    .option("--offline", "Skip Vercel network checks")
-    .option("--json", "Output diagnostics as JSON")
-    .action(async (path: string | undefined, options: { json?: boolean; offline?: boolean }) => {
-      const { runDoctorCommand } = await import("#cli/commands/doctor.js");
-      await runDoctorCommand(logger, path, options);
-    });
+  registerDoctorCommand(program, logger);
 
   program
     .command("init [target]")

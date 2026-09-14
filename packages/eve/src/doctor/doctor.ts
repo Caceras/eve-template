@@ -67,10 +67,11 @@ export async function runDoctor(
 ): Promise<DoctorResult> {
   const resolvedPath = resolve(path);
   let context: EveProjectContext | undefined;
+  let contextError: unknown;
   try {
     context = await findEveProjectContext(resolvedPath);
-  } catch {
-    // The discovery diagnostic below renders the canonical resolution error.
+  } catch (error) {
+    contextError = error;
   }
 
   const root =
@@ -82,7 +83,16 @@ export async function runDoctor(
   ];
 
   if (context === undefined || root === undefined) {
-    diagnostics.push(discoveryDiagnostic(await collectDiscoveryFacts(resolvedPath)));
+    diagnostics.push(
+      contextError === undefined
+        ? discoveryDiagnostic(await collectDiscoveryFacts(resolvedPath))
+        : {
+            id: "project.discovery",
+            status: "fail",
+            summary: contextError instanceof Error ? contextError.message : String(contextError),
+            remediation: [{ kind: "command", command: "eve init <path>" }],
+          },
+    );
     return {
       agents: [],
       diagnostics,
@@ -92,13 +102,13 @@ export async function runDoctor(
     };
   }
 
-  const [packageManager, dependencies, git, vercel, agents] = await Promise.all([
+  const [packageManager, git, vercel, agents] = await Promise.all([
     collectPackageManagerFacts(root),
-    collectDependencyFacts(root),
     collectGitFacts(root),
     collectVercelFacts(root, options.offline === true),
     Promise.all(selectedAgents(context).map(({ name, appRoot }) => inspectAgent(name, appRoot))),
   ]);
+  const dependencies = await collectDependencyFacts(root, packageManager);
   diagnostics.push({
     id: "project.discovery",
     status: "pass",
