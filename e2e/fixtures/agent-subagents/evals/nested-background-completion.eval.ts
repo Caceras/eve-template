@@ -1,4 +1,4 @@
-import { defineEval, type EveEvalContext, type EveEvalSession, type EveEvalTurn } from "eve/evals";
+import { defineEval, type EveEvalContext, type EveEvalSession } from "eve/evals";
 import { satisfies } from "eve/evals/expect";
 
 import { NESTED_COMPLETION_PARENT_SCENARIO } from "../constants";
@@ -9,11 +9,6 @@ type SessionDriver = Pick<
   EveEvalSession,
   "pendingInputRequests" | "respond" | "sessionId" | "state"
 >;
-
-interface SessionCursor {
-  readonly driver: SessionDriver;
-  readonly events: EveEvalSession["events"];
-}
 
 /** A remote child must keep its caller while an invocation-owned nested review is pending. */
 export default defineEval({
@@ -33,53 +28,64 @@ export default defineEval({
     }
     const parentTaskId = receipt.data.backgroundTask.taskId;
 
-    const blocked = await waitForReviewGate(t, { driver: t, events: started.events });
-    const remoteCall = blocked.events.find(
-      (event) => event.type === "subagent.called" && event.data.callId === receipt.data.callId,
-    );
-    if (remoteCall?.type !== "subagent.called") {
-      throw new Error("The background remote-loopback invocation did not start.");
-    }
+    const parentLive = watchNextTurn(t, t, "background completion wait");
+    const remoteCall = await parentLive.waitForEvent("subagent.called", {
+      data: { callId: receipt.data.callId },
+    });
 
     const childAcknowledgementLive = t.target.watchTurn(remoteCall.data.childSessionId);
     const childAcknowledgement = await childAcknowledgementLive.result();
     childAcknowledgement.expectOk();
     childAcknowledgement.messageIncludes("Reviewing...");
 
+    let child = childAcknowledgementLive.session;
+    let reviewRequest = child.pendingInputRequests.find(
+      (request) => request.action.toolName === "review_gate",
+    );
+    if (reviewRequest === undefined) {
+      const reviewGateLive = watchNextTurn(t, child, "review gate wait");
+      const requested = await reviewGateLive.waitForEvent("input.requested", {
+        data: {
+          requests: (requests) =>
+            requests.some((request) => request.action.toolName === "review_gate"),
+        },
+      });
+      child = reviewGateLive.session;
+      reviewRequest = requested.data.requests.find(
+        (request) => request.action.toolName === "review_gate",
+      );
+    }
+    if (reviewRequest === undefined) {
+      throw new Error("The nested reviewer emitted no approval request.");
+    }
+
+    const parentBeforeApproval = [...started.events, ...parentLive.events];
     await t.require(
-      blocked.events,
+      parentBeforeApproval,
       satisfies(
-        (events: typeof blocked.events) =>
+        (events: typeof parentBeforeApproval) =>
           !events.some((event) => isTaskCompletion(event, parentTaskId)),
         "the parent task remains pending while the nested reviewer is gated",
       ),
     );
 
-    const childFinal = t.target.watchTurn(remoteCall.data.childSessionId, {
-      startIndex: requireStreamIndex(childAcknowledgementLive.session),
-    });
-    const released = await blocked.driver.respond([
-      { optionId: "approve", requestId: blocked.requestId },
+    const completedChild = await child.respond([
+      { optionId: "approve", requestId: reviewRequest.requestId },
     ]);
-    released.noFailedActions();
-    const completedChild = await childFinal.result();
+    completedChild.noFailedActions();
     completedChild.expectOk();
     completedChild.messageIncludes(REVIEW_RESULT);
 
-    const afterRelease = {
-      driver: blocked.driver,
-      events: [...blocked.events, ...released.events],
-    };
-    const completion = released.message?.includes(REVIEW_RESULT)
-      ? { cursor: afterRelease, turn: released }
-      : await waitForMessage(t, afterRelease, REVIEW_RESULT);
-    completion.turn.expectOk();
-    completion.turn.messageIncludes(REVIEW_RESULT);
+    const completedParent = await parentLive.result();
+    completedParent.noFailedActions();
+    completedParent.expectOk();
+    completedParent.messageIncludes(REVIEW_RESULT);
 
+    const parentEvents = [...started.events, ...parentLive.events];
     await t.require(
-      completion.cursor.events,
+      parentEvents,
       satisfies(
-        (events: typeof completion.cursor.events) =>
+        (events: typeof parentEvents) =>
           events.filter((event) => isTaskCompletion(event, parentTaskId)).length === 1,
         "the delegated invocation settles exactly once",
       ),
@@ -87,45 +93,6 @@ export default defineEval({
     t.noFailedActions();
   },
 });
-
-async function waitForReviewGate(
-  t: EveEvalContext,
-  initial: SessionCursor,
-): Promise<SessionCursor & { readonly requestId: string }> {
-  const pending = initial.driver.pendingInputRequests.find(
-    (request) => request.action.toolName === "review_gate",
-  );
-  if (pending !== undefined) return { ...initial, requestId: pending.requestId };
-
-  const live = watchNextTurn(t, initial.driver, "review gate wait");
-  const requested = await live.waitForEvent("input.requested", {
-    data: {
-      requests: (requests) => requests.some((request) => request.action.toolName === "review_gate"),
-    },
-  });
-  const request = requested.data.requests.find(
-    (candidate) => candidate.action.toolName === "review_gate",
-  );
-  if (request === undefined) throw new Error("The nested reviewer emitted no approval request.");
-  const events = [...initial.events, ...live.events];
-  return { driver: live.session, events, requestId: request.requestId };
-}
-
-async function waitForMessage(
-  t: EveEvalContext,
-  initial: SessionCursor,
-  marker: string,
-): Promise<{ readonly cursor: SessionCursor; readonly turn: EveEvalTurn }> {
-  let cursor = initial;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const live = watchNextTurn(t, cursor.driver, "nested completion wait");
-    const turn = await live.result();
-    turn.noFailedActions();
-    cursor = { driver: live.session, events: [...cursor.events, ...turn.events] };
-    if (turn.message?.includes(marker) === true) return { cursor, turn };
-  }
-  throw new Error("The nested review result did not reach the parent after five turns.");
-}
 
 function watchNextTurn(t: EveEvalContext, session: SessionDriver, operation: string) {
   if (session.sessionId === undefined || session.state === undefined) {
@@ -138,14 +105,6 @@ function isTaskCompletion(event: EveEvalSession["events"][number], taskId: strin
   if (event.type !== "message.received") return false;
   const message = messageText(event.data.message);
   return message.includes(`Background task ${taskId}`) && message.includes(" is completed.");
-}
-
-function requireStreamIndex(session: {
-  readonly state?: { readonly streamIndex?: number };
-}): number {
-  const streamIndex = session.state?.streamIndex;
-  if (streamIndex === undefined) throw new Error("Remote child has no stream index.");
-  return streamIndex;
 }
 
 function messageText(message: unknown): string {
