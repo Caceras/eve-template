@@ -21,7 +21,7 @@ import {
   DURABLE_SESSION_VERSION,
   MODEL_MESSAGE_FORMAT_VERSION,
 } from "#execution/durable-session-store.js";
-import { validateHarnessModelMessages } from "#harness/messages.js";
+import { isUserModelMessage, type HarnessModelMessage } from "#harness/messages.js";
 
 import { runMigrationChain, type VersionMigration } from "./chain.js";
 
@@ -83,17 +83,33 @@ export function migrateDurableSessionSnapshot(value: unknown): DurableSessionSna
 
   // Pre-0.54 history used user-role messages for both human and framework input.
   // Keep the outer snapshot at v1 so a pinned older driver can still forward it.
-  const history = snapshot.session.history.map((message: ModelMessage) =>
-    message.role === "user" && !("kind" in message)
-      ? { ...message, kind: "legacy.unknown" as const }
-      : message,
-  );
   return {
     ...snapshot,
     modelMessageFormatVersion: MODEL_MESSAGE_FORMAT_VERSION,
     session: {
       ...snapshot.session,
-      history: validateHarnessModelMessages(history),
+      history: migrateLegacyModelMessageHistory(snapshot.session.history),
     },
   };
+}
+
+function migrateLegacyModelMessageHistory(
+  messages: readonly ModelMessage[],
+): HarnessModelMessage[] {
+  const migrated: HarnessModelMessage[] = [];
+  for (const message of messages) {
+    if (message.role !== "user") {
+      migrated.push(message);
+      continue;
+    }
+    if (!("kind" in message)) {
+      migrated.push({ ...message, kind: "legacy.unknown" });
+      continue;
+    }
+    if (!isUserModelMessage(message)) {
+      throw new TypeError("Expected every user-role model message to have a kind.");
+    }
+    migrated.push(message);
+  }
+  return migrated;
 }

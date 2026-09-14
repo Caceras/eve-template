@@ -57,18 +57,30 @@ describe("migrateDurableSessionSnapshot", () => {
 
   it("repairs unversioned model-message history and stamps its format", () => {
     const durable = projectToDurableSession(buildSession());
+    let assistantRoleReads = 0;
+    const assistantMessage = {
+      content: "Already answered.",
+      get role(): "assistant" {
+        assistantRoleReads += 1;
+        return "assistant";
+      },
+    };
 
     const migrated = migrateDurableSessionSnapshot({
       session: {
         ...durable,
-        history: [{ content: "Retained before eve 0.54.", role: "user" }],
+        history: [assistantMessage, { content: "Retained before eve 0.54.", role: "user" }],
       },
       version: DURABLE_SESSION_VERSION,
     });
 
-    expect(migrated.session.history).toEqual([
-      { content: "Retained before eve 0.54.", kind: "legacy.unknown", role: "user" },
-    ]);
+    expect(assistantRoleReads).toBe(1);
+    expect(migrated.session.history[0]).toBe(assistantMessage);
+    expect(migrated.session.history[1]).toEqual({
+      content: "Retained before eve 0.54.",
+      kind: "legacy.unknown",
+      role: "user",
+    });
     expect(migrated.modelMessageFormatVersion).toBe(MODEL_MESSAGE_FORMAT_VERSION);
   });
 
