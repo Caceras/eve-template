@@ -399,10 +399,14 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
             isRoot: ctx.get(ParentSessionKey) === undefined,
             taskDeliveryPhase: ctx.get(TurnTaskDeliveryKey),
           });
-    if (!emitAssistantText) {
+    if (!emitAssistantText && event.type === "message.appended") {
       return stampMessageStreamEvent(event, ctx.get(TurnDeliveryIdsKey));
     }
-    const toEmit = await callAdapterEventHandler(adapter, event, adapterCtx);
+    const deliverableEvent =
+      !emitAssistantText && event.type === "message.completed"
+        ? { ...event, data: { ...event.data, message: null } }
+        : event;
+    const toEmit = await callAdapterEventHandler(adapter, deliverableEvent, adapterCtx);
     setChannelContext(ctx, { ...adapter, state: { ...adapterCtx.state } });
     const stamped = stampMessageStreamEvent(toEmit, ctx.get(TurnDeliveryIdsKey));
     await writer.write(encodeMessageStreamEvent(stamped));

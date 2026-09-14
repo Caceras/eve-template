@@ -40,6 +40,7 @@ import { createEmptyHookRegistry } from "#runtime/hooks/registry.js";
 import {
   createActionsRequestedEvent,
   createInputRequestedEvent,
+  createMessageAppendedEvent,
   createMessageCompletedEvent,
 } from "#protocol/message.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
@@ -1196,10 +1197,14 @@ describe("dispatchCoordinationStep", () => {
 });
 
 describe("turnStep", () => {
-  it("drops a scheduled fallback while background work is pending and emits the final result once", async () => {
+  it("emits a null scheduled launch completion and the settled result once", async () => {
+    const appended: string[] = [];
     const delivered: Array<string | null> = [];
     const adapter: ChannelAdapter = {
       kind: "scheduled-output-capture",
+      "message.appended"(data) {
+        appended.push(data.messageDelta);
+      },
       "message.completed"(data) {
         delivered.push(data.message);
       },
@@ -1251,6 +1256,15 @@ describe("turnStep", () => {
       return async (session): Promise<StepResult> => {
         const message = modelTurn++ === 0 ? "Premature fallback" : "Final report";
         await input.handleEvent?.(
+          createMessageAppendedEvent({
+            messageDelta: message,
+            sequence: modelTurn - 1,
+            stepIndex: 0,
+            turnId: `turn_${String(modelTurn - 1)}`,
+          }),
+          session.history,
+        );
+        await input.handleEvent?.(
           createMessageCompletedEvent({
             message,
             sequence: modelTurn - 1,
@@ -1279,7 +1293,18 @@ describe("turnStep", () => {
       serializedContext,
       sessionState: createStubSessionState({ emissionState }),
     });
-    expect(delivered).toEqual([]);
+    expect(appended).toEqual([]);
+    expect(delivered).toEqual([null]);
+    const launchEvents = (workflowWritesByNamespace.get("scheduled-launch") ?? []).map((chunk) =>
+      JSON.parse(new TextDecoder().decode(chunk as Uint8Array)),
+    );
+    expect(launchEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ message: null }),
+        type: "message.completed",
+      }),
+    ]);
+    expect(JSON.stringify(launchEvents)).not.toContain("Premature fallback");
 
     await turnStep({
       input: {
@@ -1292,7 +1317,17 @@ describe("turnStep", () => {
       sessionState: launch.sessionState,
     });
 
-    expect(delivered).toEqual(["Final report"]);
+    expect(appended).toEqual(["Final report"]);
+    expect(delivered).toEqual([null, "Final report"]);
+    const settledEvents = (workflowWritesByNamespace.get("scheduled-result") ?? []).map((chunk) =>
+      JSON.parse(new TextDecoder().decode(chunk as Uint8Array)),
+    );
+    expect(settledEvents.filter((event) => event.type === "message.completed")).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ message: "Final report" }),
+        type: "message.completed",
+      }),
+    ]);
   });
 
   it("runs the configured number of model calls inside one Workflow step", async () => {
