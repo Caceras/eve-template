@@ -78,6 +78,19 @@ export default defineEval({
       count: 1,
     });
 
+    // Replay durable state separately from the delivery stream: the fallback never
+    // becomes assistant output, while the late remote result does exactly once.
+    const persisted = await t.target.attachSession(sessionId);
+    await t.require(
+      persisted.transcript,
+      satisfies(
+        (transcript: string) =>
+          !transcript.includes(PREMATURE) &&
+          assistantOutputs(transcript).filter((output) => output.includes(FINAL)).length === 1,
+        "the transcript retains one final remote result and no premature fallback",
+      ),
+    );
+
     // Across both turns, assert exactly one final non-null delivery crosses the channel boundary.
     const allEvents = [...launch.events, ...completed.events];
     await t.require(
@@ -111,4 +124,8 @@ function messageText(message: unknown): string {
         : [],
     )
     .join("\n");
+}
+
+function assistantOutputs(transcript: string): string[] {
+  return transcript.split("\n\n").filter((entry) => entry.startsWith("Assistant:\n"));
 }

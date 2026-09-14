@@ -89,6 +89,18 @@ export default defineEval({
         "the report follows the executor completion",
       ),
     );
+
+    // The stream proves delivery; replaying durable state proves only the late report
+    // survives as assistant output after both quiet scheduled wakes.
+    const persisted = await t.target.attachSession(sessionId);
+    await t.require(
+      persisted.transcript,
+      satisfies(
+        (transcript: string) =>
+          assistantOutputs(transcript).filter((output) => output.includes(RESULT)).length === 1,
+        "the transcript retains one final export report",
+      ),
+    );
     t.noFailedActions();
     t.succeeded();
   },
@@ -116,4 +128,8 @@ function messageText(message: unknown): string {
         : [],
     )
     .join("\n");
+}
+
+function assistantOutputs(transcript: string): string[] {
+  return transcript.split("\n\n").filter((entry) => entry.startsWith("Assistant:\n"));
 }
