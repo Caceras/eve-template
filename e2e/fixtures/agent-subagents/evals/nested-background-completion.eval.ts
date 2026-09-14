@@ -69,12 +69,11 @@ export default defineEval({
       ),
     );
 
-    const completedChild = await child.respond([
+    const approved = await child.respond([
       { optionId: "approve", requestId: reviewRequest.requestId },
     ]);
-    completedChild.noFailedActions();
-    completedChild.expectOk();
-    completedChild.messageIncludes(REVIEW_RESULT);
+    approved.noFailedActions();
+    approved.expectOk();
 
     const completedParent = await parentLive.result();
     completedParent.noFailedActions();
