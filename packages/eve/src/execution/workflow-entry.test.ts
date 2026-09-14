@@ -1207,6 +1207,55 @@ describe("workflowEntry", () => {
     });
   });
 
+  it("defers terminal settlement until an invocation-owned background task is delivered", async () => {
+    const pending = createNestedTaskSessionState();
+    const completed = createNestedTaskSessionState({ completed: true, sequence: 2 });
+    const first = turnResult({
+      action: "done",
+      output: "Premature fallback",
+      sessionState: pending,
+      usageDelta: usage(4, 1),
+    });
+    if (first.kind !== "turn-result") throw new Error("Expected a turn result.");
+    vi.mocked(createSessionStep).mockResolvedValue(
+      createSessionStepResultForMock(createBaseSessionState()),
+    );
+    installHookMocks({
+      deliveryHooks: [{ token: "http:test", values: [] }],
+      turnControls: [
+        {
+          ...first,
+          bufferedDeliveries: [
+            {
+              kind: "deliver",
+              payloads: [
+                {
+                  message: "Background task task_nested is completed.",
+                  task: { views: [nestedTaskTerminalView()] },
+                },
+              ],
+              taskDeliveryId: "task_nested:ready:completed",
+            },
+          ],
+        },
+        turnResult({ action: "done", output: "Final review", sessionState: completed }),
+      ],
+    });
+
+    await expect(
+      workflowEntry({
+        input: { message: "scheduled work" },
+        serializedContext: createSerializedContext(),
+      }),
+    ).resolves.toEqual({ output: "Final review" });
+
+    expect(dispatchTurnStep).toHaveBeenCalledTimes(2);
+    expect(terminateChildSessionsStep).toHaveBeenCalledExactlyOnceWith({
+      serializedContext: { "eve.sessionId": "wrun_test_123" },
+      sessionState: completed,
+    });
+  });
+
   it("records owned siblings when a coalesced delivery starts with an older task", async () => {
     const caller = {
       callId: "call-1",
@@ -2291,6 +2340,7 @@ function turnResult(input: {
     readonly isError?: boolean;
     readonly usage?: TokenUsage;
   };
+  readonly usageDelta?: TokenUsage;
 }): TurnControlPayload {
   const serializedContext = input.serializedContext ?? { "eve.sessionId": "wrun_test_123" };
   if (input.action === "done") {
@@ -2300,6 +2350,7 @@ function turnResult(input: {
         output: input.output ?? "",
         serializedContext,
         sessionState: input.sessionState,
+        usageDelta: input.usageDelta,
       },
       kind: "turn-result",
     };

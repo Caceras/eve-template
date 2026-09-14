@@ -2,4 +2,4 @@
 "eve": patch
 ---
 
-Keep delegated invocations pending when a child acknowledges nested background work. The child's final answer now reaches its caller after the nested task result is available.
+Keep invocations pending while background work they started is outstanding. Scheduled runs no longer publish a premature fallback, and delegated children deliver their final answer after nested task results are available.

@@ -54,11 +54,11 @@ import { settleContinuationConflictStep } from "#execution/continuation-conflict
 import { activeTurnId } from "#harness/active-turn-id.js";
 import { addTokenUsage } from "#shared/add-token-usage.js";
 import {
-  clearCallerTaskResults,
-  createCallerTaskResults,
-  hasPendingCallerTaskResults,
-  observeCallerTaskResults,
-} from "#execution/workflow-entry-caller-results.js";
+  clearInvocationTasks,
+  createInvocationTasks,
+  hasPendingInvocationTasks,
+  observeInvocationTasks,
+} from "#execution/workflow-entry-invocation-tasks.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   SESSION_INBOX_WIRE_VERSION,
@@ -409,7 +409,7 @@ async function runDriverLoop(input: {
   const seenTaskDeliveries = new Set<string>();
   // State can expose terminal tasks before their buffered wakes are delivered.
   // Track only turn-owned tasks and only cohorts selected by a terminal wake.
-  const callerTaskResults = createCallerTaskResults();
+  const invocationTasks = createInvocationTasks();
   const stateCursor = new SessionStateCursor({
     serializedContext: input.serializedContext,
     sessionState: input.sessionState,
@@ -479,25 +479,36 @@ async function runDriverLoop(input: {
 
     while (true) {
       const caller = input.crashCleanupState.caller;
-      if (caller !== undefined) {
-        observeCallerTaskResults({
-          delivery: dispatchedDelivery,
-          results: callerTaskResults,
-          sessionState: stateCursor.sessionState,
-          turnId: dispatchedTurnId,
-        });
-      }
+      observeInvocationTasks({
+        delivery: dispatchedDelivery,
+        invocation: invocationTasks,
+        sessionState: stateCursor.sessionState,
+        turnId: dispatchedTurnId,
+      });
 
       if (action.kind === "done") {
-        return {
-          kind: "result",
-          result: await finalizeDone({
-            action,
-            caller: input.crashCleanupState.caller,
-            callerUsage: input.crashCleanupState.callerUsage,
-            mode: input.mode,
-            terminalState: input.crashCleanupState,
-          }),
+        if (action.isError === true || !hasPendingInvocationTasks(invocationTasks)) {
+          return {
+            kind: "result",
+            result: await finalizeDone({
+              action,
+              caller: input.crashCleanupState.caller,
+              callerUsage: input.crashCleanupState.callerUsage,
+              mode: input.mode,
+              terminalState: input.crashCleanupState,
+            }),
+          };
+        }
+        if (caller !== undefined) {
+          input.crashCleanupState.callerUsage = addTokenUsage(
+            input.crashCleanupState.callerUsage,
+            action.usageDelta,
+          );
+        }
+        action = {
+          kind: "park",
+          serializedContext: action.serializedContext,
+          sessionState: action.sessionState,
         };
       }
 
@@ -537,16 +548,14 @@ async function runDriverLoop(input: {
       // the full StepResult so no state-key fallback exists anymore.
       const settled = action.settled;
       if (action.cancelled !== true && settled !== undefined) {
-        const waitsForNestedResults =
-          caller !== undefined &&
-          settled.isError !== true &&
-          hasPendingCallerTaskResults(callerTaskResults);
-        if (waitsForNestedResults) {
+        const waitsForSettledTaskResults =
+          settled.isError !== true && hasPendingInvocationTasks(invocationTasks);
+        if (waitsForSettledTaskResults && caller !== undefined) {
           input.crashCleanupState.callerUsage = addTokenUsage(
             input.crashCleanupState.callerUsage,
             settled.usage,
           );
-        } else if (caller !== undefined) {
+        } else if (!waitsForSettledTaskResults && caller !== undefined) {
           await notifyTurnCallerStep({
             caller,
             lifecycle: "parked",
@@ -558,12 +567,14 @@ async function runDriverLoop(input: {
           });
           input.crashCleanupState.caller = undefined;
           input.crashCleanupState.callerUsage = undefined;
-          clearCallerTaskResults(callerTaskResults);
+          clearInvocationTasks(invocationTasks);
+        } else if (!waitsForSettledTaskResults) {
+          clearInvocationTasks(invocationTasks);
         }
       } else if (action.cancelled === true) {
         input.crashCleanupState.caller = undefined;
         input.crashCleanupState.callerUsage = undefined;
-        clearCallerTaskResults(callerTaskResults);
+        clearInvocationTasks(invocationTasks);
       }
 
       // An open authorization challenge must not wedge the session:
@@ -658,7 +669,7 @@ async function runDriverLoop(input: {
         action = { ...action, settled: undefined };
         input.crashCleanupState.caller = undefined;
         input.crashCleanupState.callerUsage = undefined;
-        clearCallerTaskResults(callerTaskResults);
+        clearInvocationTasks(invocationTasks);
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
         continue;
       }
@@ -666,7 +677,7 @@ async function runDriverLoop(input: {
       if (next.delivery.caller !== undefined) {
         input.crashCleanupState.caller = next.delivery.caller;
         input.crashCleanupState.callerUsage = undefined;
-        clearCallerTaskResults(callerTaskResults);
+        clearInvocationTasks(invocationTasks);
       }
       dispatchedDelivery = next.delivery;
       dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);

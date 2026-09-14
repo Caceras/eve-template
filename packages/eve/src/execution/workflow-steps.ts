@@ -26,6 +26,8 @@ import {
   ChannelDeliveryKey,
   HandleEventKey,
   ModeKey,
+  ParentSessionKey,
+  ScheduleIdKey,
   SessionDynamicSubagentRuntimeRevisionKey,
   SessionDynamicToolRuntimeRevisionKey,
   StaticModelReferenceKey,
@@ -84,6 +86,7 @@ import {
   resolveInitiatingTaskContext,
   resolveTaskDeliveryContext,
 } from "#tasks/delivery-context.js";
+import { shouldEmitAssistantText } from "#tasks/delivery-policy.js";
 import {
   readRetainedBackgroundToolResult,
   runBackgroundStep,
@@ -387,6 +390,18 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   const writer = input.parentWritable.getWriter();
 
   const emit = async (event: UnstampedMessageStreamEvent): Promise<MessageStreamEvent> => {
+    const emitAssistantText =
+      event.type !== "message.appended" && event.type !== "message.completed"
+        ? true
+        : shouldEmitAssistantText({
+            hasScheduleProvenance:
+              event.data.sequence === 0 && ctx.get(ScheduleIdKey) !== undefined,
+            isRoot: ctx.get(ParentSessionKey) === undefined,
+            taskDeliveryPhase: ctx.get(TurnTaskDeliveryKey),
+          });
+    if (!emitAssistantText) {
+      return stampMessageStreamEvent(event, ctx.get(TurnDeliveryIdsKey));
+    }
     const toEmit = await callAdapterEventHandler(adapter, event, adapterCtx);
     setChannelContext(ctx, { ...adapter, state: { ...adapterCtx.state } });
     const stamped = stampMessageStreamEvent(toEmit, ctx.get(TurnDeliveryIdsKey));

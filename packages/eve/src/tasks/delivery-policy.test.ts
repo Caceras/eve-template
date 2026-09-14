@@ -5,7 +5,7 @@ import {
   TASK_DELIVERY_INITIATING_INSTRUCTION,
   TASK_DELIVERY_SETTLED_INSTRUCTION,
 } from "#tasks/delivery-context.js";
-import { resolveDeliveryPolicy } from "#tasks/delivery-policy.js";
+import { resolveDeliveryPolicy, shouldEmitAssistantText } from "#tasks/delivery-policy.js";
 
 describe("resolveDeliveryPolicy", () => {
   it.each([
@@ -75,4 +75,21 @@ describe("resolveDeliveryPolicy", () => {
       instruction: TASK_DELIVERY_INITIATING_INSTRUCTION,
     });
   });
+});
+
+describe("shouldEmitAssistantText", () => {
+  it.each([
+    ["scheduled root task launch", true, true, "initiating", false],
+    ["user task launch", false, true, "initiating", true],
+    ["delegated scheduled task launch", true, false, "initiating", true],
+    ["blocking workflow turn", true, true, "none", true],
+    ["terminal task delivery", true, true, "settled", true],
+  ] as const)(
+    "classifies %s",
+    (_name, hasScheduleProvenance, isRoot, taskDeliveryPhase, expected) => {
+      expect(shouldEmitAssistantText({ hasScheduleProvenance, isRoot, taskDeliveryPhase })).toBe(
+        expected,
+      );
+    },
+  );
 });

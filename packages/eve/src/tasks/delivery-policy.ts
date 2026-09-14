@@ -9,6 +9,19 @@ export interface DeliveryPolicy {
   readonly instruction?: string;
 }
 
+/**
+ * Returns false for assistant text produced while a scheduled root invocation still owns
+ * pending background tasks. The task-delivery phase comes from the indexed task type, so
+ * blocking workflow tools and ordinary turns cannot enter this branch.
+ */
+export function shouldEmitAssistantText(input: {
+  readonly hasScheduleProvenance: boolean;
+  readonly isRoot: boolean;
+  readonly taskDeliveryPhase: "none" | "initiating" | "pending" | "settled" | undefined;
+}): boolean {
+  return !(input.hasScheduleProvenance && input.isRoot && input.taskDeliveryPhase === "initiating");
+}
+
 const POLICIES = {
   conditional: {
     allowsEmptyDelivery: true,
