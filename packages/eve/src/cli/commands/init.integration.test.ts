@@ -179,6 +179,35 @@ describe("runInitCommand", () => {
     ]);
   });
 
+  it("converts generated Web Chat to a workspace and preserves its root app", async () => {
+    const parentDirectory = await mkdtemp(join(tmpdir(), "eve-init-web-migration-"));
+    const output = logger();
+    const deps = dependencies();
+
+    await runInitCommand(output, parentDirectory, "weather", { channelWebNextjs: true }, deps);
+    const projectRoot = join(parentDirectory, "weather");
+    const pageBefore = await readFile(join(projectRoot, "app", "page.tsx"), "utf8");
+    await mkdir(join(projectRoot, "evals"));
+    await writeFile(join(projectRoot, "evals", "smoke.ts"), "export default {};\n");
+
+    await runInitCommand(output, projectRoot, "research", { yes: true }, deps);
+
+    await expect(
+      pathExists(join(projectRoot, "agents", "weather", "agent", "agent.ts")),
+    ).resolves.toBe(true);
+    await expect(
+      pathExists(join(projectRoot, "agents", "weather", "evals", "smoke.ts")),
+    ).resolves.toBe(true);
+    await expect(
+      pathExists(join(projectRoot, "agents", "research", "agent", "agent.ts")),
+    ).resolves.toBe(true);
+    await expect(readFile(join(projectRoot, "app", "page.tsx"), "utf8")).resolves.toBe(pageBefore);
+    await expect(readFile(join(projectRoot, "next.config.ts"), "utf8")).resolves.toContain(
+      'withEve(nextConfig, { eveRoot: "./agents/weather" })',
+    );
+    expect(deps.runPackageManagerInstall).toHaveBeenCalledTimes(1);
+  });
+
   it("adds only agent files to an existing workspace", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "eve-init-workspace-agent-"));
     await mkdir(join(workspaceRoot, "agents", "support", "agent"), { recursive: true });

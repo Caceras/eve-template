@@ -214,7 +214,9 @@ export function createCliProgram(
 
   program
     .command("init [target]")
-    .description("Create a new eve agent, or add one to an existing project directory.")
+    .description(
+      "Create a new eve agent, add one to an existing project, or convert a standalone agent to a workspace.",
+    )
     .option("--channel-web-nextjs", "Add the Web Chat application (Next.js)")
     .option(
       "--agents <names>",
@@ -227,7 +229,7 @@ export function createCliProgram(
       "Set reasoning (provider-default|none|minimal|low|medium|high|xhigh)",
       parseReasoningOption,
     )
-    .option("-y, --yes", "Accepted for compatibility; has no effect")
+    .option("-y, --yes", "Convert a standalone eve project without prompting")
     .action(
       async (
         target: string | undefined,
@@ -239,10 +241,6 @@ export function createCliProgram(
           yes?: boolean;
         },
       ) => {
-        if (options.yes) {
-          logger.error("warning: --yes has no effect for eve init.");
-        }
-
         const { runInitCommand } = await import("#cli/commands/init.js");
         await runInitCommand(
           logger,
@@ -253,6 +251,7 @@ export function createCliProgram(
             channelWebNextjs: options.channelWebNextjs,
             model: options.model,
             reasoning: options.reasoning,
+            yes: options.yes,
           },
           undefined,
           (step) => {

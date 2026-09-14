@@ -22,6 +22,7 @@ export interface InitCommandOptions {
   channelWebNextjs?: boolean;
   model?: string;
   reasoning?: AgentReasoningDefinition;
+  yes?: boolean;
 }
 
 export interface InitCliLogger {

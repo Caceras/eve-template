@@ -402,7 +402,25 @@ describe("eve init compatibility flags", () => {
         channelWebNextjs: undefined,
         model: "openai/gpt-5.6-sol",
         reasoning: "high",
+        yes: undefined,
       },
+      undefined,
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it("forwards --yes to standalone-project conversion", async () => {
+    const logger = { error: vi.fn(), log: vi.fn() };
+    runInitCommand.mockClear();
+
+    await runCli(["init", "research", "--yes"], logger);
+
+    expect(runInitCommand).toHaveBeenCalledWith(
+      logger,
+      resolve(process.cwd()),
+      "research",
+      expect.objectContaining({ yes: true }),
       undefined,
       expect.any(Function),
       expect.any(Function),

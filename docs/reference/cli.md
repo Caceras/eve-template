@@ -10,7 +10,7 @@ Relevant `eve` commands can run from the application root or any directory benea
 | Command                        | Description                                                                                                                        |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `eve`                          | Initialize the current directory, or start development when it is already an eve project                                           |
-| `eve init [target]`            | Create a new agent, or add an agent to an existing project                                                                         |
+| `eve init [target]`            | Create a new agent, add an agent to an existing project, or convert a standalone agent to a workspace                              |
 | `eve info`                     | Print the resolved application, including static instructions and discovered capabilities, routes, artifact paths, and diagnostics |
 | `eve build`                    | Compile `.eve/` artifacts and build the host output; prints the output directory                                                   |
 | `eve start`                    | Serve the built `.output/` app; prints the listening URL                                                                           |
@@ -42,19 +42,20 @@ eve collects CLI telemetry by default to improve the command-line interface. Run
 ## `eve init`
 
 ```bash
-eve init [target] [--model <provider/model-id>] [--reasoning <effort>] [--channel-web-nextjs]
+eve init [target] [--model <provider/model-id>] [--reasoning <effort>] [--channel-web-nextjs] [--yes]
 ```
 
-Creates a new agent app or adds an agent to an existing app. Always installs dependencies. New directories also initialize Git.
+Creates a new agent app, adds an agent to an existing app, or converts a standalone agent app to a workspace. Always installs dependencies when it creates or adds an app. New directories also initialize Git.
 
-| Target                                                                     | What happens                                                                                                                                                             |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `eve init my-agent`                                                        | Creates an agent project in `my-agent/`                                                                                                                                  |
-| `eve init` or `eve init .` in an empty directory                           | Creates an agent project in the current directory                                                                                                                        |
-| `eve init` or `eve init .` in a non-empty directory without `package.json` | Asks whether to scaffold in the current directory or a named subdirectory. Using the current directory preserves unrelated files but overwrites files at generated paths |
-| `eve init .` in an existing project                                        | Adds `agent/` plus missing `eve`, `ai`, and `zod` dependencies. Requires `package.json` and no existing `agent/` files                                                   |
+| Target                                                                     | What happens                                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `eve init my-agent`                                                        | Creates an agent project in `my-agent/`                                                                                                                                              |
+| `eve init` or `eve init .` in an empty directory                           | Creates an agent project in the current directory                                                                                                                                    |
+| `eve init` or `eve init .` in a non-empty directory without `package.json` | Asks whether to scaffold in the current directory or a named subdirectory. Using the current directory preserves unrelated files but overwrites files at generated paths             |
+| `eve init .` in an existing project                                        | Adds `agent/` plus missing `eve`, `ai`, and `zod` dependencies. Requires `package.json` and no existing `agent/` files                                                               |
+| `eve init research` in a standalone eve project                            | Offers to move the existing `agent/` and `evals/` into `agents/<project-name>/`, then creates `agents/research/`. Generated Web Chat keeps its root app and targets the moved agent. |
 
-Coding-agent launches and non-interactive terminals cannot answer the location prompt and fail before writing. Pass a new directory name, such as `eve init my-agent`, in those environments.
+Coding-agent launches and non-interactive terminals cannot answer the location prompt and fail before writing. Pass a new directory name, such as `eve init my-agent`, in those environments. To convert a standalone project without a prompt, use `eve init <name> --yes`. Custom Next.js apps and projects with `vercel.ts` or `vercel.json` require a manual migration; move `agent/` and `evals/` into `agents/<name>/`, then update their app or service configuration.
 
 After scaffolding, a human terminal usually continues into `eve dev`. Enable the self-modification subagent to edit your agent from the dev session. Otherwise, if a coding-agent REPL is on `PATH`, you can launch it to make changes instead of opening the TUI. Fresh projects use the parent workspace's package manager when there is one; otherwise they use the manager that launched `eve init`.
 
@@ -63,6 +64,7 @@ After scaffolding, a human terminal usually continues into `eve dev`. Enable the
 | `--model <model>`      | string | `openai/gpt-5.6-luna-fast` | Set the root agent's AI Gateway model ID.                                                                                |
 | `--reasoning <effort>` | enum   | provider default           | Set reasoning to `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`. `provider-default` leaves the field unauthored. |
 | `--channel-web-nextjs` | flag   | off                        | Add the Web Chat app (Next.js). Not for existing projects — run `eve add channel/web` there instead.                     |
+| `--yes`                | flag   | off                        | Convert a standalone eve project without asking for confirmation.                                                        |
 
 ## `eve extension`
 
