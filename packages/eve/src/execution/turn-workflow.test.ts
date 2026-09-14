@@ -414,6 +414,7 @@ describe("turnWorkflow", () => {
     // carve-outs, which must reach the driver cancellation epilogue.
     expect(resumeHookMock).toHaveBeenCalledWith("turn-token", {
       action: {
+        admittedTaskIds: [],
         cancelled: true,
         kind: "park",
         serializedContext: { state: "cancelled" },
@@ -422,6 +423,46 @@ describe("turnWorkflow", () => {
       kind: "turn-result",
     });
     expect(resumeHookMock.mock.calls.filter((call) => call[1]?.kind === "turn-error")).toEqual([]);
+  });
+
+  it("reports admissions from every step even when the final snapshot has no task index", async () => {
+    const sessionState = createSessionState();
+    const tasks = [{ taskId: "research", taskInboxToken: "inbox", taskRunId: "run" }];
+    installInbox([]);
+    vi.mocked(turnStep)
+      .mockResolvedValueOnce({
+        action: "continue",
+        backgroundTasks: tasks,
+        backgroundTaskState: sessionState,
+        sessionState,
+        serializedContext: {},
+      })
+      .mockResolvedValueOnce({
+        action: "park",
+        hasPendingAuthorization: false,
+        hasPendingInputBatch: false,
+        settled: { output: "Started" },
+        sessionState,
+        serializedContext: {},
+      });
+    const { input } = createInput({
+      driverCapabilities: { cancelledTurnSettle: true, turnInbox: true },
+      mode: "conversation",
+      sessionState,
+    });
+    await turnWorkflow(input);
+
+    expect(acknowledgeDelegatedTasksStep).toHaveBeenCalledWith({ tasks });
+    expect(resumeHookMock).toHaveBeenCalledWith(
+      "turn-token",
+      expect.objectContaining({
+        kind: "turn-result",
+        action: expect.objectContaining({
+          admittedTaskIds: ["research"],
+          settled: { output: "Started" },
+        }),
+      }),
+    );
   });
 
   it("commits and releases background tasks before settling a cancelled turn", async () => {
@@ -496,6 +537,7 @@ describe("turnWorkflow", () => {
     });
     expect(resumeHookMock).toHaveBeenCalledWith("turn-token", {
       action: {
+        admittedTaskIds: [],
         cancelled: true,
         kind: "park",
         serializedContext: { state: "completed" },
@@ -554,6 +596,7 @@ describe("turnWorkflow", () => {
     });
     expect(resumeHookMock).toHaveBeenCalledWith("turn-token", {
       action: {
+        admittedTaskIds: ["task-1"],
         cancelled: true,
         kind: "park",
         serializedContext: completedContext,
@@ -1317,6 +1360,7 @@ describe("turnWorkflow", () => {
     expect(turnStep).toHaveBeenCalledOnce();
     expect(resumeHookMock).toHaveBeenCalledWith("turn-token", {
       action: {
+        admittedTaskIds: [],
         cancelled: true,
         kind: "park",
         serializedContext: { state: "proxied" },

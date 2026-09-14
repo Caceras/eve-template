@@ -57,6 +57,8 @@ export type DurableStepResult = (
 export type NextDriverAction =
   | {
       readonly kind: "done";
+      /** Background tasks admitted by this turn, independent of result batching. */
+      readonly admittedTaskIds?: readonly string[];
       readonly output: unknown;
       readonly isError?: boolean;
       readonly sessionState: DurableSessionState;
@@ -72,6 +74,8 @@ export type NextDriverAction =
     }
   | {
       readonly kind: "park";
+      /** Background tasks admitted by this turn, including parks without an answer. */
+      readonly admittedTaskIds?: readonly string[];
       readonly sessionState: DurableSessionState;
       readonly serializedContext: Record<string, unknown>;
       readonly authorizationAttemptIds?: readonly string[];

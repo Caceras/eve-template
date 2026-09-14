@@ -217,6 +217,9 @@ export async function emitTurnEpilogue(
   emitFn: HarnessEmitFn,
   state: HarnessEmissionState,
   mode: RunMode,
+  sessionEvent: "completed" | "waiting" | "none" = mode === "conversation"
+    ? "waiting"
+    : "completed",
 ): Promise<HarnessEmissionState> {
   await emitFn(
     createTurnCompletedEvent({
@@ -225,9 +228,9 @@ export async function emitTurnEpilogue(
     }),
   );
 
-  if (mode === "conversation") {
+  if (sessionEvent === "waiting") {
     await emitFn(createSessionWaitingEvent());
-  } else {
+  } else if (sessionEvent === "completed") {
     await emitFn(createSessionCompletedEvent());
   }
 

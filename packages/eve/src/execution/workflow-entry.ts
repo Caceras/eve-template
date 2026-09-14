@@ -37,6 +37,7 @@ import { normalizeSerializableError } from "#execution/workflow-errors.js";
 import { createSessionStep } from "#execution/create-session-step.js";
 import { settleCancelledTurnStep } from "#execution/settle-cancelled-turn-step.js";
 import { emitTerminalSessionFailureStep } from "#execution/terminal-session-failure-step.js";
+import { emitSessionWaitingStep } from "#execution/emit-session-waiting-step.js";
 import { fireSessionCallbackStep } from "#subagents/callback-step.js";
 import { finalizeDone, finalizeExpiredSession } from "#execution/workflow-entry-finalization.js";
 import { isHookConflictError } from "#execution/hook-ownership.js";
@@ -51,9 +52,10 @@ import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-
 import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agent-config.js";
 import { attachClientContext, readClientContext } from "#internal/client-context.js";
 import { settleContinuationConflictStep } from "#execution/continuation-conflict-step.js";
-import { activeTurnId } from "#harness/active-turn-id.js";
 import { addTokenUsage } from "#shared/add-token-usage.js";
-import { observeInvocationTasks } from "#execution/workflow-entry-invocation-tasks.js";
+import { Invocation } from "#execution/invocation.js";
+import { deliveredTaskResultIds, readTaskCompletion } from "#tasks/completion-delivery.js";
+import { getSessionTaskCohorts } from "#tasks/session-task-cohorts.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   SESSION_INBOX_WIRE_VERSION,
@@ -133,8 +135,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
 
   const driverWritable = getWritable<Uint8Array>();
   const crashCleanupState: CrashCleanupState = {
-    caller: undefined,
-    callerUsage: undefined,
+    invocation: new Invocation(),
     callerResolved: false,
     lastSessionState: undefined,
     serializedContext: input.serializedContext,
@@ -203,9 +204,11 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
 
       sessionState = sessionCreation.value.state;
       crashCleanupState.lastSessionState = sessionState;
-      crashCleanupState.caller = hasDelegatedCallerContext(input.serializedContext)
-        ? await resolveInitialTurnCallerStep({ serializedContext: input.serializedContext })
-        : undefined;
+      crashCleanupState.invocation = new Invocation(
+        hasDelegatedCallerContext(input.serializedContext)
+          ? await resolveInitialTurnCallerStep({ serializedContext: input.serializedContext })
+          : undefined,
+      );
       crashCleanupState.callerResolved = true;
 
       outcome = await runDriverLoop({
@@ -258,8 +261,8 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       return outcome.result;
     }
     return await finalizeExpiredSession({
-      caller: crashCleanupState.caller,
-      callerUsage: crashCleanupState.callerUsage,
+      caller: crashCleanupState.invocation.caller,
+      callerUsage: crashCleanupState.invocation.usage,
       driverWritable,
       mode,
       serializedContext: outcome.serializedContext,
@@ -298,12 +301,15 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         result: createDelegatedSubagentErrorResult(crashCleanupState.serializedContext, error),
         serializedContext: crashCleanupState.serializedContext,
       });
-    } else if (crashCleanupState.caller !== undefined || !crashCleanupState.callerResolved) {
+    } else if (
+      crashCleanupState.invocation.caller !== undefined ||
+      !crashCleanupState.callerResolved
+    ) {
       await notifyTurnCallerStep({
         caller: await resolveCallerForCrash(crashCleanupState, crashCleanupState.serializedContext),
         lifecycle: "terminal",
         sessionId,
-        settled: { isError: true, output: error, usage: crashCleanupState.callerUsage },
+        settled: { isError: true, output: error, usage: crashCleanupState.invocation.usage },
       });
     }
     throw createSafeOuterWorkflowError();
@@ -402,9 +408,6 @@ async function runDriverLoop(input: {
   const bufferedSessionControls: Array<"clear" | "compact" | "expired" | "reset"> = [];
   const cancelledTaskIds = new Set<string>();
   const seenTaskDeliveries = new Set<string>();
-  // State can expose terminal tasks before their buffered wakes are delivered.
-  // Track only turn-owned tasks and only cohorts selected by a terminal wake.
-  const pendingInvocationTaskIds = new Set<string>();
   const stateCursor = new SessionStateCursor({
     serializedContext: input.serializedContext,
     sessionState: input.sessionState,
@@ -421,7 +424,7 @@ async function runDriverLoop(input: {
   let disposeSettledTurnControl: (() => Promise<void>) | undefined;
   const runTurn = async (delivery: HookPayload): Promise<TurnDriverAction> => {
     const dispatchedSessionState = stateCursor.sessionState;
-    const caller = input.crashCleanupState.caller;
+    const caller = input.crashCleanupState.invocation.caller;
     if (caller?.taskId !== undefined) {
       seenTaskDeliveries.add(caller.taskId);
     }
@@ -462,43 +465,61 @@ async function runDriverLoop(input: {
     stateCursor.adoptState(action);
     input.crashCleanupState.lastSessionState = stateCursor.sessionState;
     input.crashCleanupState.serializedContext = stateCursor.serializedContext;
+    const invocation = input.crashCleanupState.invocation;
+    if (action.kind === "done" || action.kind === "park") {
+      if (action.admittedTaskIds === undefined) {
+        throw new Error(
+          "Turn worker does not report task admissions. Upgrade the turn worker to the driver's eve revision.",
+        );
+      }
+      invocation.admitTasks(action.admittedTaskIds);
+    }
+    const completedTaskId =
+      delivery.kind === "deliver" ? readTaskCompletion(delivery)?.taskId : undefined;
+    invocation.receiveResults(
+      deliveredTaskResultIds(
+        completedTaskId,
+        getSessionTaskCohorts(dispatchedSessionState.snapshot?.session.state),
+      ),
+    );
     return action;
   };
 
   try {
     await sessionTimeout?.start();
 
-    let dispatchedDelivery: HookPayload = input.initialInput;
-    let dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
-    let action: TurnDriverAction = await runTurn(dispatchedDelivery);
+    let action: TurnDriverAction = await runTurn(input.initialInput);
 
     while (true) {
-      const caller = input.crashCleanupState.caller;
-      observeInvocationTasks({
-        delivery: dispatchedDelivery,
-        pendingTaskIds: pendingInvocationTaskIds,
-        sessionState: stateCursor.sessionState,
-        turnId: dispatchedTurnId,
-      });
+      const invocation = input.crashCleanupState.invocation;
+      const completion = invocation.finishTurn(
+        action.kind === "done"
+          ? { output: action.output, isError: action.isError, usage: action.usageDelta }
+          : action.kind === "park" && action.cancelled !== true
+            ? action.settled
+            : undefined,
+      );
 
       if (action.kind === "done") {
-        if (action.isError === true || pendingInvocationTaskIds.size === 0) {
+        if (completion !== undefined) {
           return {
             kind: "result",
             result: await finalizeDone({
               action,
-              caller: input.crashCleanupState.caller,
-              callerUsage: input.crashCleanupState.callerUsage,
+              caller: invocation.caller,
+              callerUsage: invocation.usage,
+              driverWritable: input.driverWritable,
               mode: input.mode,
               terminalState: input.crashCleanupState,
             }),
           };
         }
-        if (caller !== undefined) {
-          input.crashCleanupState.callerUsage = addTokenUsage(
-            input.crashCleanupState.callerUsage,
-            action.usageDelta,
-          );
+        if (input.mode === "task") {
+          await emitSessionWaitingStep({
+            parentWritable: input.driverWritable,
+            serializedContext: stateCursor.serializedContext,
+            sessionState: stateCursor.sessionState,
+          });
         }
         action = {
           kind: "park",
@@ -523,10 +544,10 @@ async function runDriverLoop(input: {
         stateCursor.adoptState(settled);
         input.crashCleanupState.serializedContext = stateCursor.serializedContext;
         const cancelledCaller = {
-          caller: input.crashCleanupState.caller,
+          caller: input.crashCleanupState.invocation.caller,
           sessionId: stateCursor.sessionState.sessionId,
         };
-        const usage = addTokenUsage(input.crashCleanupState.callerUsage, settled.usage);
+        const usage = addTokenUsage(input.crashCleanupState.invocation.usage, settled.usage);
         await notifyCancelledTaskCallerStep(
           usage === undefined ? cancelledCaller : { ...cancelledCaller, usage },
         );
@@ -539,37 +560,18 @@ async function runDriverLoop(input: {
         await commandInbox.rekeyContinuation(stateCursor.sessionState.continuationToken);
       }
 
-      // `settled` rides the typed park arm exclusively; `run-step` preserves
-      // the full StepResult so no state-key fallback exists anymore.
-      const settled = action.settled;
-      if (action.cancelled !== true && settled !== undefined) {
-        const waitsForSettledTaskResults =
-          settled.isError !== true && pendingInvocationTaskIds.size > 0;
-        if (waitsForSettledTaskResults && caller !== undefined) {
-          input.crashCleanupState.callerUsage = addTokenUsage(
-            input.crashCleanupState.callerUsage,
-            settled.usage,
-          );
-        } else if (!waitsForSettledTaskResults && caller !== undefined) {
+      if (completion !== undefined && action.cancelled !== true) {
+        if (invocation.caller !== undefined) {
           await notifyTurnCallerStep({
-            caller,
+            caller: invocation.caller,
             lifecycle: "parked",
             sessionId: stateCursor.sessionState.sessionId,
-            settled: {
-              ...settled,
-              usage: addTokenUsage(input.crashCleanupState.callerUsage, settled.usage),
-            },
+            settled: completion,
           });
-          input.crashCleanupState.caller = undefined;
-          input.crashCleanupState.callerUsage = undefined;
-          pendingInvocationTaskIds.clear();
-        } else if (!waitsForSettledTaskResults) {
-          pendingInvocationTaskIds.clear();
         }
+        input.crashCleanupState.invocation = new Invocation();
       } else if (action.cancelled === true) {
-        input.crashCleanupState.caller = undefined;
-        input.crashCleanupState.callerUsage = undefined;
-        pendingInvocationTaskIds.clear();
+        input.crashCleanupState.invocation = new Invocation();
       }
 
       // An open authorization challenge must not wedge the session:
@@ -584,12 +586,7 @@ async function runDriverLoop(input: {
       input.crashCleanupState.lastSessionState = stateCursor.sessionState;
 
       if (next.kind === "authorization-resume") {
-        dispatchedDelivery = {
-          kind: "deliver",
-          payloads: next.payloads,
-        };
-        dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
-        action = await runTurn(dispatchedDelivery);
+        action = await runTurn({ kind: "deliver", payloads: next.payloads });
         continue;
       }
 
@@ -605,8 +602,8 @@ async function runDriverLoop(input: {
         return {
           kind: "result",
           result: await finalizeExpiredSession({
-            caller: input.crashCleanupState.caller,
-            callerUsage: input.crashCleanupState.callerUsage,
+            caller: input.crashCleanupState.invocation.caller,
+            callerUsage: input.crashCleanupState.invocation.usage,
             driverWritable: input.driverWritable,
             mode: input.mode,
             serializedContext: stateCursor.serializedContext,
@@ -617,9 +614,7 @@ async function runDriverLoop(input: {
       }
 
       if (next.kind === "clear" || next.kind === "compact") {
-        dispatchedDelivery = { kind: next.kind };
-        dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
-        action = await runTurn(dispatchedDelivery);
+        action = await runTurn({ kind: next.kind });
         continue;
       }
 
@@ -627,8 +622,8 @@ async function runDriverLoop(input: {
         return {
           kind: "result",
           result: await finalizeExpiredSession({
-            caller: input.crashCleanupState.caller,
-            callerUsage: input.crashCleanupState.callerUsage,
+            caller: input.crashCleanupState.invocation.caller,
+            callerUsage: input.crashCleanupState.invocation.usage,
             driverWritable: input.driverWritable,
             mode: input.mode,
             serializedContext: stateCursor.serializedContext,
@@ -651,10 +646,10 @@ async function runDriverLoop(input: {
         stateCursor.adoptState(cancelled);
         input.crashCleanupState.serializedContext = stateCursor.serializedContext;
         const cancelledCaller = {
-          caller: input.crashCleanupState.caller,
+          caller: input.crashCleanupState.invocation.caller,
           sessionId: stateCursor.sessionState.sessionId,
         };
-        const usage = addTokenUsage(input.crashCleanupState.callerUsage, cancelled.usage);
+        const usage = addTokenUsage(input.crashCleanupState.invocation.usage, cancelled.usage);
         await notifyCancelledTaskCallerStep(
           usage === undefined ? cancelledCaller : { ...cancelledCaller, usage },
         );
@@ -662,21 +657,15 @@ async function runDriverLoop(input: {
         // either delivered or deferred before this wait, so the next
         // iteration must not treat it as a fresh settlement.
         action = { ...action, settled: undefined };
-        input.crashCleanupState.caller = undefined;
-        input.crashCleanupState.callerUsage = undefined;
-        pendingInvocationTaskIds.clear();
+        input.crashCleanupState.invocation = new Invocation();
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
         continue;
       }
 
       if (next.delivery.caller !== undefined) {
-        input.crashCleanupState.caller = next.delivery.caller;
-        input.crashCleanupState.callerUsage = undefined;
-        pendingInvocationTaskIds.clear();
+        input.crashCleanupState.invocation = new Invocation(next.delivery.caller);
       }
-      dispatchedDelivery = next.delivery;
-      dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
-      action = await runTurn(dispatchedDelivery);
+      action = await runTurn(next.delivery);
     }
   } finally {
     await disposeSettledTurnControl?.();

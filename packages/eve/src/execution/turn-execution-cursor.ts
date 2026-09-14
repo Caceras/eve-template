@@ -35,17 +35,21 @@ type TurnTerminalAction =
 export class TurnExecutionCursor extends SessionStateCursor {
   readonly controlToken: string;
   readonly parentWritable: WritableStream<Uint8Array>;
+  readonly deferSessionCompletion: boolean;
 
   private lastReportedContinuationToken: string;
+  private readonly admittedTaskIds = new Set<string>();
 
   constructor(input: {
     readonly controlToken: string;
+    readonly deferSessionCompletion?: boolean;
     readonly parentWritable: WritableStream<Uint8Array>;
     readonly serializedContext: Record<string, unknown>;
     readonly sessionState: DurableSessionState;
   }) {
     super({ serializedContext: input.serializedContext, sessionState: input.sessionState });
     this.controlToken = input.controlToken;
+    this.deferSessionCompletion = input.deferSessionCompletion === true;
     this.lastReportedContinuationToken = input.sessionState.continuationToken;
     this.parentWritable = input.parentWritable;
   }
@@ -63,13 +67,19 @@ export class TurnExecutionCursor extends SessionStateCursor {
 
   /** Builds the next atomic turn-step input from the cursor's current state. */
   createStepInput(input: TurnStepPayload | undefined, abortSignal?: AbortSignal): TurnStepInput {
-    return {
-      abortSignal,
+    const stepInput = {
       input,
       parentWritable: this.parentWritable,
       serializedContext: this.serializedContext,
       sessionState: this.sessionState,
     };
+    if (abortSignal !== undefined) Object.assign(stepInput, { abortSignal });
+    if (this.deferSessionCompletion) Object.assign(stepInput, { deferSessionCompletion: true });
+    return stepInput;
+  }
+
+  recordTaskAdmissions(tasks: readonly { readonly taskId: string }[]): void {
+    for (const task of tasks) this.admittedTaskIds.add(task.taskId);
   }
 
   /**
@@ -86,6 +96,7 @@ export class TurnExecutionCursor extends SessionStateCursor {
     await this.send({
       action: {
         ...action,
+        admittedTaskIds: [...this.admittedTaskIds],
         serializedContext: this.serializedContext,
         sessionState: this.sessionState,
       },

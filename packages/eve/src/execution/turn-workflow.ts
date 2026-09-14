@@ -81,6 +81,7 @@ export async function runTurnOwnedWorkflow(
   let initialStep = input.initialStep;
   const cursor = new TurnExecutionCursor({
     controlToken: input.completionToken,
+    deferSessionCompletion: input.deferSessionCompletion,
     parentWritable: input.stepInput.parentWritable,
     serializedContext:
       initialStep?.beforeStep.serializedContext ?? input.stepInput.serializedContext,
@@ -147,6 +148,7 @@ export async function runTurnOwnedWorkflow(
           sessionState: result.backgroundTaskState,
         });
         await acknowledgeDelegatedTasksStep({ tasks: result.backgroundTasks ?? [] });
+        cursor.recordTaskAdmissions(result.backgroundTasks ?? []);
       }
 
       // A cancel observed while the step was returning must still win: the
@@ -219,6 +221,7 @@ export async function runTurnOwnedWorkflow(
         const initialAcceptedAtMs = dispatchResult.results.length === 0 ? undefined : Date.now();
         await cursor.adopt(dispatchResult);
         await acknowledgeDelegatedTasksStep({ tasks: dispatchResult.pendingTasks });
+        cursor.recordTaskAdmissions(dispatchResult.pendingTasks);
 
         const results = await waitForRuntimeActionResults({
           bufferedDeliveries,

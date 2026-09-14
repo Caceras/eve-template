@@ -42,6 +42,8 @@ export type TurnStepPayload =
 export interface TurnStepInput {
   /** Cancellation signal forwarded into the turn step. */
   readonly abortSignal?: AbortSignal;
+  /** Current driver owns task completion emission after admissions are known. */
+  readonly deferSessionCompletion?: boolean;
   /** Executes only on this Vercel deployment; mismatches defer before mutation. */
   readonly acceptedDeploymentId?: string;
   readonly input: TurnStepPayload | undefined;
@@ -53,6 +55,8 @@ export interface TurnStepInput {
 interface TurnWorkflowInputBase {
   readonly capabilities: SessionCapabilities | undefined;
   readonly completionToken: string;
+  /** Current driver owns task completion emission after admissions are known. */
+  readonly deferSessionCompletion?: boolean;
   /**
    * Additive driver feature negotiation. Older pinned drivers omit this,
    * which keeps runtime-action orchestration on the legacy entry-owned path.
@@ -92,6 +96,8 @@ export interface TurnWorkflowDispatchInput {
   readonly capabilities: SessionCapabilities | undefined;
   readonly completionToken: string;
   readonly delivery: HookPayload;
+  /** Current driver owns task completion emission after admissions are known. */
+  readonly deferSessionCompletion?: boolean;
   readonly mode: RunMode;
   readonly initialStep?: InitialTurnStep;
   readonly initialCancellation?: TurnCancelPayload;
@@ -115,11 +121,13 @@ export function createTurnWorkflowInput(input: TurnWorkflowDispatchInput): TurnW
   return {
     capabilities: input.capabilities,
     completionToken: input.completionToken,
+    deferSessionCompletion: input.deferSessionCompletion,
     driverCapabilities: { cancelledTurnSettle: true, turnInbox: true },
     initialCancellation: input.initialCancellation,
     initialStep: input.initialStep,
     mode: input.mode,
     stepInput: {
+      deferSessionCompletion: input.deferSessionCompletion,
       input: input.delivery,
       parentWritable: input.parentWritable,
       serializedContext: input.serializedContext,

@@ -278,6 +278,43 @@ describe("workflowEntry", () => {
     await expect(result).resolves.toEqual({ output: "ok" });
   });
 
+  it("rejects an older worker result instead of treating missing admissions as no work", async () => {
+    const sessionState = createNestedTaskSessionState();
+    vi.mocked(createSessionStep).mockResolvedValue(
+      createSessionStepResultForMock(createBaseSessionState()),
+    );
+    installHookMocks({
+      turnControls: [
+        {
+          kind: "turn-result",
+          action: {
+            kind: "done",
+            output: "Premature",
+            sessionState,
+            serializedContext: createSerializedContext(),
+          },
+        },
+      ],
+    });
+
+    await expect(
+      workflowEntry({
+        input: { message: "Research" },
+        serializedContext: createSerializedContext(),
+      }),
+    ).rejects.toMatchObject({ name: "EveWorkflowFailure" });
+    expect(emitTerminalSessionFailureStep).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: expect.stringContaining("does not report task admissions"),
+        }),
+      }),
+    );
+    expect(terminateChildSessionsStep).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionState }),
+    );
+  });
+
   it("omits caller resolution, binding, and settlement steps for a root turn", async () => {
     const sessionState = createBaseSessionState();
     vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
@@ -935,6 +972,7 @@ describe("workflowEntry", () => {
         turnResult({ action: "park", sessionState }),
         {
           action: {
+            admittedTaskIds: [],
             isError: true,
             kind: "done",
             output: "follow-up failed",
@@ -1041,6 +1079,7 @@ describe("workflowEntry", () => {
     vi.mocked(resolveInitialTurnCallerStep).mockResolvedValueOnce(caller);
     const first = turnResult({
       action: "park",
+      admittedTaskIds: ["task_nested"],
       sessionState: pending,
       settled: { output: "Reviewing...", usage: acknowledgementUsage },
     });
@@ -1126,7 +1165,7 @@ describe("workflowEntry", () => {
     });
   });
 
-  it("discovers nested tasks from a non-settled approval park", async () => {
+  it("retains task admissions from a non-settled approval park", async () => {
     const caller = {
       callId: "call-1",
       replyTo: { kind: "hook" as const, token: "parent-turn" },
@@ -1138,7 +1177,11 @@ describe("workflowEntry", () => {
       createSessionStepResultForMock(createBaseSessionState()),
     );
     vi.mocked(resolveInitialTurnCallerStep).mockResolvedValueOnce(caller);
-    const approvalPark = turnResult({ action: "park", sessionState: pending });
+    const approvalPark = turnResult({
+      action: "park",
+      admittedTaskIds: ["task_nested"],
+      sessionState: pending,
+    });
     if (approvalPark.kind !== "turn-result") throw new Error("Expected a turn result.");
     const acknowledgement = turnResult({
       action: "park",
@@ -1212,6 +1255,7 @@ describe("workflowEntry", () => {
     const completed = createNestedTaskSessionState({ completed: true, sequence: 2 });
     const first = turnResult({
       action: "done",
+      admittedTaskIds: ["task_nested"],
       output: "Premature fallback",
       sessionState: pending,
       usageDelta: usage(4, 1),
@@ -1279,6 +1323,7 @@ describe("workflowEntry", () => {
     vi.mocked(resolveInitialTurnCallerStep).mockResolvedValueOnce(caller);
     const first = turnResult({
       action: "park",
+      admittedTaskIds: ["task_first", "task_third"],
       sessionState: pending,
       settled: { output: "Reviews started", usage: usage(4, 1) },
     });
@@ -1352,6 +1397,7 @@ describe("workflowEntry", () => {
       turnControls: [
         turnResult({
           action: "park",
+          admittedTaskIds: ["task_nested"],
           sessionState: pending,
           settled: { isError: true, output: "child failed", usage: usage(10, 2) },
         }),
@@ -1400,6 +1446,7 @@ describe("workflowEntry", () => {
     });
     const first = turnResult({
       action: "park",
+      admittedTaskIds: ["task_nested"],
       sessionState: pending,
       settled: { output: "Reviewing...", usage: usage(10, 2) },
     });
@@ -1413,6 +1460,7 @@ describe("workflowEntry", () => {
         },
         {
           action: {
+            admittedTaskIds: [],
             cancelled: true,
             kind: "park",
             serializedContext: { "eve.sessionId": "wrun_test_123" },
@@ -1704,6 +1752,7 @@ describe("workflowEntry", () => {
       turnControls: [
         {
           action: {
+            admittedTaskIds: [],
             cancelled: true,
             kind: "park",
             serializedContext: { "eve.sessionId": "wrun_test_123" },
@@ -1741,6 +1790,7 @@ describe("workflowEntry", () => {
       turnControls: [
         {
           action: {
+            admittedTaskIds: [],
             cancelled: true,
             kind: "park",
             serializedContext: { "eve.sessionId": "wrun_test_123" },
@@ -1785,6 +1835,7 @@ describe("workflowEntry", () => {
       turnControls: [
         {
           action: {
+            admittedTaskIds: [],
             cancelled: true,
             kind: "park",
             serializedContext: { "eve.sessionId": "wrun_test_123" },
@@ -1946,6 +1997,7 @@ describe("workflowEntry", () => {
       turnControls: [
         {
           action: {
+            admittedTaskIds: [],
             kind: "park",
             serializedContext: { "eve.sessionId": "wrun_test_123" },
             sessionState,
@@ -2341,12 +2393,14 @@ function turnResult(input: {
     readonly usage?: TokenUsage;
   };
   readonly usageDelta?: TokenUsage;
+  readonly admittedTaskIds?: readonly string[];
 }): TurnControlPayload {
   const serializedContext = input.serializedContext ?? { "eve.sessionId": "wrun_test_123" };
   if (input.action === "done") {
     return {
       action: {
         kind: "done",
+        admittedTaskIds: input.admittedTaskIds ?? [],
         output: input.output ?? "",
         serializedContext,
         sessionState: input.sessionState,
@@ -2358,6 +2412,7 @@ function turnResult(input: {
   const park = {
     authorizationAttemptIds: input.authorizationAttemptIds,
     kind: "park" as const,
+    admittedTaskIds: input.admittedTaskIds ?? [],
     serializedContext,
     sessionState: input.sessionState,
   };

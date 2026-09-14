@@ -324,6 +324,8 @@ export interface ToolLoopHarnessConfig {
    * for terminal assistant text inside the current invocation.
    */
   readonly mode: RunMode;
+  /** Defers task-mode session completion to the owning workflow driver. */
+  readonly deferSessionCompletion?: boolean;
   /** Whether this node enables framework background-task behavior. */
   readonly tasksEnabled?: boolean;
   /**

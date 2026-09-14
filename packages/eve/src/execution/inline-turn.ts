@@ -73,6 +73,7 @@ export async function runInlineTurn(input: {
       turnStep({
         abortSignal: control.signal,
         acceptedDeploymentId,
+        deferSessionCompletion: true,
         input: nextStepInput,
         parentWritable: input.parentWritable,
         serializedContext: cursor.serializedContext,
@@ -98,6 +99,7 @@ export async function runInlineTurn(input: {
         action: {
           isError: result.isError,
           kind: "done",
+          admittedTaskIds: [],
           output: result.output ?? "",
           serializedContext: result.serializedContext,
           sessionState: result.sessionState,
@@ -126,6 +128,7 @@ export async function runInlineTurn(input: {
           authorizationAttemptIds: result.authorizationAttemptIds,
           authorizationNames: result.authorizationNames,
           kind: "park",
+          admittedTaskIds: [],
           serializedContext: result.serializedContext,
           sessionState: result.sessionState,
           settled: result.settled,

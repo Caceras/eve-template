@@ -25,6 +25,15 @@ export interface DeployInput {
   readonly service: string;
 }
 
+export async function gatedBackgroundResultWorkflow(
+  _input: Record<string, never>,
+  ctx: WorkflowToolContext,
+): Promise<string> {
+  "use workflow";
+  using gate = createHook<string>({ token: `background-result:${ctx.session.id}` });
+  return await gate;
+}
+
 export async function deployServiceWorkflow(
   input: DeployInput,
   ctx: WorkflowToolContext,

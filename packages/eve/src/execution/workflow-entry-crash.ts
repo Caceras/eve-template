@@ -1,6 +1,6 @@
 import type { TurnCaller } from "#channel/types.js";
 import type { DurableSessionState } from "#execution/durable-session-store.js";
-import type { TokenUsage } from "#shared/token-usage.js";
+import type { Invocation } from "#execution/invocation.js";
 import { resolveInitialTurnCallerStep } from "#subagents/parent-notification.js";
 
 const SAFE_OUTER_WORKFLOW_FAILURE_MESSAGE =
@@ -23,13 +23,8 @@ const SAFE_OUTER_WORKFLOW_FAILURE_MESSAGE =
  * instead of mirroring it here.
  */
 export interface CrashCleanupState {
-  // The caller whose awaited reply is still unsettled, so the catch can
-  // reject it with the error instead of leaving it parked forever.
-  // Populated for every session; only conversation-mode paths read it.
-  caller: TurnCaller | undefined;
-  // Usage consumed by successful child turns whose caller notification is
-  // deferred until their nested task results are available.
-  callerUsage?: TokenUsage;
+  // The outstanding answer and its deferred usage remain reachable on failure.
+  invocation: Invocation;
   // Whether `resolveInitialTurnCallerStep` has run. `caller: undefined` is
   // ambiguous on its own: it also means "resolved and later cleared because
   // its reply settled". This flag lets the crash path tell that apart from
@@ -78,7 +73,7 @@ export async function resolveCallerForCrash(
   serializedContext: Record<string, unknown>,
 ): Promise<TurnCaller | undefined> {
   if (state.callerResolved) {
-    return state.caller;
+    return state.invocation.caller;
   }
   try {
     return await resolveInitialTurnCallerStep({ serializedContext });

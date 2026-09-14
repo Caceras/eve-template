@@ -30,7 +30,7 @@ describe("resolveDeliveryPolicy", () => {
           isFirstTurn,
           taskDeliveryPhase,
         }),
-      ).toEqual({ allowsEmptyDelivery, emitsAssistantText: !allowsEmptyDelivery, instruction });
+      ).toEqual({ allowsEmptyDelivery, instruction });
     },
   );
 
@@ -43,7 +43,7 @@ describe("resolveDeliveryPolicy", () => {
         isFirstTurn: false,
         taskDeliveryPhase: "pending",
       }),
-    ).toEqual({ allowsEmptyDelivery: true, emitsAssistantText: true });
+    ).toEqual({ allowsEmptyDelivery: true });
   });
 
   it.each([
@@ -58,7 +58,7 @@ describe("resolveDeliveryPolicy", () => {
         isFirstTurn: true,
         taskDeliveryPhase: "initiating",
       }),
-    ).toEqual({ allowsEmptyDelivery: false, emitsAssistantText: true });
+    ).toEqual({ allowsEmptyDelivery: false });
   });
 
   it("acknowledges background work launched on a later turn", () => {
@@ -72,7 +72,6 @@ describe("resolveDeliveryPolicy", () => {
       }),
     ).toEqual({
       allowsEmptyDelivery: false,
-      emitsAssistantText: true,
       instruction: TASK_DELIVERY_INITIATING_INSTRUCTION,
     });
   });

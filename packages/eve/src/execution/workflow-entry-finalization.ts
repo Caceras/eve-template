@@ -57,6 +57,7 @@ export async function finalizeDone(input: {
   readonly action: NextDriverAction & { readonly kind: "done" };
   readonly caller: TurnCaller | undefined;
   readonly callerUsage?: TokenUsage;
+  readonly driverWritable: WritableStream<Uint8Array>;
   readonly mode: RunMode;
   readonly terminalState?: { terminalEmitted: boolean };
 }): Promise<{ readonly output: unknown }> {
@@ -69,6 +70,13 @@ export async function finalizeDone(input: {
   });
   if (input.terminalState !== undefined) input.terminalState.terminalEmitted = true;
   if (input.mode === "task") {
+    if (!failed) {
+      await emitTerminalSessionCompletionStep({
+        parentWritable: input.driverWritable,
+        serializedContext,
+        sessionState: input.action.sessionState,
+      });
+    }
     await fireSessionCallbackStep({
       error: failed ? output : undefined,
       output: failed ? undefined : output,

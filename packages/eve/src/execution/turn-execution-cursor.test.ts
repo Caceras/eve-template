@@ -63,6 +63,7 @@ describe("TurnExecutionCursor", () => {
       payload: {
         action: {
           kind: "done",
+          admittedTaskIds: [],
           output: "ok",
           serializedContext: { revision: 2 },
           sessionState: finalState,

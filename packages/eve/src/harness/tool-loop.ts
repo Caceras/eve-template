@@ -2784,6 +2784,7 @@ async function handleStepResult(input: {
   // and read straight off the session here.
   if (config.mode === "task") {
     return finishTaskTurn({
+      deferSessionCompletion: config.deferSessionCompletion === true,
       emissionState,
       emit,
       history: promptMessages,
@@ -2850,6 +2851,7 @@ async function emitStructuredResult(
   emissionState: ReturnType<typeof getHarnessEmissionState>,
   structured: JsonValue,
   mode: RunMode,
+  deferSessionCompletion: boolean,
 ): Promise<ReturnType<typeof getHarnessEmissionState>> {
   await emit(
     createResultCompletedEvent({
@@ -2859,7 +2861,7 @@ async function emitStructuredResult(
       turnId: emissionState.turnId,
     }),
   );
-  return emitTurnEpilogue(emit, emissionState, mode);
+  return emitTurnEpilogue(emit, emissionState, mode, deferSessionCompletion ? "none" : undefined);
 }
 
 /**
@@ -2868,6 +2870,7 @@ async function emitStructuredResult(
  * structured value — or the plain assistant text — is the run's output.
  */
 async function finishTaskTurn(input: {
+  readonly deferSessionCompletion: boolean;
   readonly emissionState: ReturnType<typeof getHarnessEmissionState>;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
   readonly history: readonly HarnessModelMessage[];
@@ -2882,7 +2885,12 @@ async function finishTaskTurn(input: {
 
   if (schema === undefined) {
     if (emit) {
-      emissionState = await emitTurnEpilogue(emit, emissionState, "task");
+      emissionState = await emitTurnEpilogue(
+        emit,
+        emissionState,
+        "task",
+        input.deferSessionCompletion ? "none" : undefined,
+      );
       session = setHarnessEmissionState(session, emissionState);
     }
     return { next: { done: true, output: stepOutput ?? "" }, session };
@@ -2906,7 +2914,13 @@ async function finishTaskTurn(input: {
 
   session = persistStructuredAssistantTurn(session, history, structured);
   if (emit) {
-    emissionState = await emitStructuredResult(emit, emissionState, structured, "task");
+    emissionState = await emitStructuredResult(
+      emit,
+      emissionState,
+      structured,
+      "task",
+      input.deferSessionCompletion === true,
+    );
     session = setHarnessEmissionState(session, emissionState);
   }
   return { next: { done: true, output: structured }, session };
@@ -2960,7 +2974,13 @@ async function finishConversationTurn(input: {
 
   session = persistStructuredAssistantTurn(session, history, structured);
   if (emit) {
-    emissionState = await emitStructuredResult(emit, emissionState, structured, "conversation");
+    emissionState = await emitStructuredResult(
+      emit,
+      emissionState,
+      structured,
+      "conversation",
+      false,
+    );
     session = setHarnessEmissionState(session, emissionState);
   }
   const settledTurn = { output: structured } satisfies SettledTurn;

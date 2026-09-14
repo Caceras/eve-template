@@ -28,6 +28,8 @@ import type {
 import type { ResolvedToolDefinition } from "#runtime/types.js";
 import { toInputSchema } from "#tools/schema.js";
 import { defineHook } from "#public/definitions/hook.js";
+import { defineWorkflowTool } from "#tools/workflow-definition.js";
+import { gatedBackgroundResultWorkflow } from "#internal/testing/workflow-tool-fixtures.js";
 
 function buildSerializedContext(overrides: {
   acceptedDeploymentId?: string;
@@ -202,6 +204,96 @@ function expectSingleTurn(events: readonly MessageStreamEvent[], turnId: string)
 }
 
 describe("workflowEntry integration", () => {
+  it.each([
+    { mode: "conversation", inline: false },
+    { mode: "conversation", inline: true },
+    { mode: "task", inline: false },
+    { mode: "task", inline: true },
+  ] as const)(
+    "keeps a delegated $mode invocation open until its background result is consumed (inline=$inline)",
+    async ({ mode, inline }) => {
+      vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_background");
+      const runtime = await createTestRuntime({
+        agent: { name: `workflow-entry-background-${mode}-${inline}` },
+        modules: [
+          {
+            logicalPath: "tools/gated_result.ts",
+            loadNamespace: async () => ({
+              default: defineWorkflowTool({
+                description: "Wait for a controlled background result.",
+                execution: "background",
+                inputSchema: { type: "object", properties: {}, additionalProperties: false },
+                execute: gatedBackgroundResultWorkflow,
+              }),
+            }),
+          },
+        ],
+      });
+      const continuationToken = `subagent:parent-session:background-${mode}-${inline}`;
+      await runtime.run(async () => {
+        const run = await start(workflowEntry, [
+          {
+            input: { message: "Use gated_result to get the result." },
+            serializedContext: buildSerializedContext({
+              acceptedDeploymentId: inline ? "dpl_background" : undefined,
+              channelKind: "subagent",
+              channelState: {
+                callId: `background-${mode}`,
+                parentContinuationToken: continuationToken,
+                parentSessionId: "parent-session",
+                subagentName: "researcher",
+              },
+              continuationToken,
+              mode,
+            }),
+          },
+        ]);
+        const stream = captureTurnEvents(run);
+        try {
+          const acknowledgement = await stream.nextTurn();
+          expect(acknowledgement.at(-1)?.type, JSON.stringify(acknowledgement)).toBe(
+            "session.waiting",
+          );
+          expect(filterEventsByType(acknowledgement, "message.completed")).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                data: expect.objectContaining({
+                  message: expect.stringContaining("launch acknowledgement"),
+                }),
+              }),
+            ]),
+          );
+          const notifyStep = mode === "task" ? "notifyDelegatedParentStep" : "notifyTurnCallerStep";
+          expect(await listStepNames(run.runId)).not.toContain(notifyStep);
+
+          const world = await getWorld();
+          const token = `background-result:${run.runId}`;
+          await vi.waitFor(async () => {
+            expect(await world.hooks.getByToken(token)).toBeDefined();
+          });
+          await resumeHook(token, "BACKGROUND-RESULT-CONSUMED");
+
+          const result = await waitForRuntimeActionResult(run.runId, `background-${mode}`);
+          expect(result).toMatchObject({
+            kind: "runtime-action-result",
+            results: [{ output: expect.stringContaining("BACKGROUND-RESULT-CONSUMED") }],
+          });
+          expect(
+            (await listStepNames(run.runId)).filter((name) => name === notifyStep),
+          ).toHaveLength(1);
+          if (mode === "task") {
+            await expect(run.returnValue).resolves.toMatchObject({
+              output: expect.stringContaining("BACKGROUND-RESULT-CONSUMED"),
+            });
+          }
+        } finally {
+          stream.dispose();
+          if ((await run.status) !== "completed") await run.cancel();
+        }
+      });
+    },
+  );
+
   it("resumes normal follow-ups after an interactive authorization callback", async () => {
     const { completeCalls, runtime } = await createWeatherAuthRuntime(
       "workflow-entry-auth-followup",
@@ -1148,6 +1240,7 @@ describe("workflowEntry integration", () => {
   });
 
   it("completes immediately in task mode", async () => {
+    vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_task");
     const runtime = await createTestRuntime({ agent: { name: "workflow-entry-task" } });
 
     await runtime.run(async () => {
@@ -1155,12 +1248,25 @@ describe("workflowEntry integration", () => {
         {
           input: { message: "hello there" },
           serializedContext: buildSerializedContext({
+            acceptedDeploymentId: "dpl_task",
             channelKind: "http",
             continuationToken: "http:workflow-entry-task",
             mode: "task",
           }),
         },
       ]);
+
+      const stream = captureTurnEvents(run);
+      try {
+        const events = await stream.nextTurn();
+        expect(filterEventsByType(events, "session.waiting")).toHaveLength(0);
+        expect(filterEventsByType(events, "session.completed")).toHaveLength(1);
+        expect(
+          events.find((event) => event.type === "session.completed")?.meta?.deliveryIds,
+        ).toEqual(["delivery-initial"]);
+      } finally {
+        stream.dispose();
+      }
 
       await expect(run.returnValue).resolves.toEqual({
         output: expect.stringContaining("hello there"),
@@ -1171,6 +1277,7 @@ describe("workflowEntry integration", () => {
 
   it("can delete the sandbox from a session.completed hook", async () => {
     let deletions = 0;
+    let completedTurn: { readonly id: string; readonly sequence: number } | undefined;
     const runtime = await createTestRuntime({
       agent: { name: "workflow-entry-task-delete-sandbox" },
       modules: [
@@ -1180,6 +1287,7 @@ describe("workflowEntry integration", () => {
             default: defineHook({
               events: {
                 async "session.completed"(_event, ctx) {
+                  completedTurn = ctx.session.turn;
                   const sandbox = await ctx.getSandbox();
                   await sandbox.delete();
                   deletions += 1;
@@ -1207,6 +1315,7 @@ describe("workflowEntry integration", () => {
         output: expect.stringContaining("hello there"),
       });
       expect(deletions).toBe(1);
+      expect(completedTurn).toEqual({ id: "turn_0", sequence: 0 });
     });
   });
 

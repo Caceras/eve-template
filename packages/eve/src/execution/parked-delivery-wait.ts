@@ -12,6 +12,7 @@ import {
 } from "#execution/wire/session-inbox-wire.js";
 import { coalesceDeliveries } from "#harness/messages.js";
 import { getSessionTaskCohorts } from "#tasks/session-task-cohorts.js";
+import { pendingCompletionGroups, readTaskCompletion } from "#tasks/completion-delivery.js";
 
 type NextSessionAction =
   | { readonly kind: "clear" }
@@ -69,6 +70,7 @@ export async function nextTurnDelivery(input: {
   readonly cancelledTaskIds?: Set<string>;
   readonly commandInbox: SessionCommandInbox;
   readonly deferDeliveries?: boolean;
+  readonly completionRelease?: "all" | "available";
   readonly driverWritable: WritableStream<Uint8Array>;
   readonly seenTaskDeliveries?: Set<string>;
   readonly stateCursor: SessionStateCursor;
@@ -91,6 +93,7 @@ async function awaitNextTurnDelivery(input: {
   readonly cancelledTaskIds?: Set<string>;
   readonly commandInbox: SessionCommandInbox;
   readonly deferDeliveries?: boolean;
+  readonly completionRelease?: "all" | "available";
   readonly driverWritable: WritableStream<Uint8Array>;
   readonly seenTaskDeliveries?: Set<string>;
   readonly stateCursor: SessionStateCursor;
@@ -104,6 +107,7 @@ async function awaitNextTurnDelivery(input: {
       cancelledTaskIds,
       commandInbox: input.commandInbox,
       deferDeliveries: input.deferDeliveries,
+      completionRelease: input.completionRelease,
       seenTaskDeliveries,
       stateCursor: input.stateCursor,
     });
@@ -148,6 +152,7 @@ async function waitForNextSessionAction(input: {
   readonly cancelledTaskIds: Set<string>;
   readonly commandInbox: SessionCommandInbox;
   readonly deferDeliveries?: boolean;
+  readonly completionRelease?: "all" | "available";
   readonly seenTaskDeliveries: Set<string>;
   readonly stateCursor: SessionStateCursor;
 }): Promise<NextSessionAction> {
@@ -162,6 +167,7 @@ async function waitForNextSessionAction(input: {
         input.bufferedDeliveries,
         getSessionTaskCohorts(input.stateCursor.sessionState.snapshot?.session.state),
         input.cancelledTaskIds,
+        input.completionRelease ?? "all",
       );
       if (delivery !== undefined) return { delivery, kind: "delivery" };
     }
@@ -261,6 +267,7 @@ function takeBufferedTurnDelivery(
   bufferedDeliveries: DeliverHookPayload[],
   cohorts: ReturnType<typeof getSessionTaskCohorts>,
   cancelledTaskIds: ReadonlySet<string>,
+  release: "all" | "available",
 ): DeliverHookPayload | undefined {
   const retained = bufferedDeliveries.filter(
     (delivery) => !isCancelledTaskDelivery(delivery, cancelledTaskIds),
@@ -273,12 +280,12 @@ function takeBufferedTurnDelivery(
       return taskId === undefined ? [] : [taskId];
     }),
   );
-  const pendingCohorts = new Set<string>();
-  for (const [taskId, cohort] of cohorts) {
-    if (!cohort.settled && !completed.has(taskId) && !cancelledTaskIds.has(taskId)) {
-      pendingCohorts.add(cohort.cohortId);
-    }
-  }
+  const pendingCohorts = pendingCompletionGroups({
+    cohorts,
+    completedTaskIds: completed,
+    cancelledTaskIds,
+    release,
+  });
   let index = bufferedDeliveries.findIndex((delivery) => {
     const cohort = completionCohort(delivery, cohorts);
     return cohort === undefined || !pendingCohorts.has(cohort);
@@ -349,7 +356,8 @@ function completionCohort(
 }
 
 function completionTaskId(delivery: DeliverHookPayload): string | undefined {
-  const suffix = ":ready:completed";
-  if (delivery.caller !== undefined || !delivery.taskDeliveryId?.endsWith(suffix)) return undefined;
-  return delivery.taskDeliveryId.slice(0, -suffix.length);
+  const completion = readTaskCompletion(delivery);
+  return delivery.caller === undefined && completion?.status === "completed"
+    ? completion.taskId
+    : undefined;
 }

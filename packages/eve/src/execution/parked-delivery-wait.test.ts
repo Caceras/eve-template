@@ -503,6 +503,24 @@ describe("buffered task completion batching", () => {
   beforeEach(() => vi.mocked(routeDeliverToChildren).mockReset());
   afterEach(() => vi.mocked(routeDeliverToChildren).mockReset());
 
+  it("can batch available results without waiting for the remaining sibling", async () => {
+    const input = batchingInput(3);
+    const deliveries = [completion("task_0"), completion("task_1")];
+    const bufferedDeliveries = [...deliveries];
+    const next = await nextTurnDelivery({
+      ...input,
+      bufferedDeliveries,
+      completionRelease: "available",
+    });
+
+    expect(next).toMatchObject({
+      kind: "turn",
+      delivery: { payloads: deliveries.flatMap((delivery) => delivery.payloads) },
+    });
+    expect(bufferedDeliveries).toEqual([]);
+    expect(routeDeliverToChildren).toHaveBeenCalledTimes(1);
+  });
+
   it("delivers 100 buffered sibling results and their metadata in one parent turn", async () => {
     const input = batchingInput();
     const deliveries = Array.from({ length: 100 }, (_, index) => completion(`task_${index}`));

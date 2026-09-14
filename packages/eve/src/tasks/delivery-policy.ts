@@ -6,41 +6,38 @@ import {
 
 export interface DeliveryPolicy {
   readonly allowsEmptyDelivery: boolean;
-  readonly emitsAssistantText: boolean;
   readonly instruction?: string;
 }
 
 const POLICIES = {
   conditional: {
     allowsEmptyDelivery: true,
-    emitsAssistantText: false,
     instruction: CONDITIONAL_DELIVERY_INSTRUCTION,
   },
   initiating: {
     allowsEmptyDelivery: false,
-    emitsAssistantText: true,
     instruction: TASK_DELIVERY_INITIATING_INSTRUCTION,
   },
-  normal: { allowsEmptyDelivery: false, emitsAssistantText: true },
+  normal: { allowsEmptyDelivery: false },
   pending: {
     allowsEmptyDelivery: true,
-    emitsAssistantText: true,
   },
   settled: {
     allowsEmptyDelivery: false,
-    emitsAssistantText: true,
     instruction: TASK_DELIVERY_SETTLED_INSTRUCTION,
   },
 } as const satisfies Record<string, DeliveryPolicy>;
 
-/** Resolves one policy for both model prompting and empty-response recovery. */
-export function resolveDeliveryPolicy(input: {
+export interface TurnDeliveryContext {
   readonly hasOutputSchema: boolean;
   readonly isChild: boolean;
   readonly isFirstTurn: boolean;
   readonly hasScheduleProvenance: boolean;
   readonly taskDeliveryPhase: "none" | "initiating" | "pending" | "settled" | undefined;
-}): DeliveryPolicy {
+}
+
+/** Resolves model prompting and empty-response recovery, independently of publication. */
+export function resolveDeliveryPolicy(input: TurnDeliveryContext): DeliveryPolicy {
   // These runs have an explicit output consumer, so silence would violate the call contract.
   if (input.hasOutputSchema || input.isChild) return POLICIES.normal;
   if (input.taskDeliveryPhase === "pending") return POLICIES.pending;

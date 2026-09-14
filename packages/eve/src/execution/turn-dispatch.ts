@@ -91,6 +91,7 @@ async function runAndAwaitTurn(
     const turnInput = {
       capabilities: input.capabilities,
       completionToken: control.token,
+      deferSessionCompletion: true,
       delivery: input.delivery,
       initialCancellation: input.initialCancellation,
       initialStep: input.initialStep,

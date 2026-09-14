@@ -86,7 +86,7 @@ import {
   resolveInitiatingTaskContext,
   resolveTaskDeliveryContext,
 } from "#tasks/delivery-context.js";
-import { resolveDeliveryPolicy } from "#tasks/delivery-policy.js";
+import { shouldPublishAssistantText } from "#tasks/publication-policy.js";
 import {
   readRetainedBackgroundToolResult,
   runBackgroundStep,
@@ -388,7 +388,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   }
 
   const writer = input.parentWritable.getWriter();
-  const deliveryPolicy = resolveDeliveryPolicy({
+  const publishesAssistantText = shouldPublishAssistantText({
     hasOutputSchema: initialSession.outputSchema !== undefined,
     hasScheduleProvenance:
       initialEmissionState.sequence === 0 && ctx.get(ScheduleIdKey) !== undefined,
@@ -398,11 +398,11 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   });
 
   const emit = async (event: UnstampedMessageStreamEvent): Promise<MessageStreamEvent> => {
-    if (!deliveryPolicy.emitsAssistantText && event.type === "message.appended") {
+    if (!publishesAssistantText && event.type === "message.appended") {
       return stampMessageStreamEvent(event, ctx.get(TurnDeliveryIdsKey));
     }
     const deliverableEvent =
-      !deliveryPolicy.emitsAssistantText && event.type === "message.completed"
+      !publishesAssistantText && event.type === "message.completed"
         ? { ...event, data: { ...event.data, message: null } }
         : event;
     const toEmit = await callAdapterEventHandler(adapter, deliverableEvent, adapterCtx);
@@ -495,6 +495,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       clearOnly: input.input?.kind === "clear",
       compactOnly: input.input?.kind === "compact",
       createRuntime: createWorkflowRuntime,
+      deferSessionCompletion: input.deferSessionCompletion,
       handleEvent,
       historyProjector: history.projector,
       historyView: history.prepare(modelSession),
@@ -639,7 +640,13 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       writer.releaseLock();
       throw new Error(TASK_DONE_WITH_PENDING_INPUT_ERROR_MESSAGE);
     }
-    await writer.close();
+    if (input.deferSessionCompletion !== true) {
+      await writer.close();
+    } else {
+      // The owning driver must decide whether this invocation is terminal
+      // after it records task admissions and observes completion deliveries.
+      writer.releaseLock();
+    }
     const sessionTotals = getTurnUsageState(stepResult.session.state)?.session;
     return {
       action: "done",

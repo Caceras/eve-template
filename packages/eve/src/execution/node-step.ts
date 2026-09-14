@@ -66,6 +66,8 @@ export interface CreateExecutionNodeStepInput {
   readonly clearOnly?: boolean;
   /** Runs only a forced context compaction and returns to the parked session. */
   readonly compactOnly?: boolean;
+  /** Defers task-mode session completion to the owning workflow driver. */
+  readonly deferSessionCompletion?: boolean;
   /**
    * Runtime constructor used by the subagent tool executor to start
    * delegated child runs on the same workflow runtime as the parent.
@@ -106,6 +108,7 @@ export function createExecutionNodeStep(input: CreateExecutionNodeStepInput): St
     capabilities: input.capabilities,
     clearOnly: input.clearOnly,
     compactOnly: input.compactOnly,
+    deferSessionCompletion: input.deferSessionCompletion,
     workflow: input.node.agent.workflowTool !== undefined,
     workflowMaxSubagents: input.workflowMaxSubagents,
     handleEvent: input.handleEvent,
