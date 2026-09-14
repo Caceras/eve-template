@@ -131,17 +131,21 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
 
   let durableSession = await readDurableSession(input.sessionState);
   const ctx = await deserializeContext(input.serializedContext);
-  if (rawInput.input?.kind === "deliver") ctx.set(TurnTaskDeliveryKey, "none");
+  if (rawInput.input?.kind === "deliver") {
+    ctx.set(TurnTaskDeliveryKey, "none");
+  }
   const adapter = ctx.require(ChannelKey);
   const bundle = ctx.require(BundleKey);
   const effectiveAgent = resolveEffectiveAgentRuntime(bundle, ctx);
 
-  // Prefer eve's active local origin so getHookUrl() works during tool execution.
+  // Populate the callback base URL so getHookUrl() works during tool
+  // execution, preferring eve's active local origin over metadata fallback.
   try {
     const { getWorkflowMetadata } = await import("#compiled/@workflow/core/index.js");
     const metadata = getWorkflowMetadata();
-    if (typeof metadata.url === "string")
+    if (typeof metadata.url === "string") {
       ctx.set(CallbackBaseUrlKey, resolveWorkflowCallbackBaseUrl(metadata.url));
+    }
   } catch {
     // Outside a workflow context (e.g. tests) — getHookUrl will return undefined.
   }
@@ -167,7 +171,9 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
         state: clearPendingAuthorization(durableSession.state, matchedAttemptIds),
       };
       completedAuths = matches;
-      if (remainingPayloads.length === 0) input = { ...input, input: undefined };
+      if (remainingPayloads.length === 0) {
+        input = { ...input, input: undefined };
+      }
     }
   }
 
@@ -292,7 +298,9 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       state: durableSession.state,
       turnId: activeTurnId(initialEmissionState),
     });
-    if (taskContext !== undefined) ctx.set(TurnTaskDeliveryKey, taskContext.phase);
+    if (taskContext !== undefined) {
+      ctx.set(TurnTaskDeliveryKey, taskContext.phase);
+    }
   }
 
   if (input.input?.kind === "deliver") {
@@ -479,6 +487,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       session: lifecycleSession,
       turnAgent: effectiveAgent.turnAgent,
     });
+    const modelSession = refreshedSession;
 
     const step = createExecutionNodeStep({
       abortSignal: input.abortSignal,
@@ -488,7 +497,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       createRuntime: createWorkflowRuntime,
       handleEvent,
       historyProjector: history.projector,
-      historyView: history.prepare(refreshedSession),
+      historyView: history.prepare(modelSession),
       instrumentation,
       mode,
       modelResolutionScope: {
@@ -498,7 +507,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       node: effectiveNode,
       workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
     });
-    return step(refreshedSession, stepInput);
+    return step(modelSession, stepInput);
   };
 
   let completedModelCall: CompletedModelCallCheckpoint | undefined;
