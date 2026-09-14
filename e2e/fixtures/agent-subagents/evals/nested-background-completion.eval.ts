@@ -7,7 +7,7 @@ const REVIEW_RESULT = "REVIEW_VERDICT_CEDAR_947";
 
 type SessionDriver = Pick<
   EveEvalSession,
-  "pendingInputRequests" | "respondAll" | "sessionId" | "state"
+  "pendingInputRequests" | "respond" | "sessionId" | "state"
 >;
 
 interface SessionCursor {
@@ -58,7 +58,9 @@ export default defineEval({
     const childFinal = t.target.watchTurn(remoteCall.data.childSessionId, {
       startIndex: requireStreamIndex(childAcknowledgementLive.session),
     });
-    const released = await blocked.driver.respondAll("approve");
+    const released = await blocked.driver.respond([
+      { optionId: "approve", requestId: blocked.requestId },
+    ]);
     released.noFailedActions();
     const completedChild = await childFinal.result();
     completedChild.expectOk();
@@ -89,22 +91,24 @@ export default defineEval({
 async function waitForReviewGate(
   t: EveEvalContext,
   initial: SessionCursor,
-): Promise<SessionCursor> {
-  let cursor = initial;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    if (
-      cursor.driver.pendingInputRequests.some(
-        (request) => request.action.toolName === "review_gate",
-      )
-    ) {
-      return cursor;
-    }
-    const live = watchNextTurn(t, cursor.driver, "review gate wait");
-    const turn = await live.result();
-    turn.noFailedActions();
-    cursor = { driver: live.session, events: [...cursor.events, ...turn.events] };
-  }
-  throw new Error("The nested reviewer did not reach its approval gate after five turns.");
+): Promise<SessionCursor & { readonly requestId: string }> {
+  const pending = initial.driver.pendingInputRequests.find(
+    (request) => request.action.toolName === "review_gate",
+  );
+  if (pending !== undefined) return { ...initial, requestId: pending.requestId };
+
+  const live = watchNextTurn(t, initial.driver, "review gate wait");
+  const requested = await live.waitForEvent("input.requested", {
+    data: {
+      requests: (requests) => requests.some((request) => request.action.toolName === "review_gate"),
+    },
+  });
+  const request = requested.data.requests.find(
+    (candidate) => candidate.action.toolName === "review_gate",
+  );
+  if (request === undefined) throw new Error("The nested reviewer emitted no approval request.");
+  const events = [...initial.events, ...live.events];
+  return { driver: live.session, events, requestId: request.requestId };
 }
 
 async function waitForMessage(
