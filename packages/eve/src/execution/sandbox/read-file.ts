@@ -140,36 +140,42 @@ export async function executeReadFileOnSandbox(
   // ── Number and truncate lines, cap at MAX_OUTPUT_BYTES ──────────────
   const outputLines: string[] = [];
   let outputBytes = 0;
-  let truncatedByBytes = false;
+  let truncatedWithinLine = false;
 
   for (let i = 0; i < selectedLines.length; i++) {
     const lineNumber = effectiveOffset + i;
-    const line = capLineLength(selectedLines[i] ?? "");
+    const originalLine = selectedLines[i] ?? "";
+    const line = capLineLength(originalLine);
     const numbered = `${lineNumber}: ${line}`;
     const lineBytes = Buffer.byteLength(numbered, "utf8") + 1; // +1 for \n
 
     if (outputBytes + lineBytes > MAX_OUTPUT_BYTES && outputLines.length > 0) {
-      truncatedByBytes = true;
       break;
     }
 
     outputLines.push(numbered);
+    truncatedWithinLine ||= line !== originalLine;
     outputBytes += lineBytes;
   }
 
   const content = outputLines.join("\n");
   const linesReturned = outputLines.length;
   const lastLineReturned = effectiveOffset + linesReturned - 1;
-  const isTruncated = lastLineReturned < totalLines || truncatedByBytes;
+  const hasLaterLines = lastLineReturned < totalLines;
+  const isTruncated = truncatedWithinLine || hasLaterLines;
 
   if (isTruncated) {
-    return {
-      content,
-      nextOffset: lastLineReturned + 1,
-      path: normalizedPath,
-      totalLines,
-      truncated: true,
-    };
+    if (hasLaterLines) {
+      return {
+        content,
+        nextOffset: lastLineReturned + 1,
+        path: normalizedPath,
+        totalLines,
+        truncated: true,
+      };
+    }
+
+    return { content, path: normalizedPath, totalLines, truncated: true };
   }
 
   return {

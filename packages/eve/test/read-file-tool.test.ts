@@ -200,8 +200,9 @@ describe("executeReadFileOnSandbox", () => {
 
     const outputLine = result.content.split("\n")[0] ?? "";
     expect(outputLine).toContain("[truncated]");
-    // Line prefix "1: " (3 chars) + 2000 chars + " [truncated]" = expected
     expect(outputLine.length).toBeLessThan(3000);
+    expect(result.truncated).toBe(true);
+    expect(result).not.toHaveProperty("nextOffset");
   });
 
   it("output caps at 50 KiB", async () => {

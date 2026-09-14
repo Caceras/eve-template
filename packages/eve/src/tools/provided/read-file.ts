@@ -53,7 +53,7 @@ export const readFile: ToolDefinition<ReadFileToolInput, ReadFileToolOutput> = d
     "- The offset parameter is the line number to start from (1-indexed).",
     "- To read later sections, call this tool again with a larger offset.",
     '- Contents are returned with each line prefixed by its line number as `<line>: <content>`. For example, if a file has contents "foo\\n", you will receive "1: foo\\n".',
-    "- Any line longer than 2000 characters is truncated.",
+    "- Use nextOffset to continue with later lines; use bash to inspect omitted content from a truncated line.",
     "- Call this tool in parallel when you know there are multiple files you want to read.",
     "- Avoid tiny repeated slices (30 line chunks). If you need more context, read a larger window.",
   ].join("\n"),
