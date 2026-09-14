@@ -70,6 +70,10 @@ export default defineEval({
     const doneTurn = await doneLive.result();
     doneTurn.expectOk();
     doneTurn.messageIncludes("SCHEDULED-EXPORT-DONE");
+    doneTurn.event("message.completed", {
+      data: (data) => data.finishReason !== "tool-calls" && data.message !== null,
+      count: 1,
+    });
     await t.require(
       doneTurn.events,
       satisfies(

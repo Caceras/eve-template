@@ -1,0 +1,109 @@
+import { defineEval } from "eve/evals";
+import { equals, satisfies } from "eve/evals/expect";
+
+const FINAL = "SCHEDULED-REMOTE-FINAL SCHEDULED-REMOTE-CHILD-RESULT";
+const PREMATURE = "SCHEDULED-REMOTE-PREMATURE-FALLBACK";
+
+/**
+ * The schedule creates a root session, so no TurnCaller exists. This E2E observes
+ * that boundary through the channel stream; TurnCaller absence itself has no event.
+ */
+export default defineEval({
+  description:
+    "A scheduled root suppresses its nonempty remote-agent launch fallback and delivers the late result exactly once.",
+  async test(t) {
+    if (!t.target.capabilities.devRoutes) {
+      t.skip("Target has no dev routes; schedule dispatch is dev-only.");
+    }
+
+    const dispatch = await t.target.dispatchSchedule("scheduled-remote");
+    await t.require(dispatch.scheduleId, equals("scheduled-remote"));
+    await t.require(
+      dispatch.sessionIds,
+      satisfies((ids: readonly string[]) => ids.length > 0, "schedule started a root session"),
+    );
+    const sessionId = dispatch.sessionIds[0]!;
+
+    const launch = await t.target.attachSession(sessionId);
+    launch.succeeded();
+    launch.calledTool("remote-loopback");
+    launch.event("subagent.completed", {
+      data: (data) => data.subagentName === "remote-loopback" && data.backgroundTask !== undefined,
+      count: 1,
+    });
+    launch.event("message.completed", {
+      data: (data) => data.finishReason !== "tool-calls" && data.message === null,
+      count: 1,
+    });
+    launch.notEvent("message.completed", {
+      data: (data) => data.finishReason !== "tool-calls" && data.message !== null,
+    });
+    await t.require(
+      launch.events,
+      satisfies(
+        (events: typeof launch.events) => !JSON.stringify(events).includes(PREMATURE),
+        "the adapter and channel suppress the premature fallback",
+      ),
+    );
+
+    if (launch.state === undefined) throw new Error("scheduled launch has no stream cursor");
+    const completedLive = t.target.watchTurn(sessionId, {
+      startIndex: launch.state.streamIndex,
+    });
+    const completed = await completedLive.result();
+    completed.expectOk();
+    completed.messageIncludes(FINAL);
+    await t.require(
+      completed.events,
+      satisfies(
+        (events: typeof completed.events) =>
+          events.some(
+            (event) =>
+              event.type === "message.received" &&
+              messageText(event.data.message).includes("is completed") &&
+              messageText(event.data.message).includes("SCHEDULED-REMOTE-CHILD-RESULT"),
+          ),
+        "the final reply follows the late remote-agent result",
+      ),
+    );
+    completed.event("message.completed", {
+      data: (data) =>
+        data.finishReason !== "tool-calls" &&
+        data.message !== null &&
+        JSON.stringify(data.message).includes(FINAL),
+      count: 1,
+    });
+
+    const allEvents = [...launch.events, ...completed.events];
+    await t.require(
+      allEvents,
+      satisfies(
+        (events: typeof allEvents) =>
+          events.filter(
+            (event) =>
+              event.type === "message.completed" &&
+              event.data.finishReason !== "tool-calls" &&
+              event.data.message !== null,
+          ).length === 1,
+        "exactly one final non-null reply crosses the channel boundary",
+      ),
+    );
+    t.noFailedActions();
+    t.succeeded();
+  },
+});
+
+function messageText(message: unknown): string {
+  if (typeof message === "string") return message;
+  if (!Array.isArray(message)) return "";
+  return message
+    .flatMap((part) =>
+      part !== null &&
+      typeof part === "object" &&
+      Reflect.get(part, "type") === "text" &&
+      typeof Reflect.get(part, "text") === "string"
+        ? [Reflect.get(part, "text") as string]
+        : [],
+    )
+    .join("\n");
+}

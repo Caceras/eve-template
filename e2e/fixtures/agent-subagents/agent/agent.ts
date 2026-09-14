@@ -5,6 +5,8 @@ import { mockModel } from "eve/evals";
 import {
   NESTED_COMPLETION_CHILD_SCENARIO,
   NESTED_COMPLETION_PARENT_SCENARIO,
+  SCHEDULED_REMOTE_CHILD_SCENARIO,
+  SCHEDULED_REMOTE_ROOT_SCENARIO,
   WORKSPACE_FORWARDING_MARKER,
   WORKSPACE_LOOKUP_MESSAGE,
 } from "../constants";
@@ -107,6 +109,30 @@ const nestedCompletionModel = mockModel({
   },
 });
 
+const scheduledRemoteModel = mockModel({
+  modelId: "scheduled-remote-completion",
+  respond(request) {
+    if (request.userMessages.some((message) => message.includes(SCHEDULED_REMOTE_CHILD_SCENARIO))) {
+      return "SCHEDULED-REMOTE-CHILD-RESULT";
+    }
+
+    const remote = completedTaskOutput(request.userMessages, "remote-loopback");
+    if (remote !== undefined) return `SCHEDULED-REMOTE-FINAL ${remote}`;
+    if (!request.toolResults.some((result) => result.id === "scheduled-remote")) {
+      return {
+        toolCalls: [
+          {
+            id: "scheduled-remote",
+            input: { message: SCHEDULED_REMOTE_CHILD_SCENARIO },
+            name: "remote-loopback",
+          },
+        ],
+      };
+    }
+    return "SCHEDULED-REMOTE-PREMATURE-FALLBACK";
+  },
+});
+
 function completedTaskOutput(messages: readonly string[], name: string): string | undefined {
   const prefix = "[Task state]\n";
   const state = [...messages].reverse().find((message) => message.startsWith(prefix));
@@ -160,6 +186,15 @@ export default defineAgent({
           )
         ) {
           return { model: nestedCompletionModel, modelContextWindowTokens: 1_000_000 };
+        }
+        if (
+          messages.some(
+            (message) =>
+              message.includes(SCHEDULED_REMOTE_ROOT_SCENARIO) ||
+              message.includes(SCHEDULED_REMOTE_CHILD_SCENARIO),
+          )
+        ) {
+          return { model: scheduledRemoteModel, modelContextWindowTokens: 1_000_000 };
         }
         return { model: defaultModel, modelContextWindowTokens };
       },
