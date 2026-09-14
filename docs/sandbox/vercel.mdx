@@ -1,0 +1,60 @@
+---
+title: "Vercel Sandbox"
+description: "Create snapshot-backed persistent sandboxes on Vercel."
+---
+
+`VercelSandbox.environment()` prepares a reusable Vercel Sandbox snapshot and creates persistent session sandboxes from its recorded snapshot ID.
+
+```ts
+import { defineSandbox } from "eve/sandbox";
+import { VercelSandbox } from "eve/sandbox/vercel";
+
+export const environment = VercelSandbox.environment({
+  prepare: async (sandbox) => {
+    await sandbox.run({ command: "pnpm install --frozen-lockfile" });
+  },
+});
+
+export default defineSandbox(() =>
+  environment.create({
+    networkPolicy: {
+      allow: {
+        "api.github.com": [],
+      },
+    },
+    resources: { vcpus: 4 },
+  }),
+);
+```
+
+## Snapshot preparation
+
+eve creates a temporary persistent Vercel Sandbox during build, installs the base runtime, writes managed workspace and skill files, runs the authored `prepare` callback, and captures a snapshot. The build artifact records the snapshot ID.
+
+When a live session sandbox does not exist, eve creates it directly from that snapshot ID. Runtime does not need to look up the temporary template Sandbox.
+
+## Network policy
+
+Pass the initial policy to `create()` or `getOrCreate()`. It applies to the new live Vercel Sandbox, not to the environment definition:
+
+```ts
+return environment.create({
+  networkPolicy: {
+    allow: {
+      "api.example.com": [
+        {
+          transform: [{ headers: { authorization: `Bearer ${token}` } }],
+        },
+      ],
+    },
+  },
+});
+```
+
+Credential transforms inject headers at the network boundary so the secret does not enter the sandbox process. You can call `sandbox.setNetworkPolicy()` later on a dedicated sandbox. A named shared sandbox must use one stable policy for every attached eve session.
+
+## Live sandbox options
+
+`create()` and `getOrCreate()` also accept Vercel compute resources, timeout, and Drive mounts. eve owns `name`, `persistent`, and the prepared snapshot source.
+
+See the [sandbox overview](/docs/sandbox) for managed workspace, skills, sharing, and custom providers.

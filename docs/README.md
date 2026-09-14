@@ -24,7 +24,7 @@ Important naming note:
 | Expose your own HTTP route as a conversation surface     | [Custom Channels](./channels/custom.mdx)                                               |
 | Package a procedure the agent loads only when it applies | [Skills](./skills.mdx)                                                                 |
 | Carry state across turns, or shape what the model sees   | [State](./concepts/state.md), [Context Control](./concepts/context-control.md)         |
-| Run commands or untrusted code in isolation              | [Sandboxes](./sandbox.mdx)                                                             |
+| Run commands or untrusted code in isolation              | [Sandboxes](./sandbox/index.mdx)                                                       |
 | Delegate work to a specialist child agent                | [Subagents](./subagents/index.mdx)                                                     |
 | Run work on a recurring schedule                         | [Schedules](./schedules.mdx)                                                           |
 | Install an existing integration instead of writing one   | [Add Integrations](./install-integrations.mdx)                                         |
@@ -61,7 +61,7 @@ For a full picture rather than a single task, read in this order:
 6. [Skills](./skills.mdx)
 7. [Tools](./tools/overview.mdx)
 8. [Connections](./connections/overview.mdx)
-9. [Sandboxes](./sandbox.mdx)
+9. [Sandboxes](./sandbox/index.mdx)
 10. [Channels](./channels/overview.mdx)
 11. [Session Context](./guides/session-context.md)
 12. [Sessions and Streaming](./concepts/sessions-runs-and-streaming.md)

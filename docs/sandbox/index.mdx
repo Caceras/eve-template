@@ -76,7 +76,7 @@ export const environment = VercelSandbox.environment({
 export default defineSandbox(() => environment.create());
 ```
 
-`prepare` is the build-time replacement for the removed `bootstrap` callback. eve runs it while creating a reusable provider artifact, not once for each live session sandbox. Vercel captures a snapshot; Docker captures an image; microsandbox captures a VM snapshot; and just-bash captures a filesystem template.
+eve runs `prepare` while creating a reusable provider artifact, not once for each live session sandbox. Vercel captures a snapshot; Docker captures an image; microsandbox captures a VM snapshot; and just-bash captures a filesystem template.
 
 At runtime, eve passes the recorded artifact directly to the provider when it creates a live sandbox. Runtime does not rebuild or repair a missing artifact. A missing image, snapshot, or template fails with rebuild or redeploy guidance.
 
@@ -119,7 +119,9 @@ agent/sandbox/
 
 Files under `agent/sandbox/workspace/` seed writable `/workspace`. eve copies the seed when it prepares a new environment generation. Existing live sandbox state is not overwritten by later seed changes.
 
-Agent skills are compiled into a separate resource tree and exposed at `$HOME/.agents/skills`. Providers receive both trees with explicit metadata:
+Agent skills are compiled into a separate resource tree and exposed at `$HOME/.agents/skills`. These are stable paths across every built-in provider, so instructions and tools can refer to `/workspace` and `$HOME/.agents/skills`. Do not refer to a concrete home directory or `/eve/resources`, which is provider-internal staging.
+
+Providers receive both trees with explicit metadata:
 
 ```ts
 interface SandboxProviderResourceTree {
@@ -172,7 +174,10 @@ export const AcmeSandbox = defineSandboxProvider<
           existingId: ctx.existing?.remoteId,
           name: ctx.sandboxName,
           networkPolicy: ctx.options.networkPolicy,
-          templateId: prepared?.artifact.templateId,
+          source:
+            prepared === undefined
+              ? { image: options.image }
+              : { templateId: prepared.artifact.templateId },
         });
 
         return ctx.handle({
@@ -188,104 +193,21 @@ export const AcmeSandbox = defineSandboxProvider<
 });
 ```
 
-`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument, or `undefined` when the environment has no prepared inputs. The fourth generic gives both methods the provider's exact artifact type.
+`ctx.runPreparation(sandbox)` invokes the callback authored as `environment({ prepare })`. Call it after provider resources are available in the temporary sandbox and before capturing the provider artifact.
+
+`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument. It passes `undefined` only when the environment has no preparation callback, workspace seed, skills, Dockerfile, or other prepared input. The fourth generic gives both methods the provider's exact artifact type; the provider must explicitly define its unprepared creation path.
 
 `ctx.options` contains options for the live sandbox. `ctx.existing` contains persisted metadata for reconnecting that sandbox. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
 ## Providers
 
-### Default
-
-`DefaultSandbox.environment()` selects Vercel on Vercel, then Docker, microsandbox, or just-bash according to local availability:
-
-```ts
-import { DefaultSandbox, defineSandbox } from "eve/sandbox";
-
-export const environment = DefaultSandbox.environment();
-export default defineSandbox(() => environment.create());
-```
-
-The default preserves eve's standard sandbox behavior and does not expose provider-specific live creation options.
-
-### Vercel
-
-`VercelSandbox.environment()` uses the snapshot-backed Vercel Sandbox lifecycle:
-
-```ts
-import { defineSandbox } from "eve/sandbox";
-import { VercelSandbox } from "eve/sandbox/vercel";
-
-export const environment = VercelSandbox.environment({
-  prepare: async (sandbox) => {
-    await sandbox.run({ command: "pnpm install --frozen-lockfile" });
-  },
-});
-
-export default defineSandbox(() =>
-  environment.create({
-    networkPolicy: {
-      allow: {
-        "api.github.com": [],
-      },
-    },
-    resources: { vcpus: 4 },
-  }),
-);
-```
-
-During build, eve prepares a temporary Vercel Sandbox and records the resulting snapshot ID. Session creation starts a new persistent named Vercel Sandbox directly from that snapshot ID; it does not look up the temporary template Sandbox.
-
-Pass network policy, compute resources, timeout, and Drive mounts to `create()` or `getOrCreate()`. The initial policy applies to the new live Vercel Sandbox. Vercel supports domain allowlists and credential transforms. You can later call `sandbox.setNetworkPolicy()` on a dedicated sandbox.
-
-### Docker
-
-Docker accepts its default image, an existing image, or a colocated Dockerfile:
-
-```ts
-import { defineSandbox } from "eve/sandbox";
-import { DockerSandbox } from "eve/sandbox/docker";
-
-export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...");
-
-export default defineSandbox(() => environment.create({ networkPolicy: "deny-all" }));
-```
-
-Use `DockerSandbox.dockerfile()` to build `agent/sandbox/Dockerfile`. Image, pull policy, environment variables, and `prepare` belong to the environment. The initial `"allow-all"` or `"deny-all"` policy belongs to the live container and is passed to `create()` or `getOrCreate()`.
-
-A session-owned container keeps writable state in its container filesystem. A stopped container restarts with that state. A named shared container exposes the same filesystem and network boundary to every attached eve session.
-
-### microsandbox
-
-microsandbox runs a local VM from its default image, an existing OCI image, or a colocated Dockerfile:
-
-```ts
-import { defineSandbox } from "eve/sandbox";
-import { MicrosandboxSandbox } from "eve/sandbox/microsandbox";
-
-export const environment = MicrosandboxSandbox.dockerfile({
-  setup: { autoInstall: false },
-});
-
-export default defineSandbox(() => environment.create({ networkPolicy: "deny-all" }));
-```
-
-Supported hosts are macOS on Apple Silicon and Linux with glibc and KVM. Image, CPU, memory, pull policy, environment variables, VM setup, and `prepare` belong to the environment. Network policy belongs to the live VM and is passed to `create()` or `getOrCreate()`.
-
-`eve build` builds a Dockerfile image when present, prepares a VM, and records its snapshot and image references. Session creation uses those recorded values directly. Writable VM state persists through the provider's session snapshot lifecycle.
-
-### just-bash
-
-`JustBashSandbox.environment()` provides a pure-JavaScript shell and virtual filesystem:
-
-```ts
-import { defineSandbox } from "eve/sandbox";
-import { JustBashSandbox } from "eve/sandbox/just-bash";
-
-export const environment = JustBashSandbox.environment();
-export default defineSandbox(() => environment.create());
-```
-
-just-bash supports filesystem preparation but cannot run OCI images or Dockerfiles. It has no network isolation and rejects `setNetworkPolicy()`.
+| Provider                                   | Use it for                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| [Default](/docs/sandbox/default)           | Automatic provider selection with eve's standard behavior.                              |
+| [Vercel](/docs/sandbox/vercel)             | Snapshot-backed persistent Vercel Sandboxes, domain network policies, and Drive mounts. |
+| [Docker](/docs/sandbox/docker)             | Local containers from the default image, an existing OCI image, or a Dockerfile.        |
+| [microsandbox](/docs/sandbox/microsandbox) | Local lightweight VMs from an OCI image or Dockerfile.                                  |
+| [just-bash](/docs/sandbox/just-bash)       | A pure-JavaScript shell and virtual filesystem without native process isolation.        |
 
 ## Lifecycle
 
@@ -295,6 +217,6 @@ Changing sandbox source, preparation code, Dockerfile content, environment optio
 
 ## What to read next
 
-- [Subagents](./subagents) explains delegation and sandbox ownership.
-- [Security model](./concepts/security-model) describes the app-runtime and sandbox trust boundary.
+- [Subagents](/docs/subagents) explains delegation and sandbox ownership.
+- [Security model](/docs/concepts/security-model) describes the app-runtime and sandbox trust boundary.
 - [Vercel Sandbox](https://vercel.com/docs/sandbox) documents hosted sandbox behavior.
