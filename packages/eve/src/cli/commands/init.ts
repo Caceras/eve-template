@@ -67,7 +67,7 @@ import {
 } from "./init-project.js";
 import { cleanupFreshInitTarget, workspaceFailureNote } from "./init-recovery.js";
 import { selectInitSelfModification } from "./init-self-modification.js";
-import { migrateStandaloneProject } from "./init-standalone-migration.js";
+import { migrateStandaloneProject } from "./migrate/standalone.js";
 import { selectInitHandoff, spawnCodingAgentRepl, type InitHandoff } from "./init-repl.js";
 import { resolveInitTarget } from "./init-target.js";
 

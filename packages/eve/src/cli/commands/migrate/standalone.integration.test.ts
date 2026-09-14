@@ -10,7 +10,7 @@ import {
 } from "#setup/scaffold/create/web-template.js";
 import { WizardCancelledError } from "#setup/step.js";
 
-import { migrateStandaloneProject } from "./init-standalone-migration.js";
+import { migrateStandaloneProject } from "./standalone.js";
 
 const createDirectory = useTemporaryDirectories();
 const standaloneContext = vi.fn(async (root: string) => ({
@@ -72,9 +72,12 @@ describe("migrateStandaloneProject", () => {
     await expect(readFile(join(root, "tsconfig.json"), "utf8")).resolves.toContain(
       '"agents/**/*.ts"',
     );
-    await expect(readFile(join(root, "package.json"), "utf8")).resolves.toContain(
-      '"#*": "./agents/weather/agent/*"',
-    );
+    expect(JSON.parse(await readFile(join(root, "package.json"), "utf8"))).toMatchObject({
+      imports: {
+        "#*": "./agents/weather/agent/*",
+        "#evals/*": "./agents/weather/evals/*",
+      },
+    });
   });
 
   it.each([
@@ -106,6 +109,48 @@ describe("migrateStandaloneProject", () => {
       );
     },
   );
+
+  it("replaces root TypeScript globs with one workspace glob and preserves unrelated includes", async () => {
+    const root = await createStandalone(await createDirectory("migration"));
+    await writeFile(
+      join(root, "tsconfig.json"),
+      '{\n  "include": ["generated/**/*.ts", "agents/**/*.ts", "agent/**/*.ts", "evals/**/*.ts"]\n}\n',
+    );
+
+    await migrateStandaloneProject({
+      dependencies: dependencies(),
+      logger: logger(),
+      options: { yes: true },
+      root,
+      target: "research",
+    });
+
+    expect(JSON.parse(await readFile(join(root, "tsconfig.json"), "utf8"))).toMatchObject({
+      include: ["generated/**/*.ts", "agents/**/*.ts"],
+    });
+  });
+
+  it("refuses custom package aliases before moving files", async () => {
+    const root = await createStandalone(await createDirectory("migration"));
+    await writeFile(
+      join(root, "package.json"),
+      '{"imports":{"#*":"./src/*","#evals/*":"./evals/*"}}\n',
+    );
+
+    await expect(
+      migrateStandaloneProject({
+        dependencies: dependencies(),
+        logger: logger(),
+        options: { yes: true },
+        root,
+        target: "research",
+      }),
+    ).rejects.toThrow('custom "#*" import');
+
+    await expect(readFile(join(root, "agent", "agent.ts"), "utf8")).resolves.toBe(
+      "export default {};\n",
+    );
+  });
 
   it("cancels without writing", async () => {
     const root = await createStandalone(await createDirectory("migration"));
