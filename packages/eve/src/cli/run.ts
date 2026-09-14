@@ -213,6 +213,16 @@ export function createCliProgram(
   registerRegistryCommands({ program, logger, applicationContext });
 
   program
+    .command("doctor [path]")
+    .description("Diagnose eve project, environment, and Vercel readiness.")
+    .option("--offline", "Skip Vercel network checks")
+    .option("--json", "Output diagnostics as JSON")
+    .action(async (path: string | undefined, options: { json?: boolean; offline?: boolean }) => {
+      const { runDoctorCommand } = await import("#cli/commands/doctor.js");
+      await runDoctorCommand(logger, path, options);
+    });
+
+  program
     .command("init [target]")
     .description("Create a new eve agent, or add one to an existing project directory.")
     .option("--channel-web-nextjs", "Add the Web Chat application (Next.js)")
