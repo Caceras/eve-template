@@ -53,7 +53,7 @@ function createMicrosandboxHandle(
     context: Partial<Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"]> &
       Pick<
         Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"],
-        "appRoot" | "sandboxName" | "templateName"
+        "appRoot" | "sandboxName"
       >;
   },
 ) {
@@ -64,6 +64,14 @@ function createMicrosandboxHandle(
       options: undefined,
       resources: {},
       ...input.context,
+    },
+    prepared: {
+      artifact: {
+        optionsHash: input.optionsHash,
+        snapshotName: "template-snapshot",
+        version: 2,
+      },
+      templateName: "template-key",
     },
   });
 }
@@ -168,7 +176,6 @@ describe("createMicrosandboxHandle", () => {
         },
         appRoot: "/tmp/eve-app",
         sandboxName: "session-key",
-        templateName: "template-key",
       },
       options,
       optionsHash: "options-hash",
@@ -292,7 +299,6 @@ describe("createMicrosandboxHandle", () => {
         context: {
           appRoot: "/tmp/eve-app",
           sandboxName: "session-key",
-          templateName: "template-key",
         },
         options,
         optionsHash: "options-hash",
@@ -344,7 +350,7 @@ describe("prewarmMicrosandboxTemplate", () => {
       ),
       templateRootPath,
     );
-    expect(result).toEqual({ reused: false });
+    expect(result).toMatchObject({ reused: false });
   });
 
   it("writes seed files before preparation and snapshots preparation outputs", async () => {

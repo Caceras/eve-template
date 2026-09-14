@@ -37,12 +37,34 @@ export interface SandboxProviderResources {
   readonly workspace?: SandboxProviderResourceTree;
 }
 
+export type SandboxPreparedArtifact =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly SandboxPreparedArtifact[]
+  | { readonly [key: string]: SandboxPreparedArtifact };
+
+export function isSandboxPreparedArtifactRecord(
+  artifact: SandboxPreparedArtifact | undefined,
+): artifact is { readonly [key: string]: SandboxPreparedArtifact } {
+  return typeof artifact === "object" && artifact !== null && !Array.isArray(artifact);
+}
+
 export interface SandboxProviderPrepareContext {
   readonly appRoot: string;
   readonly dockerfile?: SandboxDockerfileInput;
+  readonly force?: boolean;
   readonly log?: (message: string) => void;
   readonly resources: SandboxProviderResources;
   runPreparation(sandbox: SandboxSession): Promise<void>;
+  readonly templateName: string;
+}
+
+export interface SandboxProviderPreparedArtifact<
+  PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
+> {
+  readonly artifact: PreparedArtifact;
   readonly templateName: string;
 }
 
@@ -54,7 +76,6 @@ export interface SandboxProviderCreateContext<CreateOptions, Metadata> {
   readonly resources: SandboxProviderResources;
   readonly sandboxName: string;
   readonly tags?: SandboxProviderTags;
-  readonly templateName: string | null;
 }
 
 export interface SandboxProviderHandle<Metadata> {
@@ -66,10 +87,17 @@ export interface SandboxProviderHandle<Metadata> {
   stop(): Promise<void>;
 }
 
-export interface SandboxProviderImplementation<CreateOptions, Metadata> {
-  prepare(context: SandboxProviderPrepareContext): Promise<{ readonly reused: boolean }>;
+export interface SandboxProviderImplementation<
+  CreateOptions,
+  Metadata,
+  PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
+> {
+  prepare(
+    context: SandboxProviderPrepareContext,
+  ): Promise<{ readonly artifact: PreparedArtifact; readonly reused: boolean }>;
   getOrCreate(
     context: SandboxProviderCreateContext<CreateOptions, Metadata>,
+    prepared?: SandboxProviderPreparedArtifact<PreparedArtifact>,
   ): Promise<SandboxProviderHandle<Metadata>>;
 }
 
@@ -77,6 +105,7 @@ export type SandboxProviderDefinition<
   EnvironmentOptions extends object,
   CreateOptions extends object | undefined,
   Metadata extends Record<string, unknown>,
+  PreparedArtifact extends SandboxPreparedArtifact,
 > = {
   readonly name: string;
   kind?(options: Readonly<EnvironmentOptions>): SandboxEnvironment["kind"];
@@ -84,7 +113,7 @@ export type SandboxProviderDefinition<
   | {
       environment(
         options: Readonly<EnvironmentOptions>,
-      ): SandboxProviderImplementation<CreateOptions, Metadata>;
+      ): SandboxProviderImplementation<CreateOptions, Metadata, PreparedArtifact>;
       readonly select?: never;
     }
   | {
@@ -128,8 +157,14 @@ export function defineSandboxProvider<
   EnvironmentOptions extends object,
   CreateOptions extends object | undefined = undefined,
   Metadata extends Record<string, unknown> = Record<string, unknown>,
+  PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
 >(
-  definition: SandboxProviderDefinition<EnvironmentOptions, CreateOptions, Metadata>,
+  definition: SandboxProviderDefinition<
+    EnvironmentOptions,
+    CreateOptions,
+    Metadata,
+    PreparedArtifact
+  >,
 ): SandboxProvider<EnvironmentOptions, CreateOptions> {
   return {
     name: definition.name,

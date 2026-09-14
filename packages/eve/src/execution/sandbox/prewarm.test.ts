@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
+import {
+  prewarmAppSandboxes,
+  type SandboxPreparedArtifactStore,
+} from "#execution/sandbox/prewarm.js";
 import {
   defineSandboxProvider,
   type SandboxProviderPrepareContext,
@@ -51,6 +54,7 @@ describe("prewarmAppSandboxes", () => {
       }),
       dispatch: recordPrewarmInputs(firstInputs),
       loadAgentGraph: async () => createGraph({ workspaceResourceRoot }),
+      preparedArtifactStore: createMemoryArtifactStore(),
     });
     await prewarmAppSandboxes({
       appRoot,
@@ -60,6 +64,7 @@ describe("prewarmAppSandboxes", () => {
       }),
       dispatch: recordPrewarmInputs(secondInputs),
       loadAgentGraph: async () => createGraph({ workspaceResourceRoot }),
+      preparedArtifactStore: createMemoryArtifactStore(),
     });
 
     expect(firstInputs).toHaveLength(1);
@@ -79,6 +84,7 @@ describe("prewarmAppSandboxes", () => {
       compiledArtifactsSource: createDiskRuntimeCompiledArtifactsSource(appRoot),
       dispatch: recordPrewarmInputs(inputs),
       loadAgentGraph: async () => createGraph(),
+      preparedArtifactStore: createMemoryArtifactStore(true),
       shouldPrewarmSignature: (signature) => {
         signatures.push(signature);
         return false;
@@ -130,10 +136,19 @@ describe("prewarmAppSandboxes", () => {
   );
 });
 
+function createMemoryArtifactStore(hasEntries = false): SandboxPreparedArtifactStore {
+  return {
+    async has() {
+      return hasEntries;
+    },
+    async write() {},
+  };
+}
+
 function recordPrewarmInputs(inputs: SandboxProviderPrepareContext[]) {
   return async ({ context }: { context: SandboxProviderPrepareContext }) => {
     inputs.push(context);
-    return { reused: true };
+    return { artifact: {}, reused: true };
   };
 }
 
@@ -154,7 +169,7 @@ function createGraph(
         throw new Error("Unexpected create call.");
       },
       async prepare() {
-        return { reused: true };
+        return { artifact: {}, reused: true };
       },
     }),
   });

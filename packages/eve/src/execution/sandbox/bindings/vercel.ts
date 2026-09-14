@@ -13,11 +13,13 @@ import type {
   SandboxSpawnOptions,
   SandboxWriteFileOptions,
 } from "#shared/sandbox-session.js";
-import type {
-  SandboxProviderHandle,
-  SandboxProviderImplementation,
-  SandboxProviderResources,
-  SandboxProviderTags,
+import {
+  isSandboxPreparedArtifactRecord,
+  type SandboxPreparedArtifact,
+  type SandboxProviderHandle,
+  type SandboxProviderImplementation,
+  type SandboxProviderResources,
+  type SandboxProviderTags,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
 import type {
@@ -92,10 +94,9 @@ export function createVercelSandbox(
     ...input.createOptions,
   };
   const createSandbox = input.createSandbox ?? createVercelEveImageSandbox;
-  const prewarmedTemplates = new Map<string, VercelSandboxTemplateRecord>();
 
   return {
-    async getOrCreate(context) {
+    async getOrCreate(context, prepared) {
       const { mounts, ...runtimeOptions } = context.options;
       const sessionCreateOptions = { ...createOptions, ...runtimeOptions };
       // Resolve tags up-front so tag-count validation fails fast before
@@ -103,14 +104,9 @@ export function createVercelSandbox(
       const tags = resolveVercelSandboxTags(sessionCreateOptions.tags, context.tags);
 
       const template =
-        context.templateName === null
+        prepared === undefined
           ? null
-          : await readTemplateForCreate({
-              createOptions: sessionCreateOptions,
-              loadSandboxModule,
-              prewarmedTemplates,
-              templateKey: context.templateName,
-            });
+          : requirePreparedVercelTemplate(prepared.artifact, prepared.templateName);
 
       const sandboxModule = await loadSandboxModule();
       const ensureSessionInput: EnsureSessionInput = {
@@ -128,17 +124,10 @@ export function createVercelSandbox(
       try {
         session = await ensureSession(ensureSessionInput);
       } catch (error) {
-        if (template !== null && isVercelSnapshotUnavailableError(error)) {
-          prewarmedTemplates.delete(template.templateKey);
-          const staleTemplate = await getNamedVercelSandbox({
-            createOptions,
-            sandboxModule,
-            sandboxName: template.sandboxName,
-          });
-          await staleTemplate?.delete();
+        if (prepared !== undefined && isVercelSnapshotUnavailableError(error)) {
           throw new SandboxTemplateNotProvisionedError({
             providerName: "vercel",
-            templateKey: template.templateKey,
+            templateKey: prepared.templateName,
           });
         }
         throw new Error(
@@ -179,6 +168,7 @@ export function createVercelSandbox(
       let outcome: EnsureTemplateOutcome;
       try {
         outcome = await ensureTemplateWithUnavailableRetry({
+          force: context.force,
           runPreparation: context.runPreparation,
           createOptions,
           createSandbox,
@@ -193,8 +183,10 @@ export function createVercelSandbox(
           { cause: error },
         );
       }
-      prewarmedTemplates.set(context.templateName, outcome.template);
-      return { reused: outcome.reused };
+      return {
+        artifact: { snapshotId: outcome.template.snapshotId },
+        reused: outcome.reused,
+      };
     },
   };
 }
@@ -205,6 +197,26 @@ interface VercelSandboxTemplateRecord {
   readonly templateKey: string;
 }
 
+interface VercelSandboxPreparedArtifact {
+  readonly snapshotId: string;
+}
+
+function requirePreparedVercelTemplate(
+  artifact: SandboxPreparedArtifact | undefined,
+  templateKey: string,
+): VercelSandboxPreparedArtifact {
+  if (artifact === undefined) {
+    throw new SandboxTemplateNotProvisionedError({
+      providerName: "vercel",
+      templateKey,
+    });
+  }
+  if (!isSandboxPreparedArtifactRecord(artifact) || typeof artifact.snapshotId !== "string") {
+    throw new Error(`Invalid prepared Vercel sandbox artifact for template "${templateKey}".`);
+  }
+  return { snapshotId: artifact.snapshotId };
+}
+
 interface EnsureTemplateOutcome {
   readonly reused: boolean;
   readonly template: VercelSandboxTemplateRecord;
@@ -213,6 +225,7 @@ interface EnsureTemplateOutcome {
 type VercelSeedFile = { readonly content: string | Uint8Array; readonly path: string };
 
 interface EnsureTemplateInput {
+  readonly force?: boolean;
   readonly runPreparation?: (sandbox: SandboxSession) => void | Promise<void>;
   readonly createOptions: VercelCreateOptions;
   readonly createSandbox: CreateVercelSandbox;
@@ -237,57 +250,6 @@ async function ensureTemplateWithUnavailableRetry(
   }
 }
 
-async function readTemplate(input: {
-  readonly createOptions: VercelCreateOptions;
-  readonly loadSandboxModule: () => Promise<VercelModule>;
-  readonly prewarmedTemplates: ReadonlyMap<string, VercelSandboxTemplateRecord>;
-  readonly templateKey: string;
-}): Promise<VercelSandboxTemplateRecord> {
-  const prewarmed = input.prewarmedTemplates.get(input.templateKey);
-  if (prewarmed !== undefined) {
-    return prewarmed;
-  }
-
-  const sandboxModule = await input.loadSandboxModule();
-  const sandbox = await getNamedVercelSandbox({
-    createOptions: input.createOptions,
-    sandboxModule,
-    sandboxName: input.templateKey,
-  });
-
-  if (sandbox === null || typeof sandbox.currentSnapshotId !== "string") {
-    throw new SandboxTemplateNotProvisionedError({
-      providerName: "vercel",
-      templateKey: input.templateKey,
-    });
-  }
-
-  return {
-    sandboxName: sandbox.name,
-    snapshotId: sandbox.currentSnapshotId,
-    templateKey: input.templateKey,
-  };
-}
-
-async function readTemplateForCreate(input: {
-  readonly createOptions: VercelCreateOptions;
-  readonly loadSandboxModule: () => Promise<VercelModule>;
-  readonly prewarmedTemplates: ReadonlyMap<string, VercelSandboxTemplateRecord>;
-  readonly templateKey: string;
-}): Promise<VercelSandboxTemplateRecord> {
-  try {
-    return await readTemplate(input);
-  } catch (error) {
-    if (SandboxTemplateNotProvisionedError.is(error)) {
-      throw error;
-    }
-    throw new Error(
-      `Failed to read sandbox template "${input.templateKey}": ${errorMessage(error)}`,
-      { cause: error },
-    );
-  }
-}
-
 /**
  * Creates or refreshes one named Vercel sandbox template and returns the
  * resulting snapshot metadata along with whether an existing snapshot
@@ -304,7 +266,10 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
   const tags = resolveVercelSandboxTags(input.createOptions.tags, input.tags);
   const authorSnapshotId = extractAuthorSnapshotId(input.createOptions);
 
-  if (sandbox !== null && isUnprovisionedTerminalTemplateSandbox(sandbox, authorSnapshotId)) {
+  if (
+    sandbox !== null &&
+    (input.force === true || isUnprovisionedTerminalTemplateSandbox(sandbox, authorSnapshotId))
+  ) {
     await sandbox.delete();
     sandbox = null;
   }

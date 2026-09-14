@@ -15,6 +15,7 @@ import {
 import { createRuntimeSandboxKeys } from "#runtime/sandbox/keys.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
+import { loadSandboxPreparedArtifact } from "#runtime/sandbox/prepared-artifacts.js";
 import type { SandboxAccess, SandboxSessionState, SandboxState } from "#sandbox/state.js";
 import {
   getSandboxEnvironmentConfigurationHash,
@@ -25,6 +26,7 @@ import {
   createSandboxProviderResources,
   type SandboxDeleteOptions,
   type SandboxProviderHandle,
+  type SandboxProviderPreparedArtifact,
   type SandboxProviderRuntime,
   type SandboxProviderTags,
 } from "#shared/sandbox-provider.js";
@@ -121,25 +123,35 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       });
     }
 
-    const existing = persisted?.providerName === provider.providerName ? persisted : null;
-    const effectiveConfigurationHash = existing?.configurationHash ?? configurationHash;
-    const sandboxName = existing?.sessionKey ?? keys.sessionKey;
-    const create = () =>
-      provider.implementation.getOrCreate({
-        appRoot,
-        existing: existing?.metadata,
-        handle: (providerHandle) => providerHandle,
-        options,
-        resources: createSandboxProviderResources({
-          resourcesKey: workspaceResourceRoot.contentHash,
-        }),
-        sandboxName,
-        tags: {
-          ...input.tags,
-          ...(shared ? { sandboxConfig: effectiveConfigurationHash.slice(0, 32) } : {}),
-        },
+    const existing =
+      persisted?.providerName === provider.providerName && persisted.sessionKey === keys.sessionKey
+        ? persisted
+        : null;
+    const sandboxName = keys.sessionKey;
+    const create = async () => {
+      const prepared = await resolveProviderPreparedArtifact({
+        compiledArtifactsSource: input.compiledArtifactsSource,
+        providerName: provider.providerName,
         templateName: keys.templateKey,
       });
+      return await provider.implementation.getOrCreate(
+        {
+          appRoot,
+          existing: existing?.metadata,
+          handle: (providerHandle) => providerHandle,
+          options,
+          resources: createSandboxProviderResources({
+            resourcesKey: workspaceResourceRoot.contentHash,
+          }),
+          sandboxName,
+          tags: {
+            ...input.tags,
+            ...(shared ? { sandboxConfig: configurationHash.slice(0, 32) } : {}),
+          },
+        },
+        prepared,
+      );
+    };
 
     opening = withDevelopmentSandboxProgress(
       `eve: opening sandbox session "${formatNodeLabel(input.nodeId)}" on provider "${provider.providerName}"...`,
@@ -160,7 +172,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     const openedHandle = await opening;
     handle = openedHandle;
     providerOwned = shared;
-    openedConfigurationHash = effectiveConfigurationHash;
+    openedConfigurationHash = configurationHash;
     openedProviderName = provider.providerName;
     openedSessionKey = sandboxName;
     initialized = true;
@@ -315,6 +327,27 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
   };
 }
 
+async function resolveProviderPreparedArtifact(input: {
+  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+  readonly providerName: string;
+  readonly templateName: string | null;
+}): Promise<SandboxProviderPreparedArtifact | undefined> {
+  if (input.templateName === null) return undefined;
+  const artifact = await loadSandboxPreparedArtifact({
+    compiledArtifactsSource: input.compiledArtifactsSource,
+    providerName: input.providerName,
+    templateName: input.templateName,
+  });
+  if (artifact === undefined) {
+    throw new SandboxTemplateNotProvisionedError({
+      forceRebuild: false,
+      providerName: input.providerName,
+      templateKey: input.templateName,
+    });
+  }
+  return { artifact, templateName: input.templateName };
+}
+
 async function getOrCreateWithRepair(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
@@ -335,6 +368,7 @@ async function getOrCreateWithRepair(input: {
     await prewarmAppSandboxes({
       appRoot: input.appRoot,
       compiledArtifactsSource: input.compiledArtifactsSource,
+      force: error.forceRebuild !== false,
       log: logDevelopmentSandbox,
     });
     await waitForSandboxTemplatePrewarmLock({

@@ -479,8 +479,8 @@ describe("just-bash provider", () => {
       templateName: "tpl-reuse-report",
     });
 
-    expect(first).toEqual({ reused: false });
-    expect(second).toEqual({ reused: true });
+    expect(first).toMatchObject({ reused: false });
+    expect(second).toMatchObject({ reused: true });
     await expect(
       readFile(
         join(
@@ -560,7 +560,7 @@ describe("just-bash provider", () => {
         seedFiles: [],
         templateName: "active",
       }),
-    ).resolves.toEqual({ reused: true });
+    ).resolves.toMatchObject({ reused: true });
 
     expect((await stat(templateRoot)).mtimeMs).toBeGreaterThan(oldTime.getTime());
 

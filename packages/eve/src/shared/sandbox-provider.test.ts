@@ -39,7 +39,7 @@ describe("defineSandboxProvider", () => {
           });
           expect(ctx.resources.skills?.files[0]?.relativePath).toBe("review/SKILL.md");
           await ctx.runPreparation(mockSandbox().session);
-          return { reused: false };
+          return { artifact: {}, reused: false };
         },
       }),
     });
@@ -62,14 +62,16 @@ describe("defineSandboxProvider", () => {
     });
     expect(preparation).toHaveBeenCalledOnce();
 
-    await runtime.implementation.getOrCreate({
-      appRoot: "/tmp/app",
-      handle: (providerHandle) => providerHandle,
-      options: undefined,
-      resources,
-      sandboxName: "session-1",
-      templateName: "template-v1",
-    });
+    await runtime.implementation.getOrCreate(
+      {
+        appRoot: "/tmp/app",
+        handle: (providerHandle) => providerHandle,
+        options: undefined,
+        resources,
+        sandboxName: "session-1",
+      },
+      { artifact: {}, templateName: "template-v1" },
+    );
     expect(getOrCreate).toHaveBeenCalledOnce();
   });
 });

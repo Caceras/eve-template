@@ -150,7 +150,8 @@ import { defineSandboxProvider } from "eve/sandbox/provider";
 export const AcmeSandbox = defineSandboxProvider<
   { image: string },
   { networkPolicy?: "allow-all" | "deny-all" },
-  { remoteId: string }
+  { remoteId: string },
+  { templateId: string }
 >({
   name: "acme",
   environment(options: { image: string }) {
@@ -170,15 +171,16 @@ export const AcmeSandbox = defineSandboxProvider<
           ].join("\\n"),
         });
         await ctx.runPreparation(sandbox);
-        await client.saveTemplate(ctx.templateName, temporary);
-        return { reused: false };
+        const template = await client.saveTemplate(ctx.templateName, temporary);
+        return { artifact: { templateId: template.id }, reused: false };
       },
-      async getOrCreate(ctx) {
+      async getOrCreate(ctx, prepared) {
+        const templateId = prepared?.artifact.templateId;
         const remote = await client.getOrCreate({
           existingId: ctx.existing?.remoteId,
           mounts: await uploadResources(ctx.resources),
           name: ctx.sandboxName,
-          template: ctx.templateName,
+          templateId,
         });
         return ctx.handle({
           sandbox: adaptAcmeSandbox(remote),
@@ -193,7 +195,9 @@ export const AcmeSandbox = defineSandboxProvider<
 });
 ```
 
-Built-in and custom providers use this same contract. `ctx.resources.workspace` and `ctx.resources.skills` each provide a content key, optional materialized source path, relative files, a read-only mount path under `/eve/resources`, and the final agent-visible target (`/workspace` or `$HOME/.agents/skills`). A provider can upload files directly or mount native volumes, but it must make the resources available at those target paths before calling `ctx.runPreparation()`. Keep provider SDK types behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
+Built-in and custom providers use this same contract. `prepare()` returns a JSON-serializable environment artifact that eve writes into build output. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument when the environment was prepared, or `undefined` otherwise. The fourth `defineSandboxProvider` generic types that artifact for both methods. Providers consume it instead of reconstructing prepared resource identifiers.
+
+`ctx.resources.workspace` and `ctx.resources.skills` each provide a content key, optional materialized source path, relative files, a read-only mount path under `/eve/resources`, and the final agent-visible target (`/workspace` or `$HOME/.agents/skills`). A provider can upload files directly or mount native volumes, but it must make the resources available at those target paths before calling `ctx.runPreparation()`. Keep provider SDK types behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
 ### A colocated Dockerfile
 

@@ -280,7 +280,7 @@ function createRecordingDispatch(events: ReturnType<typeof createPrewarmEvents>)
         events.commands.push(command);
       }),
     );
-    return { reused: false };
+    return { artifact: { templateName: context.templateName }, reused: false };
   };
 }
 
@@ -291,7 +291,7 @@ function createFailingBootstrapDispatch() {
         throw new Error("bootstrap command failed");
       }),
     );
-    return { reused: false };
+    return { artifact: { templateName: context.templateName }, reused: false };
   };
 }
 

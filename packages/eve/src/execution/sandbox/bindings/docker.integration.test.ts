@@ -104,6 +104,7 @@ function createEngine(input: {
   return createSandboxProviderHarness(
     createDockerSandboxProvider(input.options, input.cli),
     undefined,
+    { preparedArtifact: () => ({ imageReference: TEMPLATE_IMAGE }) },
   );
 }
 
@@ -157,7 +158,7 @@ describe("Docker provider prewarm", () => {
       templateName: TEMPLATE_KEY,
     });
 
-    expect(result).toEqual({ reused: true });
+    expect(result).toMatchObject({ reused: true });
     expect(findCall(calls, (args) => args[0] === "run")).toBeUndefined();
     expect(findCall(calls, (args) => args[0] === "commit")).toBeUndefined();
     // The reuse touches the per-app marker so pruning sees the template
@@ -230,7 +231,7 @@ describe("Docker provider prewarm", () => {
       templateName: TEMPLATE_KEY,
     });
 
-    expect(result).toEqual({ reused: false });
+    expect(result).toMatchObject({ reused: false });
 
     const pull = findCall(calls, (args) => args[0] === "pull");
     expect(pull?.args).toEqual(["pull", DEFAULT_DOCKER_SANDBOX_IMAGE]);

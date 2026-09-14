@@ -27,6 +27,8 @@ import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
+  isSandboxPreparedArtifactRecord,
+  type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
   type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
@@ -61,7 +63,7 @@ export function createJustBashSandboxProvider(
 
       if (await pathExists(templateRootPath)) {
         await touchDirectory(templateRootPath);
-        return { reused: true };
+        return { artifact: { templateRootPath }, reused: true };
       }
 
       const temporaryTemplateRootPath = `${templateRootPath}.${randomUUID()}.tmp`;
@@ -100,7 +102,7 @@ export function createJustBashSandboxProvider(
           published = true;
         } catch (error) {
           if (await pathExists(templateRootPath)) {
-            return { reused: true };
+            return { artifact: { templateRootPath }, reused: true };
           }
           throw error;
         }
@@ -111,24 +113,23 @@ export function createJustBashSandboxProvider(
         }
       }
 
-      return { reused: false };
+      return { artifact: { templateRootPath }, reused: false };
     },
-    async getOrCreate(context) {
+    async getOrCreate(context, prepared) {
       const cacheDirectory = resolveSandboxCacheDirectory(context.appRoot);
       const sessionRootPath =
         getLocalRootPath(context.existing) ??
         resolveSessionRootPath(cacheDirectory, context.sandboxName);
 
       if (!(await pathExists(sessionRootPath))) {
-        if (context.templateName === null) {
+        if (prepared === undefined) {
           await mkdir(sessionRootPath, { recursive: true });
         } else {
-          const templateRootPath = resolveTemplateRootPath(cacheDirectory, context.templateName);
-
-          if (!(await pathExists(templateRootPath))) {
+          const templateRootPath = readPreparedTemplateRootPath(prepared.artifact);
+          if (templateRootPath === undefined || !(await pathExists(templateRootPath))) {
             throw new SandboxTemplateNotProvisionedError({
               providerName: JUST_BASH_PROVIDER_NAME,
-              templateKey: context.templateName,
+              templateKey: prepared.templateName,
             });
           }
 
@@ -207,6 +208,11 @@ export async function pruneJustBashSandboxTemplates(input: {
       async (entry) => await rm(entry.path, { force: true, recursive: true }),
     ),
   );
+}
+
+function readPreparedTemplateRootPath(artifact: SandboxPreparedArtifact): string | undefined {
+  if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
+  return typeof artifact.templateRootPath === "string" ? artifact.templateRootPath : undefined;
 }
 
 function providerSeedFiles(resources: SandboxProviderResources) {

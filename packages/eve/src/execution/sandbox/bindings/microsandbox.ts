@@ -40,9 +40,10 @@ export function createMicrosandboxSandboxProvider(
         });
       }
     },
-    async getOrCreate(context) {
+    async getOrCreate(context, prepared) {
       return await createMicrosandboxHandle({
         context,
+        prepared,
         options,
         optionsHash,
         providerName: MICROSANDBOX_PROVIDER_NAME,

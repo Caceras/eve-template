@@ -35,7 +35,9 @@ import { writeSandboxSeedFiles } from "#execution/sandbox/bindings/local-provide
 import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.js";
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import {
+  isSandboxPreparedArtifactRecord,
   providerResourceRoot,
+  type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
   type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
@@ -108,7 +110,7 @@ export function createDockerSandboxProvider(
       if (await dockerImageExists(cli, imageReference)) {
         context.log?.("reusing cached template image");
         await touchDockerTemplateMarker(markerPath, imageReference);
-        return { reused: true };
+        return { artifact: { imageReference }, reused: true };
       }
 
       let baseImage = options.image;
@@ -196,9 +198,9 @@ export function createDockerSandboxProvider(
         await cli.run(["rm", "-f", buildContainerName]).catch(() => {});
       }
 
-      return { reused: false };
+      return { artifact: { imageReference }, reused: false };
     },
-    async getOrCreate(context) {
+    async getOrCreate(context, prepared) {
       await ensureDaemon();
       const containerName = getDockerContainerName(context.existing) ?? context.sandboxName;
 
@@ -219,23 +221,23 @@ export function createDockerSandboxProvider(
         }
       } else {
         let image: string;
-        if (context.templateName === null) {
+        if (prepared === undefined) {
           await ensureDockerBaseImage(cli, options);
           image = options.image;
         } else {
-          const templateReferenceInput = {
-            optionsHash,
-            templateKey: context.templateName,
-          };
-          image = dockerTemplateImageReference(templateReferenceInput);
-          if (!(await dockerImageExists(cli, image))) {
+          const preparedImage = readPreparedDockerImage(prepared.artifact);
+          if (preparedImage === undefined || !(await dockerImageExists(cli, preparedImage))) {
             throw new SandboxTemplateNotProvisionedError({
               providerName: DOCKER_PROVIDER_NAME,
-              templateKey: context.templateName,
+              templateKey: prepared.templateName,
             });
           }
+          image = preparedImage;
           await touchDockerTemplateMarker(
-            resolveDockerTemplateMarkerPath(context.appRoot, templateReferenceInput),
+            resolveDockerTemplateMarkerPath(context.appRoot, {
+              optionsHash,
+              templateKey: prepared.templateName,
+            }),
             image,
           );
         }
@@ -246,8 +248,7 @@ export function createDockerSandboxProvider(
             cli,
             containerName,
             image,
-            initialNetworkPolicy:
-              context.templateName === null ? "allow-all" : options.networkPolicy,
+            initialNetworkPolicy: prepared === undefined ? "allow-all" : options.networkPolicy,
             options,
             resourcesPath:
               resourceRoot.key === undefined
@@ -261,16 +262,16 @@ export function createDockerSandboxProvider(
             tags: context.tags,
           });
         } catch (error) {
-          if (context.templateName !== null) {
+          if (prepared !== undefined) {
             throw new SandboxTemplateNotProvisionedError({
               providerName: DOCKER_PROVIDER_NAME,
-              templateKey: context.templateName,
+              templateKey: prepared.templateName,
             });
           }
           throw error;
         }
 
-        if (context.templateName === null) {
+        if (prepared === undefined) {
           await runDockerBaseSetup(cli, containerName);
           if (options.networkPolicy !== "allow-all") {
             await setDockerNetworkPolicy(cli, containerName, options.networkPolicy);
@@ -305,6 +306,13 @@ export function createDockerSandboxProvider(
       });
     },
   };
+}
+
+function readPreparedDockerImage(
+  artifact: SandboxPreparedArtifact | undefined,
+): string | undefined {
+  if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
+  return typeof artifact.imageReference === "string" ? artifact.imageReference : undefined;
 }
 
 function providerSeedFiles(resources: SandboxProviderResources) {

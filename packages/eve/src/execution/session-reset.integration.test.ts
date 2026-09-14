@@ -81,7 +81,7 @@ function createSessionSandboxHarness() {
           stop: async () => {},
         });
       },
-      prepare: async () => ({ reused: false }),
+      prepare: async () => ({ artifact: {}, reused: false }),
     }),
   });
   const environment = provider.environment();

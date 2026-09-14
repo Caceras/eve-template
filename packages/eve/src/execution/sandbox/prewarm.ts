@@ -6,6 +6,7 @@ import { resolvePackageSourceFilePath } from "#internal/application/package.js";
 import { createAuthoredSourceRuntimeCompiledArtifactsSource } from "#internal/application/runtime-compiled-artifacts-source.js";
 import {
   createSandboxProviderResources,
+  type SandboxPreparedArtifact,
   type SandboxProviderPrepareContext,
   type SandboxProviderRuntime,
 } from "#shared/sandbox-provider.js";
@@ -18,14 +19,22 @@ import {
 } from "#runtime/compiled-artifacts-source.js";
 import { type ResolvedAgentGraphBundle, ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
 import { loadCompileMetadata } from "#runtime/loaders/compile-metadata.js";
-import { withBundledCompiledArtifacts } from "#runtime/loaders/bundled-artifacts.js";
+import {
+  updateBundledSandboxPreparedArtifacts,
+  withBundledCompiledArtifacts,
+} from "#runtime/loaders/bundled-artifacts.js";
 import { loadCompiledManifest } from "#runtime/loaders/manifest.js";
 import { resolveRuntimeCompilerArtifactPaths } from "#runtime/loaders/artifact-paths.js";
 import { resolveRuntimeAgentGraph } from "#runtime/resolve-agent-graph.js";
 import { resolveSandboxDockerfile } from "#execution/sandbox/dockerfile.js";
 import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import type { RuntimeRegisteredSandbox } from "#runtime/sandbox/registry.js";
+import type { SandboxPreparedArtifactEntry } from "#shared/sandbox-prepared-artifacts.js";
 import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
+import {
+  loadSandboxPreparedArtifactsManifest,
+  writeSandboxPreparedArtifactsManifest,
+} from "#runtime/sandbox/prepared-artifacts.js";
 import { materializeWorkspaceDirectory } from "#runtime/workspace/seed-files.js";
 import { toErrorMessage } from "#shared/errors.js";
 import {
@@ -34,6 +43,31 @@ import {
   getSandboxEnvironmentRuntime,
 } from "#shared/sandbox-environment.js";
 import { withSandboxTemplatePrewarmLock } from "./template-prewarm-lock.js";
+
+export interface SandboxPreparedArtifactStore {
+  has(
+    source: RuntimeCompiledArtifactsSource,
+    entries: readonly { readonly providerName: string; readonly templateName: string }[],
+  ): Promise<boolean>;
+  write(input: {
+    readonly compileDirectoryPath: string;
+    readonly entries: readonly SandboxPreparedArtifactEntry[];
+  }): Promise<void>;
+}
+
+const diskPreparedArtifactStore: SandboxPreparedArtifactStore = {
+  async has(source, entries) {
+    const manifest = await loadSandboxPreparedArtifactsManifest(source);
+    if (manifest === null) return false;
+    const keys = new Set(
+      manifest.entries.map((entry) => `${entry.providerName}\0${entry.templateName}`),
+    );
+    return entries.every((entry) => keys.has(`${entry.providerName}\0${entry.templateName}`));
+  },
+  async write(input) {
+    await writeSandboxPreparedArtifactsManifest(input);
+  },
+};
 
 interface PrewarmTarget {
   readonly context: SandboxProviderPrepareContext;
@@ -60,16 +94,21 @@ interface NodeSandbox extends RuntimeRegisteredSandbox {
 export type SandboxProviderPrepareDispatch = (input: {
   readonly context: SandboxProviderPrepareContext;
   readonly provider: SandboxProviderRuntime;
-}) => Promise<{ readonly reused: boolean }>;
+}) => Promise<{
+  readonly artifact: SandboxPreparedArtifact;
+  readonly reused: boolean;
+}>;
 
 interface PrewarmSandboxesInput {
   readonly appRoot: string;
   readonly compileDirectoryPath: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+  readonly force?: boolean;
   readonly graph: ResolvedAgentGraphBundle;
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxProviderPrepareDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
+  readonly preparedArtifactStore?: SandboxPreparedArtifactStore;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }
 
@@ -88,7 +127,17 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
   }
 
   const signature = createPrewarmSignature(targets);
-  if (input.shouldPrewarmSignature?.(signature) === false) {
+  const preparedArtifactStore = input.preparedArtifactStore ?? diskPreparedArtifactStore;
+  if (
+    input.shouldPrewarmSignature?.(signature) === false &&
+    (await preparedArtifactStore.has(
+      input.compiledArtifactsSource,
+      targets.map((target) => ({
+        providerName: target.provider.providerName,
+        templateName: target.context.templateName,
+      })),
+    ))
+  ) {
     return;
   }
 
@@ -105,7 +154,7 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
         input.log?.(`eve: sandbox template "${label}" (${provider.providerName}): ${message}`);
       };
       try {
-        return await withSandboxTemplatePrewarmLock(
+        const result = await withSandboxTemplatePrewarmLock(
           {
             appRoot: context.appRoot,
             providerName: provider.providerName,
@@ -120,6 +169,7 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
               provider,
             }),
         );
+        return { context, provider, result };
       } catch (error) {
         const prewarmError = formatPrewarmFailureForEnvironment({
           providerName: provider.providerName,
@@ -132,7 +182,15 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
       }
     }),
   );
-  const reusedCount = results.filter((result) => result.reused).length;
+  await preparedArtifactStore.write({
+    compileDirectoryPath: input.compileDirectoryPath,
+    entries: results.map(({ context, provider, result }) => ({
+      artifact: result.artifact,
+      providerName: provider.providerName,
+      templateName: context.templateName,
+    })),
+  });
+  const reusedCount = results.filter(({ result }) => result.reused).length;
   input.log?.(
     `eve: initialized ${formatSandboxTemplateCount(targets.length)} (${reusedCount} reused, ${
       targets.length - reusedCount
@@ -153,6 +211,7 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
 export async function prewarmAppSandboxes(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource?: RuntimeCompiledArtifactsSource;
+  readonly force?: boolean;
   readonly loadAgentGraph?: (
     input: Readonly<{
       compiledArtifactsSource: RuntimeDiskCompiledArtifactsSource;
@@ -161,6 +220,7 @@ export async function prewarmAppSandboxes(input: {
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxProviderPrepareDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
+  readonly preparedArtifactStore?: SandboxPreparedArtifactStore;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }): Promise<void> {
   const compiledArtifactsSource =
@@ -179,9 +239,11 @@ export async function prewarmAppSandboxes(input: {
       .compileDirectoryPath,
     compiledArtifactsSource,
     dispatch: input.dispatch,
+    force: input.force,
     graph,
     log: input.log,
     onPrewarmSignature: input.onPrewarmSignature,
+    preparedArtifactStore: input.preparedArtifactStore,
     shouldPrewarmSignature: input.shouldPrewarmSignature,
   });
 }
@@ -238,12 +300,18 @@ export async function prewarmBuiltAppSandboxes(input: {
       });
     },
   );
+
+  const sandboxPreparedArtifacts = await loadSandboxPreparedArtifactsManifest(builtArtifactsSource);
+  if (sandboxPreparedArtifacts !== null) {
+    updateBundledSandboxPreparedArtifacts(sandboxPreparedArtifacts);
+  }
 }
 
 async function collectPrewarmTargets(input: {
   readonly appRoot: string;
   readonly compileDirectoryPath: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+  readonly force?: boolean;
   readonly graph: ResolvedAgentGraphBundle;
 }): Promise<readonly PrewarmTarget[]> {
   const targets: PrewarmTarget[] = [];
@@ -285,6 +353,7 @@ async function collectPrewarmTargets(input: {
         context: {
           appRoot: input.appRoot,
           dockerfile,
+          force: input.force,
           resources: createSandboxProviderResources({
             resourcesKey: workspaceResourceRoot.contentHash,
             resourcesPath:

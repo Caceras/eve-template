@@ -148,7 +148,7 @@ const TEST_SANDBOX_PROVIDER = defineSandboxProvider({
   name: "eve-test-memory",
   environment: () => ({
     async prepare() {
-      return { reused: true };
+      return { artifact: {}, reused: true };
     },
     async getOrCreate(context) {
       const sandbox = mockSandbox({ id: context.sandboxName });

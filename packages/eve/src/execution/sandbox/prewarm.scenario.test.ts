@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -61,11 +61,28 @@ describe("prewarmAppSandboxes", () => {
       }),
       dispatch: async ({ context }) => {
         if (context.dockerfile !== undefined) dockerfilePaths.push(context.dockerfile.path);
-        return { reused: false };
+        return { artifact: { imageReference: "registry.example/eve@sha256:test" }, reused: false };
       },
     });
 
     expect(dockerfilePaths).toEqual([join(agentRoot, "sandbox", "Dockerfile")]);
+    const preparedManifest = JSON.parse(
+      await readFile(
+        join(compilerAppRoot, ".eve", "compile", "sandbox-prepared-artifacts.json"),
+        "utf8",
+      ),
+    );
+    expect(preparedManifest).toMatchObject({
+      entries: [
+        {
+          artifact: { imageReference: "registry.example/eve@sha256:test" },
+          providerName: "microsandbox",
+          templateName: expect.any(String),
+        },
+      ],
+      kind: "eve-sandbox-prepared-artifacts",
+      version: 1,
+    });
   });
 
   it("loads workspace seeds from an invocation-owned compiler directory", async () => {
@@ -922,7 +939,7 @@ function createRecordingDispatch(
       async writeTextFile() {},
     });
 
-    return { reused: options.reused ?? false };
+    return { artifact: { templateName: context.templateName }, reused: options.reused ?? false };
   };
 }
 

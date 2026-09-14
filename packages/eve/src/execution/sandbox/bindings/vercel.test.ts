@@ -206,6 +206,37 @@ describe("createVercelSandbox", () => {
     expect(templateSandbox.update).toHaveBeenCalledWith({ networkPolicy: "deny-all" });
   });
 
+  it("creates a session from the prepared snapshot artifact without looking up the template sandbox", async () => {
+    const sessionSandbox = createMockSandbox({ name: "session-key" });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn().mockResolvedValue(sessionSandbox),
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.getOrCreate({
+      appRoot: "/tmp/test-app-root",
+      prepared: { snapshotId: "prepared-snapshot" },
+      sandboxName: "session-key",
+      templateName: "template-key",
+    });
+
+    expect(sandboxModule.Sandbox.get).toHaveBeenCalledTimes(1);
+    expect(sandboxModule.Sandbox.get).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "session-key" }),
+    );
+    expect(sandboxModule.Sandbox.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "session-key",
+        source: { snapshotId: "prepared-snapshot", type: "snapshot" },
+      }),
+    );
+  });
+
   it("uses an author-supplied image for fresh Vercel sandboxes", async () => {
     const templateSandbox = createMockSandbox({ name: "template-key" });
     const sandboxModule = {
@@ -291,7 +322,7 @@ describe("createVercelSandbox", () => {
         seedFiles: [],
         templateName: "template-key",
       }),
-    ).resolves.toEqual({ reused: true });
+    ).resolves.toMatchObject({ reused: true });
 
     expect(sandboxModule.Sandbox.get).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -499,7 +530,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    expect(result).toEqual({ reused: false });
+    expect(result).toMatchObject({ reused: false });
     expect(templateSandbox.snapshot).toHaveBeenCalledTimes(1);
   });
 
@@ -526,7 +557,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    expect(result).toEqual({ reused: false });
+    expect(result).toMatchObject({ reused: false });
     expect(staleTemplate.delete).toHaveBeenCalledTimes(1);
     expect(staleTemplate.runCommand).not.toHaveBeenCalled();
     expect(sandboxModule.Sandbox.create).toHaveBeenCalledWith(
@@ -560,7 +591,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    expect(result).toEqual({ reused: true });
+    expect(result).toMatchObject({ reused: true });
     // Reuse must not re-snapshot or re-create the template sandbox.
     expect(existingTemplate.snapshot).not.toHaveBeenCalled();
     expect(sandboxModule.Sandbox.create).not.toHaveBeenCalled();
@@ -987,14 +1018,16 @@ describe("createVercelSandbox", () => {
     await expect(
       backend.getOrCreate({
         appRoot: "/tmp/test-app-root",
+        prepared: { snapshotId: "expired-template-snapshot" },
         sandboxName: "session-key",
         templateName: "template-key",
       }),
     ).rejects.toBeInstanceOf(SandboxTemplateNotProvisionedError);
-    expect(staleTemplate.delete).toHaveBeenCalledTimes(1);
+    expect(staleTemplate.delete).not.toHaveBeenCalled();
 
     const prewarmResult = await backend.prepare({
       appRoot: "/tmp/test-app-root",
+      force: true,
       seedFiles: [],
       templateName: "template-key",
     });
@@ -1004,7 +1037,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    expect(prewarmResult).toEqual({ reused: false });
+    expect(prewarmResult).toMatchObject({ reused: false });
     expect(freshTemplate.snapshot).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(3);
     expect(create.mock.calls[0]?.[0]).toMatchObject({
@@ -1047,6 +1080,7 @@ describe("createVercelSandbox", () => {
     await expect(
       backend.getOrCreate({
         appRoot: "/tmp/test-app-root",
+        prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
         templateName: "template-key",
       }),
@@ -1079,6 +1113,7 @@ describe("createVercelSandbox", () => {
     await expect(
       backend.getOrCreate({
         appRoot: "/tmp/test-app-root",
+        prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
         templateName: "template-key",
       }),
@@ -1118,7 +1153,7 @@ describe("createVercelSandbox", () => {
         seedFiles: [],
         templateName: "template-key",
       }),
-    ).resolves.toEqual({ reused: false });
+    ).resolves.toMatchObject({ reused: false });
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(staleTemplate.snapshot).toHaveBeenCalledTimes(1);
@@ -1210,6 +1245,7 @@ describe("createVercelSandbox", () => {
     const handle = await backend.getOrCreate({
       existing: { sandboxName: "persisted-sandbox-name" },
       appRoot: "/tmp/test-app-root",
+      prepared: { snapshotId: "template-snapshot" },
       sandboxName: "session-key",
       templateName: "template-key",
     });
@@ -1662,6 +1698,7 @@ describe("createVercelSandbox", () => {
     await expect(
       backend.getOrCreate({
         appRoot: "/tmp/test-app-root",
+        prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
         tags: {
           agent: "weather-agent",

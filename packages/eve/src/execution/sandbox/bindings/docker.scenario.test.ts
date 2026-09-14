@@ -152,14 +152,14 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
         seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
         templateName: templateKey,
       });
-      expect(first).toEqual({ reused: false });
+      expect(first).toMatchObject({ reused: false });
 
       const second = await engine.prepare({
         appRoot,
         seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
         templateName: templateKey,
       });
-      expect(second).toEqual({ reused: true });
+      expect(second).toMatchObject({ reused: true });
 
       const handle = await engine.getOrCreate({
         appRoot,

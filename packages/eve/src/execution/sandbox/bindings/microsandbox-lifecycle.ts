@@ -25,6 +25,7 @@ import {
 } from "#execution/sandbox/bindings/local-provider-utils.js";
 import {
   MICROSANDBOX_METADATA_VERSION,
+  type MicrosandboxTemplateMetadata,
   readSessionMetadata,
   readSessionMetadataRecord,
   readTemplateMetadata,
@@ -53,10 +54,13 @@ import { withDevelopmentSandboxMetadataPathTag } from "#execution/sandbox/develo
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
+  isSandboxPreparedArtifactRecord,
   providerResourceRoot,
+  type SandboxPreparedArtifact,
   type SandboxProviderCreateContext,
   type SandboxProviderHandle,
   type SandboxProviderPrepareContext,
+  type SandboxProviderPreparedArtifact,
   type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
@@ -72,7 +76,7 @@ export async function prewarmMicrosandboxTemplate(input: {
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
   readonly context: SandboxProviderPrepareContext;
-}): Promise<{ readonly reused: boolean }> {
+}): Promise<{ readonly artifact: SandboxPreparedArtifact; readonly reused: boolean }> {
   input.context.log?.("loading microsandbox runtime");
   const module = await loadMicrosandboxModule({
     appRoot: input.context.appRoot,
@@ -94,7 +98,7 @@ export async function prewarmMicrosandboxTemplate(input: {
   ) {
     input.context.log?.("reusing cached snapshot");
     await touchDirectory(templateRootPath);
-    return { reused: true };
+    return { artifact: microsandboxTemplateArtifact(existing), reused: true };
   }
 
   const snapshotName = createProviderName(
@@ -188,7 +192,10 @@ export async function prewarmMicrosandboxTemplate(input: {
       await rename(temporaryTemplateRootPath, templateRootPath);
     } catch (error) {
       if (await doesPathExist(templateRootPath)) {
-        return { reused: true };
+        const published = await readTemplateMetadata(metadataPath);
+        if (published !== null) {
+          return { artifact: microsandboxTemplateArtifact(published), reused: true };
+        }
       }
       throw error;
     }
@@ -197,7 +204,15 @@ export async function prewarmMicrosandboxTemplate(input: {
     await rm(temporaryTemplateRootPath, { force: true, recursive: true }).catch(() => {});
   }
 
-  return { reused: false };
+  return {
+    artifact: microsandboxTemplateArtifact({
+      image: input.context.dockerfile === undefined ? undefined : templateOptions.image,
+      optionsHash: input.optionsHash,
+      snapshotName,
+      version: MICROSANDBOX_METADATA_VERSION,
+    }),
+    reused: false,
+  };
 }
 
 export async function createMicrosandboxHandle(input: {
@@ -205,15 +220,16 @@ export async function createMicrosandboxHandle(input: {
   readonly context: SandboxProviderCreateContext<undefined, Record<string, unknown>>;
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
+  readonly prepared?: SandboxProviderPreparedArtifact;
 }): Promise<SandboxProviderHandle<Record<string, unknown>>> {
   const cacheDirectory = resolveSandboxCacheDirectory(input.context.appRoot);
   const templateMetadata =
-    input.context.templateName === null
+    input.prepared === undefined
       ? null
-      : await readTemplateMetadata(
-          resolveMicrosandboxMetadataPath(
-            resolveMicrosandboxTemplateRootPath(cacheDirectory, input.context.templateName),
-          ),
+      : requirePreparedMicrosandboxTemplate(
+          input.prepared.artifact,
+          input.prepared.templateName,
+          input.providerName,
         );
   const existingMetadata =
     readSessionMetadataRecord(input.context.existing) ??
@@ -271,7 +287,7 @@ export async function createMicrosandboxHandle(input: {
   }
 
   let snapshotName: string | null = null;
-  if (input.context.templateName !== null) {
+  if (input.prepared !== undefined) {
     if (
       templateMetadata === null ||
       templateMetadata.optionsHash !== input.optionsHash ||
@@ -279,7 +295,7 @@ export async function createMicrosandboxHandle(input: {
     ) {
       throw new SandboxTemplateNotProvisionedError({
         providerName: input.providerName,
-        templateKey: input.context.templateName,
+        templateKey: input.prepared.templateName,
       });
     }
 
@@ -310,12 +326,12 @@ export async function createMicrosandboxHandle(input: {
   } catch (error) {
     if (
       snapshotName !== null &&
-      input.context.templateName !== null &&
+      input.prepared !== undefined &&
       isMicrosandboxNotFoundError(error)
     ) {
       throw new SandboxTemplateNotProvisionedError({
         providerName: input.providerName,
-        templateKey: input.context.templateName,
+        templateKey: input.prepared.templateName,
       });
     }
     throw error;
@@ -330,6 +346,39 @@ export async function createMicrosandboxHandle(input: {
       }),
     ),
   );
+}
+
+function microsandboxTemplateArtifact(
+  metadata: MicrosandboxTemplateMetadata,
+): SandboxPreparedArtifact {
+  const artifact: Record<string, SandboxPreparedArtifact> = {
+    optionsHash: metadata.optionsHash,
+    snapshotName: metadata.snapshotName,
+    version: metadata.version,
+  };
+  if (metadata.image !== undefined) artifact.image = metadata.image;
+  return artifact;
+}
+
+function requirePreparedMicrosandboxTemplate(
+  artifact: SandboxPreparedArtifact | undefined,
+  templateKey: string,
+  providerName: string,
+): MicrosandboxTemplateMetadata {
+  if (
+    !isSandboxPreparedArtifactRecord(artifact) ||
+    artifact.version !== MICROSANDBOX_METADATA_VERSION ||
+    typeof artifact.optionsHash !== "string" ||
+    typeof artifact.snapshotName !== "string"
+  ) {
+    throw new SandboxTemplateNotProvisionedError({ providerName, templateKey });
+  }
+  return {
+    image: typeof artifact.image === "string" ? artifact.image : undefined,
+    optionsHash: artifact.optionsHash,
+    snapshotName: artifact.snapshotName,
+    version: MICROSANDBOX_METADATA_VERSION,
+  };
 }
 
 function createHandle(

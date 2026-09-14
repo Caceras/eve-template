@@ -293,8 +293,8 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       templateName: "tpl-reuse-report",
     });
 
-    expect(first).toEqual({ reused: false });
-    expect(second).toEqual({ reused: true });
+    expect(first).toMatchObject({ reused: false });
+    expect(second).toMatchObject({ reused: true });
     const handle = await backend.getOrCreate({
       appRoot,
       sandboxName: "session-reuse-report",

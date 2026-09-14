@@ -12,7 +12,12 @@ import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 
-function fixture(shared = false, setup?: () => void, returnCopy = false) {
+function fixture(
+  shared = false,
+  setup?: () => void,
+  returnCopy = false,
+  sharedNameFromPrincipal = false,
+) {
   const deleteSandbox = vi.fn(async () => {});
   const stopSandbox = vi.fn(async () => {});
   const create = vi.fn(async (context) => {
@@ -29,13 +34,17 @@ function fixture(shared = false, setup?: () => void, returnCopy = false) {
     name: "test",
     environment: () => ({
       getOrCreate: create,
-      prepare: async () => ({ reused: true }),
+      prepare: async () => ({ artifact: {}, reused: true }),
     }),
   });
   const environment = provider.environment();
-  const selector = defineSandbox(async () => {
+  const selector = defineSandbox(async ({ session }) => {
     const sandbox = shared
-      ? await environment.getOrCreate({ name: "team-acme" })
+      ? await environment.getOrCreate({
+          name: sharedNameFromPrincipal
+            ? `principal-${session.auth.current?.principalId ?? "anonymous"}`
+            : "team-acme",
+        })
       : await environment.create();
     setup?.();
     return returnCopy ? { ...sandbox } : sandbox;
@@ -60,10 +69,20 @@ async function open(
   registry: RuntimeSandboxRegistry,
   id = "session-1",
   state: Parameters<typeof ensureSandboxAccess>[0]["state"] = null,
+  principalId?: string,
 ) {
   const context = new ContextContainer();
+  const auth =
+    principalId === undefined
+      ? null
+      : {
+          attributes: {},
+          authenticator: "test",
+          principalId,
+          principalType: "user",
+        };
   context.set(SessionKey, {
-    auth: { current: null, initiator: null },
+    auth: { current: auth, initiator: auth },
     sessionId: id,
     turn: { id: "turn", sequence: 0 },
   });
@@ -164,12 +183,17 @@ describe("ensureSandboxAccess", () => {
     expect(value.create).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps an existing session on its persisted environment generation", async () => {
-    const value = fixture();
-    await open(value.registry, "session-1", {
-      initialized: true,
-      session: { providerName: "test", metadata: {}, sessionKey: "old-generation" },
-    });
-    expect(value.create.mock.calls[0]?.[0].sandboxName).toBe("old-generation");
+  it("does not reattach persisted shared sandbox metadata when the derived name changes", async () => {
+    const value = fixture(true, undefined, false, true);
+    const first = await open(value.registry, "durable-session", null, "principal-a");
+    const state = await first.access.captureState();
+    const firstCreate = value.create.mock.calls[0]?.[0];
+    value.create.mockClear();
+
+    await open(value.registry, "durable-session", state, "principal-b");
+
+    const secondCreate = value.create.mock.calls[0]?.[0];
+    expect(secondCreate?.sandboxName).not.toBe(firstCreate?.sandboxName);
+    expect(secondCreate?.existing).toBeUndefined();
   });
 });
