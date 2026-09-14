@@ -41,6 +41,7 @@ import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-
 import {
   createDurableSessionState,
   DURABLE_SESSION_VERSION,
+  MODEL_MESSAGE_FORMAT_VERSION,
   type DurableSessionState,
   projectSessionState,
   readDurableSession,
@@ -118,6 +119,7 @@ function installSessionStoreMocks(
     return {
       ...projectSessionState({ session }),
       snapshot: {
+        modelMessageFormatVersion: MODEL_MESSAGE_FORMAT_VERSION,
         session: projectToDurableSession(session),
         version: DURABLE_SESSION_VERSION,
       },
