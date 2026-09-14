@@ -4,6 +4,14 @@ import { parseJsonObject, type JsonObject } from "#shared/json.js";
 
 export const SLACK_APP_MANIFEST_TYPE = "https://docs.slack.dev/reference/app-manifest/";
 
+type SlackManifest = AppsManifestCreateArguments["manifest"];
+type SlackBotScope = NonNullable<
+  NonNullable<NonNullable<SlackManifest["oauth_config"]>["scopes"]>["bot"]
+>[number];
+type SlackBotEvent = NonNullable<
+  NonNullable<NonNullable<SlackManifest["settings"]>["event_subscriptions"]>["bot_events"]
+>[number];
+
 export interface SlackAppManifestOptions {
   readonly alwaysOnline?: boolean;
   readonly backgroundColor?: string;
@@ -24,6 +32,10 @@ export function defineSlackAppManifest(
   return {
     build(channelName) {
       const name = (input.displayName ?? channelName).slice(0, 35);
+      const botScopes = [
+        ...unique(["app_mentions:read", "chat:write"], input.botScopes),
+      ] as SlackBotScope[];
+      const botEvents = [...unique(["app_mention"], input.botEvents)] as SlackBotEvent[];
       const displayInformation: {
         background_color?: string;
         description?: string;
@@ -48,13 +60,9 @@ export function defineSlackAppManifest(
           },
           bot_user: { display_name: name },
         },
-        oauth_config: {
-          scopes: { bot: unique(["app_mentions:read", "chat:write"], input.botScopes) },
-        },
+        oauth_config: { scopes: { bot: botScopes } },
         settings: {
-          event_subscriptions: {
-            bot_events: unique(["app_mention"], input.botEvents),
-          },
+          event_subscriptions: { bot_events: botEvents },
           org_deploy_enabled: false,
           socket_mode_enabled: false,
           token_rotation_enabled: false,
