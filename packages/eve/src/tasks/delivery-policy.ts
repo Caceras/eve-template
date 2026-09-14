@@ -6,37 +6,29 @@ import {
 
 export interface DeliveryPolicy {
   readonly allowsEmptyDelivery: boolean;
+  readonly emitsAssistantText: boolean;
   readonly instruction?: string;
-}
-
-/**
- * Returns false for assistant text produced while a scheduled root invocation still owns
- * pending background tasks. The task-delivery phase comes from the indexed task type, so
- * blocking workflow tools and ordinary turns cannot enter this branch.
- */
-export function shouldEmitAssistantText(input: {
-  readonly hasScheduleProvenance: boolean;
-  readonly isRoot: boolean;
-  readonly taskDeliveryPhase: "none" | "initiating" | "pending" | "settled" | undefined;
-}): boolean {
-  return !(input.hasScheduleProvenance && input.isRoot && input.taskDeliveryPhase === "initiating");
 }
 
 const POLICIES = {
   conditional: {
     allowsEmptyDelivery: true,
+    emitsAssistantText: false,
     instruction: CONDITIONAL_DELIVERY_INSTRUCTION,
   },
   initiating: {
     allowsEmptyDelivery: false,
+    emitsAssistantText: true,
     instruction: TASK_DELIVERY_INITIATING_INSTRUCTION,
   },
-  normal: { allowsEmptyDelivery: false },
+  normal: { allowsEmptyDelivery: false, emitsAssistantText: true },
   pending: {
     allowsEmptyDelivery: true,
+    emitsAssistantText: true,
   },
   settled: {
     allowsEmptyDelivery: false,
+    emitsAssistantText: true,
     instruction: TASK_DELIVERY_SETTLED_INSTRUCTION,
   },
 } as const satisfies Record<string, DeliveryPolicy>;

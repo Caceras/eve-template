@@ -16,7 +16,6 @@ const LONG_SOURCE_FILE_ALLOWLIST = new Set<string>([
   "cli/dev/tui/setup-panel.ts",
   "cli/dev/tui/terminal-renderer.ts",
   "compiler/manifest.ts",
-  "execution/workflow-steps.ts",
   // Lifecycle and stream emission share one ordered protocol boundary.
   "harness/emission.ts",
   "harness/tool-loop.ts",

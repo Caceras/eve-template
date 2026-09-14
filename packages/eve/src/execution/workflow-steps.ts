@@ -86,7 +86,7 @@ import {
   resolveInitiatingTaskContext,
   resolveTaskDeliveryContext,
 } from "#tasks/delivery-context.js";
-import { shouldEmitAssistantText } from "#tasks/delivery-policy.js";
+import { resolveDeliveryPolicy } from "#tasks/delivery-policy.js";
 import {
   readRetainedBackgroundToolResult,
   runBackgroundStep,
@@ -131,21 +131,17 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
 
   let durableSession = await readDurableSession(input.sessionState);
   const ctx = await deserializeContext(input.serializedContext);
-  if (rawInput.input?.kind === "deliver") {
-    ctx.set(TurnTaskDeliveryKey, "none");
-  }
+  if (rawInput.input?.kind === "deliver") ctx.set(TurnTaskDeliveryKey, "none");
   const adapter = ctx.require(ChannelKey);
   const bundle = ctx.require(BundleKey);
   const effectiveAgent = resolveEffectiveAgentRuntime(bundle, ctx);
 
-  // Populate the callback base URL so getHookUrl() works during tool
-  // execution, preferring eve's active local origin over metadata fallback.
+  // Prefer eve's active local origin so getHookUrl() works during tool execution.
   try {
     const { getWorkflowMetadata } = await import("#compiled/@workflow/core/index.js");
     const metadata = getWorkflowMetadata();
-    if (typeof metadata.url === "string") {
+    if (typeof metadata.url === "string")
       ctx.set(CallbackBaseUrlKey, resolveWorkflowCallbackBaseUrl(metadata.url));
-    }
   } catch {
     // Outside a workflow context (e.g. tests) — getHookUrl will return undefined.
   }
@@ -171,9 +167,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
         state: clearPendingAuthorization(durableSession.state, matchedAttemptIds),
       };
       completedAuths = matches;
-      if (remainingPayloads.length === 0) {
-        input = { ...input, input: undefined };
-      }
+      if (remainingPayloads.length === 0) input = { ...input, input: undefined };
     }
   }
 
@@ -298,9 +292,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       state: durableSession.state,
       turnId: activeTurnId(initialEmissionState),
     });
-    if (taskContext !== undefined) {
-      ctx.set(TurnTaskDeliveryKey, taskContext.phase);
-    }
+    if (taskContext !== undefined) ctx.set(TurnTaskDeliveryKey, taskContext.phase);
   }
 
   if (input.input?.kind === "deliver") {
@@ -388,22 +380,21 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   }
 
   const writer = input.parentWritable.getWriter();
+  const deliveryPolicy = resolveDeliveryPolicy({
+    hasOutputSchema: initialSession.outputSchema !== undefined,
+    hasScheduleProvenance:
+      initialEmissionState.sequence === 0 && ctx.get(ScheduleIdKey) !== undefined,
+    isChild: ctx.get(ParentSessionKey) !== undefined,
+    isFirstTurn: initialEmissionState.sequence === 0,
+    taskDeliveryPhase: ctx.get(TurnTaskDeliveryKey),
+  });
 
   const emit = async (event: UnstampedMessageStreamEvent): Promise<MessageStreamEvent> => {
-    const emitAssistantText =
-      event.type !== "message.appended" && event.type !== "message.completed"
-        ? true
-        : shouldEmitAssistantText({
-            hasScheduleProvenance:
-              event.data.sequence === 0 && ctx.get(ScheduleIdKey) !== undefined,
-            isRoot: ctx.get(ParentSessionKey) === undefined,
-            taskDeliveryPhase: ctx.get(TurnTaskDeliveryKey),
-          });
-    if (!emitAssistantText && event.type === "message.appended") {
+    if (!deliveryPolicy.emitsAssistantText && event.type === "message.appended") {
       return stampMessageStreamEvent(event, ctx.get(TurnDeliveryIdsKey));
     }
     const deliverableEvent =
-      !emitAssistantText && event.type === "message.completed"
+      !deliveryPolicy.emitsAssistantText && event.type === "message.completed"
         ? { ...event, data: { ...event.data, message: null } }
         : event;
     const toEmit = await callAdapterEventHandler(adapter, deliverableEvent, adapterCtx);
@@ -488,7 +479,6 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       session: lifecycleSession,
       turnAgent: effectiveAgent.turnAgent,
     });
-    const modelSession = refreshedSession;
 
     const step = createExecutionNodeStep({
       abortSignal: input.abortSignal,
@@ -498,7 +488,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       createRuntime: createWorkflowRuntime,
       handleEvent,
       historyProjector: history.projector,
-      historyView: history.prepare(modelSession),
+      historyView: history.prepare(refreshedSession),
       instrumentation,
       mode,
       modelResolutionScope: {
@@ -508,7 +498,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       node: effectiveNode,
       workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
     });
-    return step(modelSession, stepInput);
+    return step(refreshedSession, stepInput);
   };
 
   let completedModelCall: CompletedModelCallCheckpoint | undefined;
