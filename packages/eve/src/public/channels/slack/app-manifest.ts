@@ -54,6 +54,10 @@ export function defineSlackAppManifest(
         eventSubscriptions.request_url = input.requestUrl;
         interactivity.request_url = input.requestUrl;
       }
+      const botUser: { always_online?: boolean; display_name: string } = {
+        display_name: name,
+      };
+      if (input.alwaysOnline !== undefined) botUser.always_online = input.alwaysOnline;
       const displayInformation: {
         background_color?: string;
         description?: string;

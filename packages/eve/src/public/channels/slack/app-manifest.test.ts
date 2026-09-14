@@ -28,6 +28,14 @@ describe("Slack app manifests", () => {
     });
   });
 
+  it.each([true, false])("emits an explicitly configured always-online value", (alwaysOnline) => {
+    const definition = defineSlackAppManifest({ alwaysOnline });
+
+    expect(buildSlackAppManifest(definition, "support")).toMatchObject({
+      features: { bot_user: { display_name: "support", always_online: alwaysOnline } },
+    });
+  });
+
   it("emits optional scopes that are not already required", () => {
     const definition = defineSlackAppManifest({
       botScopes: ["channels:history"],
