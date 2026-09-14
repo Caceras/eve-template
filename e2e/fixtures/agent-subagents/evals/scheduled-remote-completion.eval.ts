@@ -16,6 +16,7 @@ export default defineEval({
       t.skip("Target has no dev routes; schedule dispatch is dev-only.");
     }
 
+    // Scheduled root dispatch: the schedule, not an inbound turn, creates the session.
     const dispatch = await t.target.dispatchSchedule("scheduled-remote");
     await t.require(dispatch.scheduleId, equals("scheduled-remote"));
     await t.require(
@@ -24,6 +25,8 @@ export default defineEval({
     );
     const sessionId = dispatch.sessionIds[0]!;
 
+    // Initiating turn: withhold the deliberate nonempty premature fallback from
+    // both the event stream and the channel.
     const launch = await t.target.attachSession(sessionId);
     launch.succeeded();
     launch.calledTool("remote-loopback");
@@ -46,6 +49,7 @@ export default defineEval({
       ),
     );
 
+    // Agent receives background task result after turn ended.
     if (launch.state === undefined) throw new Error("scheduled launch has no stream cursor");
     const completedLive = t.target.watchTurn(sessionId, {
       startIndex: launch.state.streamIndex,
@@ -74,6 +78,7 @@ export default defineEval({
       count: 1,
     });
 
+    // Across both turns, assert exactly one final non-null delivery crosses the channel boundary.
     const allEvents = [...launch.events, ...completed.events];
     await t.require(
       allEvents,

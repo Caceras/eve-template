@@ -19,6 +19,7 @@ export default defineEval({
       t.skip("Target has no dev routes; schedule dispatch is dev-only.");
     }
 
+    // Scheduled root dispatch: the schedule, not an inbound turn, creates the session.
     const dispatch = await t.target.dispatchSchedule("scheduled-export");
     await t.require(dispatch.scheduleId, equals("scheduled-export"));
     await t.require(
@@ -63,7 +64,8 @@ export default defineEval({
       satisfies((message) => message === undefined, "the pending message wake is silent"),
     );
 
-    // Only the settled wake produces a user-facing report.
+    // Agent receives background task result after turn ended.
+    // Only the settled wake produces the single final non-null delivery.
     const doneLive = t.target.watchTurn(sessionId, {
       startIndex: requireStreamIndex(updateLive.session, "completion wait"),
     });
