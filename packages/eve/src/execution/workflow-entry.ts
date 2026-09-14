@@ -52,8 +52,13 @@ import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agen
 import { attachClientContext, readClientContext } from "#internal/client-context.js";
 import { settleContinuationConflictStep } from "#execution/continuation-conflict-step.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
-import { addTokenUsage } from "#shared/token-usage.js";
-import { getSessionTaskCohorts } from "#tasks/session-task-cohorts.js";
+import { addTokenUsage } from "#shared/add-token-usage.js";
+import {
+  clearCallerTaskResults,
+  createCallerTaskResults,
+  hasPendingCallerTaskResults,
+  observeCallerTaskResults,
+} from "#execution/workflow-entry-caller-results.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   SESSION_INBOX_WIRE_VERSION,
@@ -404,8 +409,7 @@ async function runDriverLoop(input: {
   const seenTaskDeliveries = new Set<string>();
   // State can expose terminal tasks before their buffered wakes are delivered.
   // Track only turn-owned tasks and only cohorts selected by a terminal wake.
-  const callerTaskIds = new Set<string>();
-  const deliveredCallerTaskIds = new Set<string>();
+  const callerTaskResults = createCallerTaskResults();
   const stateCursor = new SessionStateCursor({
     serializedContext: input.serializedContext,
     sessionState: input.sessionState,
@@ -476,15 +480,11 @@ async function runDriverLoop(input: {
     while (true) {
       const caller = input.crashCleanupState.caller;
       if (caller !== undefined) {
-        const taskCohorts = getSessionTaskCohorts(stateCursor.sessionState.snapshot?.session.state);
-        for (const [taskId, task] of taskCohorts) {
-          if (task.createdByTurnId === dispatchedTurnId) callerTaskIds.add(taskId);
-        }
-        recordDeliveredCallerTaskResults({
-          callerTaskIds,
-          deliveredCallerTaskIds,
+        observeCallerTaskResults({
           delivery: dispatchedDelivery,
-          taskCohorts,
+          results: callerTaskResults,
+          sessionState: stateCursor.sessionState,
+          turnId: dispatchedTurnId,
         });
       }
 
@@ -540,8 +540,7 @@ async function runDriverLoop(input: {
         const waitsForNestedResults =
           caller !== undefined &&
           settled.isError !== true &&
-          callerTaskIds.size > 0 &&
-          !allCallerTaskResultsDelivered(callerTaskIds, deliveredCallerTaskIds);
+          hasPendingCallerTaskResults(callerTaskResults);
         if (waitsForNestedResults) {
           input.crashCleanupState.callerUsage = addTokenUsage(
             input.crashCleanupState.callerUsage,
@@ -559,14 +558,12 @@ async function runDriverLoop(input: {
           });
           input.crashCleanupState.caller = undefined;
           input.crashCleanupState.callerUsage = undefined;
-          callerTaskIds.clear();
-          deliveredCallerTaskIds.clear();
+          clearCallerTaskResults(callerTaskResults);
         }
       } else if (action.cancelled === true) {
         input.crashCleanupState.caller = undefined;
         input.crashCleanupState.callerUsage = undefined;
-        callerTaskIds.clear();
-        deliveredCallerTaskIds.clear();
+        clearCallerTaskResults(callerTaskResults);
       }
 
       // An open authorization challenge must not wedge the session:
@@ -661,8 +658,7 @@ async function runDriverLoop(input: {
         action = { ...action, settled: undefined };
         input.crashCleanupState.caller = undefined;
         input.crashCleanupState.callerUsage = undefined;
-        callerTaskIds.clear();
-        deliveredCallerTaskIds.clear();
+        clearCallerTaskResults(callerTaskResults);
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
         continue;
       }
@@ -670,8 +666,7 @@ async function runDriverLoop(input: {
       if (next.delivery.caller !== undefined) {
         input.crashCleanupState.caller = next.delivery.caller;
         input.crashCleanupState.callerUsage = undefined;
-        callerTaskIds.clear();
-        deliveredCallerTaskIds.clear();
+        clearCallerTaskResults(callerTaskResults);
       }
       dispatchedDelivery = next.delivery;
       dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
@@ -681,44 +676,4 @@ async function runDriverLoop(input: {
     await disposeSettledTurnControl?.();
     await sessionTimeout?.dispose();
   }
-}
-
-function allCallerTaskResultsDelivered(
-  taskIds: ReadonlySet<string>,
-  deliveredTaskIds: ReadonlySet<string>,
-): boolean {
-  return [...taskIds].every((taskId) => deliveredTaskIds.has(taskId));
-}
-
-function recordDeliveredCallerTaskResults(input: {
-  readonly callerTaskIds: ReadonlySet<string>;
-  readonly deliveredCallerTaskIds: Set<string>;
-  readonly delivery: HookPayload;
-  readonly taskCohorts: ReturnType<typeof getSessionTaskCohorts>;
-}): void {
-  const taskId = terminalTaskDeliveryId(input.delivery);
-  if (taskId === undefined) return;
-  const deliveredTask = input.taskCohorts.get(taskId);
-  if (deliveredTask?.settled !== true) return;
-
-  for (const [candidateId, candidate] of input.taskCohorts) {
-    if (
-      input.callerTaskIds.has(candidateId) &&
-      candidate.settled &&
-      candidate.cohortId === deliveredTask.cohortId
-    ) {
-      input.deliveredCallerTaskIds.add(candidateId);
-    }
-  }
-}
-
-function terminalTaskDeliveryId(delivery: HookPayload): string | undefined {
-  if (delivery.kind !== "deliver") return undefined;
-  for (const status of ["completed", "failed", "cancelled"] as const) {
-    const suffix = `:ready:${status}`;
-    if (delivery.taskDeliveryId?.endsWith(suffix)) {
-      return delivery.taskDeliveryId.slice(0, -suffix.length);
-    }
-  }
-  return undefined;
 }

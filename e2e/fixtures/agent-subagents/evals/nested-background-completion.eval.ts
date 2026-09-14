@@ -22,16 +22,10 @@ export default defineEval({
   async test(t) {
     const started = await t.send(NESTED_COMPLETION_PARENT_SCENARIO);
     started.expectOk();
-    const remoteCall = started.events.find(
-      (event) => event.type === "subagent.called" && event.data.name === "remote-loopback",
-    );
-    if (remoteCall?.type !== "subagent.called") {
-      throw new Error("The parent did not start remote-loopback.");
-    }
     const receipt = started.events.find(
       (event) =>
         event.type === "subagent.completed" &&
-        event.data.callId === remoteCall.data.callId &&
+        event.data.subagentName === "remote-loopback" &&
         event.data.backgroundTask !== undefined,
     );
     if (receipt?.type !== "subagent.completed" || receipt.data.backgroundTask === undefined) {
@@ -39,12 +33,19 @@ export default defineEval({
     }
     const parentTaskId = receipt.data.backgroundTask.taskId;
 
+    const blocked = await waitForReviewGate(t, { driver: t, events: started.events });
+    const remoteCall = blocked.events.find(
+      (event) => event.type === "subagent.called" && event.data.callId === receipt.data.callId,
+    );
+    if (remoteCall?.type !== "subagent.called") {
+      throw new Error("The background remote-loopback invocation did not start.");
+    }
+
     const childAcknowledgementLive = t.target.watchTurn(remoteCall.data.childSessionId);
     const childAcknowledgement = await childAcknowledgementLive.result();
     childAcknowledgement.expectOk();
     childAcknowledgement.messageIncludes("Reviewing...");
 
-    const blocked = await waitForReviewGate(t, { driver: t, events: started.events });
     await t.require(
       blocked.events,
       satisfies(

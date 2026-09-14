@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { addTokenUsage, type TokenUsage } from "#shared/token-usage.js";
+import { addTokenUsage } from "#shared/add-token-usage.js";
+import type { TokenUsage } from "#shared/token-usage.js";
 
 describe("addTokenUsage", () => {
   it("preserves whether model cost was reported", () => {

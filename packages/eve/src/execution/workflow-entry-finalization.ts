@@ -10,7 +10,8 @@ import { fireSessionCallbackStep } from "#subagents/callback-step.js";
 import { emitTerminalSessionCompletionStep } from "#execution/terminal-session-completion-step.js";
 import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-step.js";
 import type { RunMode } from "#shared/run-mode.js";
-import { addTokenUsage, type TokenUsage } from "#shared/token-usage.js";
+import { addTokenUsage } from "#shared/add-token-usage.js";
+import type { TokenUsage } from "#shared/token-usage.js";
 
 export async function finalizeExpiredSession(input: {
   readonly caller: TurnCaller | undefined;
