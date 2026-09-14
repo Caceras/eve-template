@@ -51,6 +51,9 @@ import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-
 import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agent-config.js";
 import { attachClientContext, readClientContext } from "#internal/client-context.js";
 import { settleContinuationConflictStep } from "#execution/continuation-conflict-step.js";
+import { activeTurnId } from "#harness/active-turn-id.js";
+import { addTokenUsage } from "#shared/token-usage.js";
+import { getSessionTaskCohorts } from "#tasks/session-task-cohorts.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   SESSION_INBOX_WIRE_VERSION,
@@ -131,6 +134,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
   const driverWritable = getWritable<Uint8Array>();
   const crashCleanupState: CrashCleanupState = {
     caller: undefined,
+    callerUsage: undefined,
     callerResolved: false,
     lastSessionState: undefined,
     serializedContext: input.serializedContext,
@@ -255,6 +259,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     }
     return await finalizeExpiredSession({
       caller: crashCleanupState.caller,
+      callerUsage: crashCleanupState.callerUsage,
       driverWritable,
       mode,
       serializedContext: outcome.serializedContext,
@@ -298,7 +303,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         caller: await resolveCallerForCrash(crashCleanupState, crashCleanupState.serializedContext),
         lifecycle: "terminal",
         sessionId,
-        settled: { isError: true, output: error },
+        settled: { isError: true, output: error, usage: crashCleanupState.callerUsage },
       });
     }
     throw createSafeOuterWorkflowError();
@@ -397,6 +402,10 @@ async function runDriverLoop(input: {
   const bufferedSessionControls: Array<"clear" | "compact" | "expired" | "reset"> = [];
   const cancelledTaskIds = new Set<string>();
   const seenTaskDeliveries = new Set<string>();
+  // State can expose terminal tasks before their buffered wakes are delivered.
+  // Track only turn-owned tasks and only cohorts selected by a terminal wake.
+  const callerTaskIds = new Set<string>();
+  const deliveredCallerTaskIds = new Set<string>();
   const stateCursor = new SessionStateCursor({
     serializedContext: input.serializedContext,
     sessionState: input.sessionState,
@@ -460,15 +469,32 @@ async function runDriverLoop(input: {
   try {
     await sessionTimeout?.start();
 
-    let action: TurnDriverAction = await runTurn(input.initialInput);
+    let dispatchedDelivery: HookPayload = input.initialInput;
+    let dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
+    let action: TurnDriverAction = await runTurn(dispatchedDelivery);
 
     while (true) {
+      const caller = input.crashCleanupState.caller;
+      if (caller !== undefined) {
+        const taskCohorts = getSessionTaskCohorts(stateCursor.sessionState.snapshot?.session.state);
+        for (const [taskId, task] of taskCohorts) {
+          if (task.createdByTurnId === dispatchedTurnId) callerTaskIds.add(taskId);
+        }
+        recordDeliveredCallerTaskResults({
+          callerTaskIds,
+          deliveredCallerTaskIds,
+          delivery: dispatchedDelivery,
+          taskCohorts,
+        });
+      }
+
       if (action.kind === "done") {
         return {
           kind: "result",
           result: await finalizeDone({
             action,
             caller: input.crashCleanupState.caller,
+            callerUsage: input.crashCleanupState.callerUsage,
             mode: input.mode,
             terminalState: input.crashCleanupState,
           }),
@@ -494,10 +520,9 @@ async function runDriverLoop(input: {
           caller: input.crashCleanupState.caller,
           sessionId: stateCursor.sessionState.sessionId,
         };
+        const usage = addTokenUsage(input.crashCleanupState.callerUsage, settled.usage);
         await notifyCancelledTaskCallerStep(
-          settled.usage === undefined
-            ? cancelledCaller
-            : { ...cancelledCaller, usage: settled.usage },
+          usage === undefined ? cancelledCaller : { ...cancelledCaller, usage },
         );
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
       }
@@ -512,17 +537,36 @@ async function runDriverLoop(input: {
       // the full StepResult so no state-key fallback exists anymore.
       const settled = action.settled;
       if (action.cancelled !== true && settled !== undefined) {
-        if (input.crashCleanupState.caller !== undefined) {
+        const waitsForNestedResults =
+          caller !== undefined &&
+          settled.isError !== true &&
+          callerTaskIds.size > 0 &&
+          !allCallerTaskResultsDelivered(callerTaskIds, deliveredCallerTaskIds);
+        if (waitsForNestedResults) {
+          input.crashCleanupState.callerUsage = addTokenUsage(
+            input.crashCleanupState.callerUsage,
+            settled.usage,
+          );
+        } else if (caller !== undefined) {
           await notifyTurnCallerStep({
-            caller: input.crashCleanupState.caller,
+            caller,
             lifecycle: "parked",
             sessionId: stateCursor.sessionState.sessionId,
-            settled,
+            settled: {
+              ...settled,
+              usage: addTokenUsage(input.crashCleanupState.callerUsage, settled.usage),
+            },
           });
+          input.crashCleanupState.caller = undefined;
+          input.crashCleanupState.callerUsage = undefined;
+          callerTaskIds.clear();
+          deliveredCallerTaskIds.clear();
         }
-        input.crashCleanupState.caller = undefined;
       } else if (action.cancelled === true) {
         input.crashCleanupState.caller = undefined;
+        input.crashCleanupState.callerUsage = undefined;
+        callerTaskIds.clear();
+        deliveredCallerTaskIds.clear();
       }
 
       // An open authorization challenge must not wedge the session:
@@ -537,10 +581,12 @@ async function runDriverLoop(input: {
       input.crashCleanupState.lastSessionState = stateCursor.sessionState;
 
       if (next.kind === "authorization-resume") {
-        action = await runTurn({
+        dispatchedDelivery = {
           kind: "deliver",
           payloads: next.payloads,
-        });
+        };
+        dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
+        action = await runTurn(dispatchedDelivery);
         continue;
       }
 
@@ -557,6 +603,7 @@ async function runDriverLoop(input: {
           kind: "result",
           result: await finalizeExpiredSession({
             caller: input.crashCleanupState.caller,
+            callerUsage: input.crashCleanupState.callerUsage,
             driverWritable: input.driverWritable,
             mode: input.mode,
             serializedContext: stateCursor.serializedContext,
@@ -567,7 +614,9 @@ async function runDriverLoop(input: {
       }
 
       if (next.kind === "clear" || next.kind === "compact") {
-        action = await runTurn({ kind: next.kind });
+        dispatchedDelivery = { kind: next.kind };
+        dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
+        action = await runTurn(dispatchedDelivery);
         continue;
       }
 
@@ -576,6 +625,7 @@ async function runDriverLoop(input: {
           kind: "result",
           result: await finalizeExpiredSession({
             caller: input.crashCleanupState.caller,
+            callerUsage: input.crashCleanupState.callerUsage,
             driverWritable: input.driverWritable,
             mode: input.mode,
             serializedContext: stateCursor.serializedContext,
@@ -597,22 +647,78 @@ async function runDriverLoop(input: {
         });
         stateCursor.adoptState(cancelled);
         input.crashCleanupState.serializedContext = stateCursor.serializedContext;
+        const cancelledCaller = {
+          caller: input.crashCleanupState.caller,
+          sessionId: stateCursor.sessionState.sessionId,
+        };
+        const usage = addTokenUsage(input.crashCleanupState.callerUsage, cancelled.usage);
+        await notifyCancelledTaskCallerStep(
+          usage === undefined ? cancelledCaller : { ...cancelledCaller, usage },
+        );
         // Re-enter with `settled` cleared: the parked answer was already
-        // delivered to its caller before this wait, so the next iteration
-        // must not treat it as a fresh settlement.
+        // either delivered or deferred before this wait, so the next
+        // iteration must not treat it as a fresh settlement.
         action = { ...action, settled: undefined };
         input.crashCleanupState.caller = undefined;
+        input.crashCleanupState.callerUsage = undefined;
+        callerTaskIds.clear();
+        deliveredCallerTaskIds.clear();
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
         continue;
       }
 
       if (next.delivery.caller !== undefined) {
         input.crashCleanupState.caller = next.delivery.caller;
+        input.crashCleanupState.callerUsage = undefined;
+        callerTaskIds.clear();
+        deliveredCallerTaskIds.clear();
       }
-      action = await runTurn(next.delivery);
+      dispatchedDelivery = next.delivery;
+      dispatchedTurnId = activeTurnId(stateCursor.sessionState.emissionState);
+      action = await runTurn(dispatchedDelivery);
     }
   } finally {
     await disposeSettledTurnControl?.();
     await sessionTimeout?.dispose();
   }
+}
+
+function allCallerTaskResultsDelivered(
+  taskIds: ReadonlySet<string>,
+  deliveredTaskIds: ReadonlySet<string>,
+): boolean {
+  return [...taskIds].every((taskId) => deliveredTaskIds.has(taskId));
+}
+
+function recordDeliveredCallerTaskResults(input: {
+  readonly callerTaskIds: ReadonlySet<string>;
+  readonly deliveredCallerTaskIds: Set<string>;
+  readonly delivery: HookPayload;
+  readonly taskCohorts: ReturnType<typeof getSessionTaskCohorts>;
+}): void {
+  const taskId = terminalTaskDeliveryId(input.delivery);
+  if (taskId === undefined) return;
+  const deliveredTask = input.taskCohorts.get(taskId);
+  if (deliveredTask?.settled !== true) return;
+
+  for (const [candidateId, candidate] of input.taskCohorts) {
+    if (
+      input.callerTaskIds.has(candidateId) &&
+      candidate.settled &&
+      candidate.cohortId === deliveredTask.cohortId
+    ) {
+      input.deliveredCallerTaskIds.add(candidateId);
+    }
+  }
+}
+
+function terminalTaskDeliveryId(delivery: HookPayload): string | undefined {
+  if (delivery.kind !== "deliver") return undefined;
+  for (const status of ["completed", "failed", "cancelled"] as const) {
+    const suffix = `:ready:${status}`;
+    if (delivery.taskDeliveryId?.endsWith(suffix)) {
+      return delivery.taskDeliveryId.slice(0, -suffix.length);
+    }
+  }
+  return undefined;
 }

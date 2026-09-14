@@ -10,10 +10,11 @@ import { fireSessionCallbackStep } from "#subagents/callback-step.js";
 import { emitTerminalSessionCompletionStep } from "#execution/terminal-session-completion-step.js";
 import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-step.js";
 import type { RunMode } from "#shared/run-mode.js";
-import type { TokenUsage } from "#shared/token-usage.js";
+import { addTokenUsage, type TokenUsage } from "#shared/token-usage.js";
 
 export async function finalizeExpiredSession(input: {
   readonly caller: TurnCaller | undefined;
+  readonly callerUsage?: TokenUsage;
   readonly driverWritable: WritableStream<Uint8Array>;
   readonly mode: RunMode;
   readonly serializedContext: Record<string, unknown>;
@@ -45,7 +46,7 @@ export async function finalizeExpiredSession(input: {
       caller: input.caller,
       lifecycle: "terminal",
       sessionId: input.sessionState.sessionId,
-      settled: { output: "" },
+      settled: { output: "", usage: input.callerUsage },
     });
   }
   return { output: "" };
@@ -54,6 +55,7 @@ export async function finalizeExpiredSession(input: {
 export async function finalizeDone(input: {
   readonly action: NextDriverAction & { readonly kind: "done" };
   readonly caller: TurnCaller | undefined;
+  readonly callerUsage?: TokenUsage;
   readonly mode: RunMode;
   readonly terminalState?: { terminalEmitted: boolean };
 }): Promise<{ readonly output: unknown }> {
@@ -85,7 +87,7 @@ export async function finalizeDone(input: {
       isError?: boolean;
       output: unknown;
       usage?: TokenUsage;
-    } = { output, usage: input.action.usageDelta };
+    } = { output, usage: addTokenUsage(input.callerUsage, input.action.usageDelta) };
     if (failed) {
       settled.isError = true;
     }
