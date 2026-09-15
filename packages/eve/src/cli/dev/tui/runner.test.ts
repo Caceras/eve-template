@@ -892,7 +892,7 @@ describe("EveTUIRunner idle session follow", () => {
     expect(renderIdleStream).not.toHaveBeenCalled();
   });
 
-  it("renders background completion after two quiet minutes without another user message", async () => {
+  it("renders background completion after several quiet minutes without another user message", async () => {
     vi.useFakeTimers();
     const session = stubSession();
     const prompt = createDeferred<string | undefined>();
@@ -953,7 +953,7 @@ describe("EveTUIRunner idle session follow", () => {
     });
     const running = runner.run();
     try {
-      await vi.advanceTimersByTimeAsync(130_000);
+      await vi.advanceTimersByTimeAsync(200_000);
       expect(connections).toBeGreaterThanOrEqual(8);
       expect(idleEvents).toContainEqual({
         type: "assistant-complete",

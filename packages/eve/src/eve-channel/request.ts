@@ -21,6 +21,7 @@ import {
   EVE_SESSION_ID_HEADER,
   EVE_SESSION_STREAM_IDLE_CLOSE_MS,
   EVE_STREAM_FORMAT_HEADER,
+  EVE_STREAM_IDLE_CLOSE_HEADER,
   EVE_STREAM_TAIL_INDEX_HEADER,
   EVE_STREAM_VERSION_HEADER,
 } from "#protocol/message.js";
@@ -317,6 +318,7 @@ export async function createSessionStreamResponse(
       "x-accel-buffering": "no",
       [EVE_SESSION_ID_HEADER]: session.id,
       [EVE_STREAM_FORMAT_HEADER]: EVE_MESSAGE_STREAM_FORMAT,
+      [EVE_STREAM_IDLE_CLOSE_HEADER]: String(EVE_SESSION_STREAM_IDLE_CLOSE_MS),
       [EVE_STREAM_VERSION_HEADER]: EVE_MESSAGE_STREAM_VERSION,
     });
     if (tailIndex !== undefined) {
