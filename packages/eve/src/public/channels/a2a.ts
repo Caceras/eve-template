@@ -25,7 +25,13 @@ import {
 } from "#internal/nitro/routes/channel-route-context.js";
 import { parseInputResponses } from "#shared/input.js";
 import { parseJsonValue, type JsonObject, type JsonValue } from "#shared/json.js";
-import { routeAuth, type AuthFn } from "#public/channels/auth.js";
+import {
+  isExplicitPublicAuth,
+  readOAuthResourceOidcDiscoveryUrl,
+  readOAuthResourceOptions,
+  routeAuth,
+  type AuthFn,
+} from "#public/channels/auth.js";
 import { defineChannel, GET, POST, type Channel } from "#public/definitions/channel.js";
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -93,8 +99,8 @@ export interface A2AChannelInput {
   readonly auth: AuthFn<Request> | readonly AuthFn<Request>[];
   /** Public Agent Card fields that eve cannot derive from compiled agent metadata. */
   readonly card?: A2AAgentCardOverrides;
-  /** Authentication requirements published in the Agent Card. */
-  readonly security: A2AChannelSecurity;
+  /** Custom Agent Card auth declaration. Derived automatically from `oauthResource(oidc(...))`. */
+  readonly security?: A2AChannelSecurity;
   /** Override the default JSON-RPC route (`/eve/v1/a2a`). */
   readonly route?: string;
 }
@@ -106,15 +112,12 @@ export function a2aChannel(input: A2AChannelInput): A2AChannel {
   if (input?.auth === undefined) {
     throw new Error("a2aChannel requires auth. Use none() for explicit public access.");
   }
-  if (input?.security === undefined) {
-    throw new Error("a2aChannel requires an Agent Card security declaration.");
-  }
-  validateSecurityDeclaration(input.security);
+  const security = resolveSecurityDeclaration(input.auth, input.security);
   const route = input.route ?? A2A_DEFAULT_ROUTE;
   return defineChannel({
     routes: [
       GET(A2A_AGENT_CARD_PATH, async (request, args) =>
-        agentCardResponse(request, args, input.card, input.security, route),
+        agentCardResponse(request, args, input.card, security, route),
       ),
       POST(route, async (request, args) => handleAuthenticatedRequest(request, args, input.auth)),
     ],
@@ -456,6 +459,30 @@ function isJsonRpcId(value: unknown): value is string | number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveSecurityDeclaration(
+  auth: AuthFn<Request> | readonly AuthFn<Request>[],
+  authored: A2AChannelSecurity | undefined,
+): A2AChannelSecurity {
+  if (authored !== undefined) {
+    validateSecurityDeclaration(authored);
+    return authored;
+  }
+  if (isExplicitPublicAuth(auth)) return { type: "public" };
+  const oauth = readOAuthResourceOptions(auth);
+  const discoveryUrl = readOAuthResourceOidcDiscoveryUrl(auth);
+  if (oauth === undefined || discoveryUrl === undefined) {
+    throw new Error("a2aChannel requires security unless auth is oauthResource(oidc(...), ...).");
+  }
+  const scopes = oauth.requiredScopes ?? [];
+  return {
+    requirements: [{ schemes: { oidc: { list: scopes } } }],
+    schemes: {
+      oidc: { openIdConnectSecurityScheme: { openIdConnectUrl: discoveryUrl } },
+    },
+    type: "authenticated",
+  };
 }
 
 function validateSecurityDeclaration(security: A2AChannelSecurity): void {

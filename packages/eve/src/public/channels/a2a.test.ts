@@ -13,7 +13,7 @@ import {
   attachAgentInfoRouteResponse,
   attachRouteSessionCreator,
 } from "#internal/nitro/routes/channel-route-context.js";
-import { ForbiddenError, none, type AuthFn } from "#public/channels/auth.js";
+import { ForbiddenError, none, oauthResource, oidc, type AuthFn } from "#public/channels/auth.js";
 import { a2aChannel } from "#public/channels/a2a.js";
 
 const invocation = vi.hoisted(() => ({
@@ -44,13 +44,19 @@ describe("a2aChannel", () => {
     vi.clearAllMocks();
   });
 
-  it("requires auth and an Agent Card security declaration", () => {
+  it("requires auth and derives public security from none()", async () => {
     expect(() => a2aChannel({ security: { type: "public" } } as never)).toThrow(
       "a2aChannel requires auth. Use none() for explicit public access.",
     );
-    expect(() => a2aChannel({ auth: none() } as never)).toThrow(
-      "a2aChannel requires an Agent Card security declaration.",
+    expect(() => a2aChannel({ auth: () => principal })).toThrow(
+      "a2aChannel requires security unless auth is oauthResource(oidc(...), ...).",
     );
+    const channel = a2aChannel({ auth: none() });
+    const response = await httpRoute(channel.routes[0]).handler(cardRequest(), routeArgs());
+    await expect(response.json()).resolves.toMatchObject({
+      securityRequirements: [],
+      securitySchemes: {},
+    });
   });
 
   it("publishes a discoverable A2A 1.0 Agent Card", async () => {
@@ -109,6 +115,28 @@ describe("a2aChannel", () => {
         },
       }),
     ).toThrow('A2A security requirement references unknown scheme "missing".');
+  });
+
+  it("derives and enforces Agent Card security from OAuth metadata", async () => {
+    const issuer = "https://auth.example";
+    const channel = a2aChannel({
+      auth: oauthResource(oidc({ audiences: ["https://agent.example/eve/v1/a2a"], issuer }), {
+        issuer,
+        requiredScopes: ["a2a.invoke"],
+        resource: "https://agent.example/eve/v1/a2a",
+      }),
+    });
+    const response = await httpRoute(channel.routes[0]).handler(cardRequest(), routeArgs());
+    await expect(response.json()).resolves.toMatchObject({
+      securityRequirements: [{ schemes: { oidc: { list: ["a2a.invoke"] } } }],
+      securitySchemes: {
+        oidc: {
+          openIdConnectSecurityScheme: {
+            openIdConnectUrl: "https://auth.example/.well-known/openid-configuration",
+          },
+        },
+      },
+    });
   });
 
   it("publishes authored security requirements and card metadata", async () => {
