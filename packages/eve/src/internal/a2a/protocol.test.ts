@@ -79,6 +79,19 @@ describe("A2A protocol projection", () => {
     expect(JSON.stringify(authorization)).not.toContain("token");
   });
 
+  it.each([{ text: 123 }, { url: 123 }, { raw: 123 }, { data: undefined }])(
+    "rejects malformed part content as invalid parameters: %j",
+    (part) => {
+      expect(() =>
+        parseClientMessage({
+          messageId: "message",
+          parts: [part],
+          role: "ROLE_USER",
+        }),
+      ).toThrow(expect.objectContaining({ code: -32602, message: "Invalid parameters" }));
+    },
+  );
+
   it("normalizes text, data, and URL parts without fetching URLs", () => {
     const message = parseClientMessage({
       messageId: "message",

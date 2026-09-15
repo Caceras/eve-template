@@ -355,15 +355,16 @@ async function waitForInterruption(
 
 async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, milliseconds);
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
+    const finish = () => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const onAbort = () => {
+      clearTimeout(timeout);
+      finish();
+    };
+    const timeout = setTimeout(finish, milliseconds);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

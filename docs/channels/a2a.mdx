@@ -37,14 +37,37 @@ Use an eve route-auth policy and publish the matching A2A security declaration. 
 access; the declaration tells A2A clients which credential to obtain.
 
 ```ts title="agent/channels/a2a.ts"
-import { oauthResource, oidc } from "eve/channels/auth";
+import { ForbiddenError, oauthResource, oidc, type AuthFn } from "eve/channels/auth";
 import { a2aChannel } from "eve/channels/a2a";
 
 const issuer = "https://auth.example.com";
 const resource = "https://agent.example.com/eve/v1/a2a";
+const verifyAccessToken = oidc({ issuer, audiences: [resource] });
+
+const requireA2AScope: AuthFn<Request> = async (request) => {
+  const auth = await verifyAccessToken(request);
+  if (auth == null) return null;
+
+  const claim = auth.attributes.scope;
+  const scopes = typeof claim === "string" ? claim.split(/\s+/) : (claim ?? []);
+  if (!scopes.includes("a2a.invoke")) {
+    throw new ForbiddenError({
+      challenges: [
+        {
+          scheme: "Bearer",
+          parameters: {
+            error: "insufficient_scope",
+            scope: "a2a.invoke",
+          },
+        },
+      ],
+    });
+  }
+  return auth;
+};
 
 export default a2aChannel({
-  auth: oauthResource(oidc({ issuer, audiences: [resource] }), {
+  auth: oauthResource(requireA2AScope, {
     issuer,
     resource,
     scopes: ["a2a.invoke"],
@@ -67,8 +90,11 @@ Every A2A operation reruns `auth`. A task belongs to the principal that created 
 principal receives the same `TaskNotFoundError` as an unknown task. Primary authentication failures
 remain HTTP `401` or `403` responses and do not create an A2A task.
 
-`oauthResource()` identifies the OAuth authorization server but does not issue credentials. The
-configured identity provider must issue tokens accepted by `oidc()`.
+`oauthResource()` publishes the authorization server and requested scopes; it does not issue tokens
+or enforce those scopes. `oidc()` verifies the issuer and audience, then `requireA2AScope` checks
+space-delimited OAuth `scope` claims and string-array variants. Adapt that membership check when
+your provider uses another claim such as `scp`. Advertising `a2a.invoke` without checking the
+verified token does not protect the endpoint.
 
 ## Agent Card
 

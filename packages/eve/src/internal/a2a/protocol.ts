@@ -222,15 +222,30 @@ function agentMessage(contextId: string, parts: readonly A2APart[]): A2AMessage 
 }
 
 function parsePart(value: unknown): A2APart {
-  if (!isRecord(value)) throw new A2ARequestError(-32602, "Invalid parameters");
+  if (!isRecord(value)) throw invalidParams();
   const content = ["text", "data", "url", "raw"].filter((key) => value[key] !== undefined);
-  if (content.length !== 1) throw new A2ARequestError(-32602, "Invalid parameters");
-  if (typeof value.raw === "string") {
+  if (content.length !== 1) throw invalidParams();
+  if (value.raw !== undefined) {
+    if (typeof value.raw !== "string") throw invalidParams();
     throw new A2ARequestError(-32005, "Content type not supported", "CONTENT_TYPE_NOT_SUPPORTED");
   }
-  if (typeof value.text === "string") return { text: value.text };
-  if (typeof value.url === "string") return { url: value.url };
-  return { data: parseJsonValue(value.data) };
+  if (value.text !== undefined) {
+    if (typeof value.text !== "string") throw invalidParams();
+    return { text: value.text };
+  }
+  if (value.url !== undefined) {
+    if (typeof value.url !== "string") throw invalidParams();
+    return { url: value.url };
+  }
+  try {
+    return { data: parseJsonValue(value.data) };
+  } catch {
+    throw invalidParams();
+  }
+}
+
+function invalidParams(): A2ARequestError {
+  return new A2ARequestError(-32602, "Invalid parameters");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

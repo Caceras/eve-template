@@ -13,7 +13,7 @@ import {
   attachAgentInfoRouteResponse,
   attachRouteSessionCreator,
 } from "#internal/nitro/routes/channel-route-context.js";
-import { none } from "#public/channels/auth.js";
+import { ForbiddenError, none, type AuthFn } from "#public/channels/auth.js";
 import { a2aChannel } from "#public/channels/a2a.js";
 
 const invocation = vi.hoisted(() => ({
@@ -206,6 +206,71 @@ describe("a2aChannel", () => {
       id: "wrun_task",
       status: { state: 2 },
     });
+  });
+
+  it.each([
+    { claim: undefined, label: "missing" },
+    { claim: "profile calendar.read", label: "unrelated" },
+  ])("rejects a verified token with $label scopes", async ({ claim }) => {
+    const verifyToken: AuthFn<Request> = () => {
+      const attributes: Record<string, string> = {};
+      if (claim !== undefined) attributes.scope = claim;
+      return { ...principal, attributes };
+    };
+    const requireScope: AuthFn<Request> = async (request) => {
+      const auth = await verifyToken(request);
+      if (auth == null) return null;
+      const value = auth.attributes.scope;
+      const scopes = typeof value === "string" ? value.split(/\s+/) : (value ?? []);
+      if (!scopes.includes("a2a.invoke")) {
+        throw new ForbiddenError({
+          challenges: [
+            {
+              parameters: { error: "insufficient_scope", scope: "a2a.invoke" },
+              scheme: "Bearer",
+            },
+          ],
+        });
+      }
+      return auth;
+    };
+    const channel = a2aChannel({ auth: requireScope, security: authenticatedSecurity() });
+    const response = await httpRoute(channel.routes[1]).handler(
+      rpcRequest("SendMessage", {
+        configuration: { returnImmediately: true },
+        message: userMessage("work"),
+      }),
+      routeArgs(),
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toContain('error="insufficient_scope"');
+    expect(response.headers.get("www-authenticate")).toContain('scope="a2a.invoke"');
+    expect(invocation.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts a verified token containing the required scope", async () => {
+    invocation.create.mockResolvedValue({
+      createdAt: "2026-09-05T00:00:00.000Z",
+      invocationId: "wrun_task",
+      pollAfterMs: 1_000,
+      status: "working",
+    });
+    const requireScope: AuthFn<Request> = () => ({
+      ...principal,
+      attributes: { scope: "profile a2a.invoke" },
+    });
+    const channel = a2aChannel({ auth: requireScope, security: authenticatedSecurity() });
+    const response = await httpRoute(channel.routes[1]).handler(
+      rpcRequest("SendMessage", {
+        configuration: { returnImmediately: true },
+        message: userMessage("work"),
+      }),
+      routeArgs(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(invocation.create).toHaveBeenCalledOnce();
   });
 
   it("authenticates requests before creating a task", async () => {
