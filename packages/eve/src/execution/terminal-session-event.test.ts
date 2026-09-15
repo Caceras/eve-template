@@ -14,7 +14,7 @@ import { SessionIdKey } from "#context/keys.js";
 import { deserializeContext } from "#context/serialize.js";
 import { emitTerminalSessionEvent } from "#execution/terminal-session-event.js";
 import { POST, defineChannel } from "#public/definitions/channel.js";
-import { ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
+import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { dispatchStreamEventHooks } from "#context/hook-lifecycle.js";
 
 describe("emitTerminalSessionEvent", () => {
@@ -31,6 +31,10 @@ describe("emitTerminalSessionEvent", () => {
     if (!isCompiledChannel(channel)) throw new Error("Expected a compiled channel.");
 
     const restored = new ContextContainer();
+    restored.set(BundleKey, {
+      hookRegistry: {},
+      turnAgent: { id: "test-agent" },
+    } as any);
     restored.set(ChannelKey, channel.adapter);
     restored.set(SessionIdKey, "session-terminal-test");
     vi.mocked(deserializeContext).mockResolvedValue(restored);
@@ -53,6 +57,7 @@ describe("emitTerminalSessionEvent", () => {
 
     expect(stream).toContain('"type":"session.completed"');
     expect(channelHandler).toHaveBeenCalledOnce();
+    expect(channelHandler.mock.calls[0]?.[2]?.session.id).toBe("session-terminal-test");
     expect(dispatchStreamEventHooks).toHaveBeenCalledOnce();
     expect(errors).not.toContain("adapter event handler threw — event swallowed");
 
