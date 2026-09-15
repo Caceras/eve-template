@@ -41,7 +41,9 @@ export interface SandboxEnvironmentIdentity {
   readonly provider: string;
 }
 
-export interface SandboxEnvironment<Options = object> extends SandboxEnvironmentIdentity {
+export interface SandboxEnvironment<
+  Options extends object | undefined = object,
+> extends SandboxEnvironmentIdentity {
   create(...args: SandboxCreateArguments<Options>): Promise<RuntimeSandboxSession>;
   getOrCreate(options: SandboxNamedOptions<Options>): Promise<RuntimeSandboxSession>;
 }
@@ -64,14 +66,14 @@ const globals = globalThis as typeof globalThis & {
 };
 const runtimes = (globals[RUNTIMES] ??= new WeakMap<AlsContext, ConstructorRuntime>());
 
-export function createSandboxEnvironment<Options = object>(input: {
+export function createSandboxEnvironment<Options extends object | undefined = object>(input: {
   readonly configuration?: unknown;
   readonly kind?: SandboxEnvironment["kind"];
   readonly runtime: SandboxProviderRuntime;
 }): SandboxEnvironment<Options> {
   let environment: SandboxEnvironment<Options>;
 
-  async function open(options: Options, name: string | undefined, shared: boolean) {
+  async function open(options: object, name: string | undefined, shared: boolean) {
     const context = contextStorage.getStore();
     const runtime = context === undefined ? undefined : runtimes.get(context);
     if (runtime === undefined) {
@@ -85,7 +87,7 @@ export function createSandboxEnvironment<Options = object>(input: {
       environment,
       environmentConfigurationHash: environment[CONFIGURATION_HASH],
       name,
-      options: options as object | undefined,
+      options,
       provider: input.runtime,
       shared,
     });
@@ -98,20 +100,25 @@ export function createSandboxEnvironment<Options = object>(input: {
     kind: input.kind ?? "default",
     provider: input.runtime.providerName,
     async create(...args: SandboxCreateArguments<Options>) {
-      return await open((args[0] ?? {}) as Options, undefined, false);
+      return await open(readCreateOptions(args), undefined, false);
     },
     async getOrCreate(namedOptions: SandboxNamedOptions<Options>) {
-      const { name, ...options } = namedOptions as { readonly name: string } & Record<
-        string,
-        unknown
-      >;
-      if (name.trim().length === 0) {
+      const name = Reflect.get(namedOptions, "name");
+      if (typeof name !== "string" || name.trim().length === 0) {
         throw new Error("Sandbox environment names must be non-empty.");
       }
-      return await open(options as Options, name, true);
+      const options = Object.fromEntries(
+        Object.entries(namedOptions).filter(([key]) => key !== "name"),
+      );
+      return await open(options, name, true);
     },
   };
   return environment;
+}
+
+function readCreateOptions(args: readonly unknown[]): object {
+  const options = args[0];
+  return typeof options === "object" && options !== null ? options : {};
 }
 
 function hashConstructorOptions(options: unknown): string {
@@ -134,7 +141,7 @@ function stableSerialize(value: unknown, seen = new WeakSet<object>()): string {
     if (seen.has(value)) return "[circular]";
     seen.add(value);
     const constructorName = value.constructor?.name ?? "Object";
-    const serialized = `{${Object.entries(value as Record<string, unknown>)
+    const serialized = `{${Object.entries(value)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry, seen)}`)
       .join(",")}}`;

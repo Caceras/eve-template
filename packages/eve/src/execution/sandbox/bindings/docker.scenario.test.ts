@@ -338,8 +338,8 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
         content: "survives reconnect",
         path: "persisted.txt",
       });
-      const state = firstHandle.metadata;
-      expect(state).toEqual({ containerName: sessionKey });
+      const state = await firstHandle.captureMetadata();
+      expect(state).toEqual({});
       // Server shutdown stops the container; reattach must restart it
       // transparently.
       await firstHandle.shutdown();

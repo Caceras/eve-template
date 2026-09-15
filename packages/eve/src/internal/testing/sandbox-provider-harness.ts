@@ -8,14 +8,18 @@ import {
 } from "#shared/sandbox-provider.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 
-export function createSandboxProviderHarness<Options extends object | undefined>(
-  implementation: SandboxProviderImplementation<Options, Record<string, unknown>>,
+export function createSandboxProviderHarness<
+  Options extends object | undefined,
+  Metadata,
+  PreparedArtifact extends SandboxPreparedArtifact,
+>(
+  implementation: SandboxProviderImplementation<Options, Metadata, PreparedArtifact>,
   options: Options,
   harnessOptions: {
-    readonly preparedArtifact?: (templateName: string) => SandboxPreparedArtifact;
+    readonly preparedArtifact?: (templateName: string) => PreparedArtifact;
   } = {},
 ) {
-  const preparedArtifacts = new Map<string, SandboxPreparedArtifact>();
+  const preparedArtifacts = new Map<string, PreparedArtifact>();
   return {
     async prepare(input: {
       readonly appRoot: string;
@@ -50,38 +54,39 @@ export function createSandboxProviderHarness<Options extends object | undefined>
     },
     async getOrCreate(input: {
       readonly appRoot: string;
-      readonly existing?: Record<string, unknown>;
-      readonly prepared?: SandboxPreparedArtifact;
+      readonly existing?: Metadata;
+      readonly prepared?: PreparedArtifact;
       readonly resourcesKey?: string;
       readonly sandboxName: string;
       readonly tags?: SandboxProviderTags;
       readonly templateName: string | null;
-    }): Promise<SandboxProviderHandle<Record<string, unknown>>> {
+    }): Promise<SandboxProviderHandle<Metadata>> {
       const prepared =
         input.prepared ??
         (input.templateName === null
           ? undefined
           : (preparedArtifacts.get(input.templateName) ??
             harnessOptions.preparedArtifact?.(input.templateName)));
-      const preparedInput =
+      const source =
         input.templateName === null
-          ? undefined
+          ? ({ kind: "base" } as const)
           : prepared === undefined
             ? (() => {
                 throw new Error(`Missing prepared artifact for template "${input.templateName}".`);
               })()
-            : { artifact: prepared, templateName: input.templateName };
+            : { artifact: prepared, kind: "prepared" as const, templateName: input.templateName };
       return await implementation.getOrCreate(
         {
           appRoot: input.appRoot,
-          existing: input.existing,
-          handle: (providerHandle) => providerHandle,
           options,
           resources: createSandboxProviderResources({ resourcesKey: input.resourcesKey }),
-          sandboxName: input.sandboxName,
+          session:
+            input.existing === undefined
+              ? { kind: "create", name: input.sandboxName }
+              : { kind: "restore", metadata: input.existing, name: input.sandboxName },
           tags: input.tags,
         },
-        preparedInput,
+        source,
       );
     },
   };

@@ -413,7 +413,7 @@ describe("Docker provider create", () => {
     ).rejects.toThrow(SandboxTemplateNotProvisionedError);
   });
 
-  it("throws SandboxTemplateNotProvisionedError when a template-backed container fails to start", async () => {
+  it("preserves the container launch error when a template-backed container fails to start", async () => {
     const appRoot = await createScratchDirectory("eve-docker-sandbox-");
     const { cli } = createFakeDockerCli((args) => {
       if (isContainerInspect(args)) {
@@ -434,7 +434,7 @@ describe("Docker provider create", () => {
         sandboxName: SESSION_KEY,
         templateName: TEMPLATE_KEY,
       }),
-    ).rejects.toThrow(SandboxTemplateNotProvisionedError);
+    ).rejects.toThrow("template-backed container failed to start");
   });
 
   it("creates a session container from the template image with labels and tags", async () => {
@@ -469,7 +469,7 @@ describe("Docker provider create", () => {
         findCall(calls, (args) => args[0] === "exec" && args.includes("/bin/sh")),
       ).toBeUndefined();
 
-      expect(handle.metadata).toEqual({ containerName: SESSION_KEY });
+      await expect(handle.captureMetadata()).resolves.toEqual({});
 
       // An authored stop releases the container; filesystem state survives
       // for the next `create` to restart from.

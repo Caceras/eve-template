@@ -10,7 +10,7 @@ export function resolveVercelSandboxTags(
   const tags: Record<string, string> = {};
 
   if (userTags !== undefined) {
-    for (const [key, value] of Object.entries(userTags as Record<string, string>)) {
+    for (const [key, value] of Object.entries(userTags)) {
       tags[key] = value;
     }
   }
@@ -58,8 +58,8 @@ function areVercelSandboxTagsEqual(
 
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) {
-    const responseJson = (error as { readonly json?: unknown }).json;
-    const responseText = (error as { readonly text?: unknown }).text;
+    const responseJson = Reflect.get(error, "json");
+    const responseText = Reflect.get(error, "text");
     const responseBody =
       typeof responseText === "string" && responseText.length > 0
         ? responseText

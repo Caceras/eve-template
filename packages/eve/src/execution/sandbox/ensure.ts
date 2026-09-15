@@ -23,7 +23,8 @@ import {
   createSandboxProviderResources,
   type SandboxDeleteOptions,
   type SandboxProviderHandle,
-  type SandboxProviderPreparedArtifact,
+  type SandboxProviderMetadata,
+  type SandboxProviderSource,
   type SandboxProviderRuntime,
   type SandboxProviderTags,
 } from "#shared/sandbox-provider.js";
@@ -40,16 +41,20 @@ export interface EnsureSandboxAccessInput {
   readonly tags?: SandboxProviderTags;
 }
 
-type RuntimeProviderHandle = SandboxProviderHandle<Record<string, unknown>>;
+type RuntimeProviderHandle = SandboxProviderHandle<SandboxProviderMetadata>;
+
+interface OpenedSandbox {
+  readonly configurationHash: string;
+  readonly handle: RuntimeProviderHandle;
+  readonly providerName: string;
+  readonly sandbox: RuntimeSandboxSession;
+  readonly sessionKey: string;
+}
 
 export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Promise<SandboxAccess> {
   let initialized = input.state?.initialized ?? false;
   let persisted: SandboxSessionState | null = input.state?.session ?? null;
-  let handle: RuntimeProviderHandle | undefined;
-  let openedConfigurationHash: string | undefined;
-  let openedProviderName: string | undefined;
-  let openedSandbox: RuntimeSandboxSession | undefined;
-  let openedSessionKey: string | undefined;
+  let opened: OpenedSandbox | undefined;
   let opening: Promise<RuntimeProviderHandle> | undefined;
   let providerOwned = false;
   let requiring: Promise<RuntimeProviderHandle> | undefined;
@@ -108,7 +113,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
         : null;
     const sandboxName = keys.sessionKey;
     const create = async () => {
-      const prepared = await resolveProviderPreparedArtifact({
+      const source = await resolveProviderSource({
         compiledArtifactsSource: input.compiledArtifactsSource,
         providerName: provider.providerName,
         templateName: keys.templateKey,
@@ -116,19 +121,20 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       return await provider.implementation.getOrCreate(
         {
           appRoot,
-          existing: existing?.metadata,
-          handle: (providerHandle) => providerHandle,
           options,
           resources: createSandboxProviderResources({
             resourcesKey: workspaceResourceRoot.contentHash,
           }),
-          sandboxName,
+          session:
+            existing === null
+              ? { kind: "create", name: sandboxName }
+              : { kind: "restore", metadata: existing.metadata, name: sandboxName },
           tags: {
             ...input.tags,
             ...(shared ? { sandboxConfig: configurationHash.slice(0, 32) } : {}),
           },
         },
-        prepared,
+        source,
       );
     };
 
@@ -142,11 +148,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     });
 
     const openedHandle = await opening;
-    handle = openedHandle;
     providerOwned = shared;
-    openedConfigurationHash = configurationHash;
-    openedProviderName = provider.providerName;
-    openedSessionKey = sandboxName;
     initialized = true;
     if (!shared) {
       trackActiveSandboxHandle({
@@ -161,7 +163,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
           throw new Error("Named shared sandboxes have provider-owned lifetime.");
         }
       : (deleteOptions?: SandboxDeleteOptions) => openedHandle.delete(deleteOptions);
-    openedSandbox = withRuntimeSandboxLifecycle(
+    const sandbox = withRuntimeSandboxLifecycle(
       openedHandle.sandbox,
       remove,
       shared
@@ -170,11 +172,18 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
           }
         : () => openedHandle.stop(),
     );
-    return openedSandbox;
+    opened = {
+      configurationHash,
+      handle: openedHandle,
+      providerName: provider.providerName,
+      sandbox,
+      sessionKey: sandboxName,
+    };
+    return sandbox;
   }
 
   function requireHandle(): Promise<RuntimeProviderHandle> {
-    if (handle !== undefined) return Promise.resolve(handle);
+    if (opened !== undefined) return Promise.resolve(opened.handle);
     requiring ??= resolveHandle().catch((error: unknown) => {
       requiring = undefined;
       throw error;
@@ -231,42 +240,35 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
           },
           async () => definition.selector({ session }),
         );
-        if (openedSandbox === undefined || selected !== openedSandbox) {
+        if (opened === undefined || selected !== opened.sandbox) {
           throw new Error(
             `Sandbox "${definition.logicalPath}" must return the sandbox it creates.`,
           );
         }
       } catch (error) {
-        handle = undefined;
+        opened = undefined;
         initialized = false;
-        openedConfigurationHash = undefined;
-        openedProviderName = undefined;
-        openedSandbox = undefined;
-        openedSessionKey = undefined;
         opening = undefined;
         providerOwned = false;
         throw error;
       }
     }
 
-    if (handle === undefined) {
+    if (opened === undefined) {
       throw new Error(`Sandbox "${definition.logicalPath}" did not create a provider handle.`);
     }
-    return handle;
+    return opened.handle;
   }
 
   return {
     async captureState() {
       if (opening !== undefined) await opening;
-      if (handle !== undefined) {
-        if (openedProviderName === undefined || openedSessionKey === undefined) {
-          throw new Error("The open sandbox is missing provider identity.");
-        }
+      if (opened !== undefined) {
         persisted = {
-          configurationHash: openedConfigurationHash,
-          metadata: handle.captureMetadata ? await handle.captureMetadata() : handle.metadata,
-          providerName: openedProviderName,
-          sessionKey: openedSessionKey,
+          configurationHash: opened.configurationHash,
+          metadata: await opened.handle.captureMetadata(),
+          providerName: opened.providerName,
+          sessionKey: opened.sessionKey,
         };
       }
       return { initialized, session: persisted };
@@ -277,12 +279,8 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       const current = await requireHandle();
       if (providerOwned) throw new Error("Named shared sandboxes have provider-owned lifetime.");
       await current.delete(deleteOptions);
-      handle = undefined;
+      opened = undefined;
       initialized = false;
-      openedConfigurationHash = undefined;
-      openedProviderName = undefined;
-      openedSandbox = undefined;
-      openedSessionKey = undefined;
       opening = undefined;
       persisted = null;
       requiring = undefined;
@@ -299,12 +297,12 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
   };
 }
 
-async function resolveProviderPreparedArtifact(input: {
+async function resolveProviderSource(input: {
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly providerName: string;
   readonly templateName: string | null;
-}): Promise<SandboxProviderPreparedArtifact | undefined> {
-  if (input.templateName === null) return undefined;
+}): Promise<SandboxProviderSource> {
+  if (input.templateName === null) return { kind: "base" };
   const artifact = await loadSandboxPreparedArtifact({
     compiledArtifactsSource: input.compiledArtifactsSource,
     providerName: input.providerName,
@@ -316,7 +314,7 @@ async function resolveProviderPreparedArtifact(input: {
       templateKey: input.templateName,
     });
   }
-  return { artifact, templateName: input.templateName };
+  return { artifact, kind: "prepared", templateName: input.templateName };
 }
 
 function logDevelopmentSandbox(message: string): void {

@@ -70,16 +70,16 @@ function createSessionSandboxHarness() {
     name: "session-reset-test",
     environment: () => ({
       async getOrCreate(context) {
-        sessionKeys.push(context.sandboxName);
+        sessionKeys.push(context.session.name);
         sandboxCount += 1;
         const sandbox = mockSandbox({ id: `sandbox-${sandboxCount}` });
-        return context.handle({
+        return {
+          captureMetadata: async () => ({}),
           delete: async () => {},
-          metadata: {},
           sandbox: sandbox.session,
           shutdown: async () => {},
           stop: async () => {},
-        });
+        };
       },
       prepare: async () => ({ artifact: {}, reused: false }),
     }),

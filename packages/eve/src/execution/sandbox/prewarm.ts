@@ -85,9 +85,9 @@ interface NodeSandbox extends RuntimeRegisteredSandbox {
 }
 
 /**
- * Optional dispatch override that intercepts every `backend.prewarm`
+ * Optional dispatch override that intercepts every provider `prepare()`
  * call. Production code never supplies this; the orchestrator dispatches
- * directly to the backend. Tests inject a recorder to verify which
+ * directly to the provider. Tests inject a recorder to verify which
  * templates the orchestrator emits and what preparation calls flow through
  * them.
  */
@@ -200,7 +200,7 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
 
 /**
  * Loads the compiled runtime graph for one authored app root and
- * prepares every provider.s sandbox templates required by that graph.
+ * prepares every provider sandbox template required by that graph.
  *
  * Hydrates the module map directly from authored source so callers
  * don't need a pre-existing `module-map.mjs` import in Node's cache.

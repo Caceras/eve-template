@@ -124,12 +124,21 @@ Agent skills are compiled into a separate resource tree and exposed at `$HOME/.a
 Providers receive both trees with explicit metadata:
 
 ```ts
+interface SandboxProviderResources {
+  source:
+    | { kind: "none" }
+    | { kind: "inline"; key: string }
+    | { kind: "materialized"; key: string; path: string }
+    | { kind: "reference"; key: string };
+  workspace?: SandboxProviderResourceTree;
+  skills?: SandboxProviderResourceTree;
+}
+
 interface SandboxProviderResourceTree {
-  key: string; // Content-addressed identity.
+  key: string;
   files: ResourceFile[];
-  path?: string; // Materialized build-time source.
-  mountPath: string; // Read-only provider mount under /eve/resources.
-  targetPath: string; // /workspace or $HOME/.agents/skills.
+  mountPath: string;
+  targetPath: string;
 }
 ```
 
@@ -169,24 +178,24 @@ export const AcmeSandbox = defineSandboxProvider<
         };
       },
 
-      async getOrCreate(ctx, prepared) {
+      async getOrCreate(ctx, source) {
         const remote = await client.getOrCreate({
-          existingId: ctx.existing?.remoteId,
-          name: ctx.sandboxName,
+          existingId: ctx.session.kind === "restore" ? ctx.session.metadata.remoteId : undefined,
+          name: ctx.session.name,
           networkPolicy: ctx.options.networkPolicy,
           source:
-            prepared === undefined
+            source.kind === "base"
               ? { image: options.image }
-              : { templateId: prepared.artifact.templateId },
+              : { templateId: source.artifact.templateId },
         });
 
-        return ctx.handle({
+        return {
           sandbox: adaptAcmeSandbox(remote),
-          metadata: { remoteId: remote.id },
+          captureMetadata: async () => ({ remoteId: remote.id }),
           stop: () => remote.stop(),
           shutdown: () => remote.stop(),
           delete: () => remote.delete(),
-        });
+        };
       },
     };
   },
@@ -195,9 +204,9 @@ export const AcmeSandbox = defineSandboxProvider<
 
 `ctx.runPreparation(sandbox)` invokes the callback authored as `environment({ prepare })`. Call it after provider resources are available in the temporary sandbox and before capturing the provider artifact.
 
-`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. At runtime, eve passes `{ templateName, artifact }` as the second `getOrCreate()` argument. It passes `undefined` only when the environment has no preparation callback, workspace seed, skills, Dockerfile, or other prepared input. The fourth generic gives both methods the provider's exact artifact type; the provider must explicitly define its unprepared creation path.
+`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. The second `getOrCreate()` argument is a required source union: `{ kind: "base" }` or `{ kind: "prepared", templateName, artifact }`. The fourth generic gives the prepared branch the provider's exact artifact type.
 
-`ctx.options` contains options for the live sandbox. `ctx.existing` contains persisted metadata for reconnecting that sandbox. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
+`ctx.options` contains options for the live sandbox. `ctx.session` explicitly distinguishes first creation from restoration and carries typed persisted metadata only in the restore branch. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
 ## Providers
 

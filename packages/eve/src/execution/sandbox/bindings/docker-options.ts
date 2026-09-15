@@ -42,7 +42,13 @@ export function createDockerSandboxOptionsHash(options: ResolvedDockerSandboxOpt
     .slice(0, 20);
 }
 
-function dockerOptionsForHash(options: ResolvedDockerSandboxOptions): Record<string, unknown> {
+interface DockerTemplateOptions {
+  readonly env: Readonly<Record<string, string>>;
+  readonly image: string;
+  readonly pullPolicy: DockerSandboxPullPolicy;
+}
+
+function dockerOptionsForHash(options: ResolvedDockerSandboxOptions): DockerTemplateOptions {
   return {
     env: sortStringRecord(options.env),
     image: options.image,

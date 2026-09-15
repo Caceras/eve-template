@@ -32,8 +32,12 @@ interface LocalSandboxMetadata {
   readonly version: typeof LOCAL_SANDBOX_METADATA_VERSION;
 }
 
+export interface JustBashSessionMetadata {
+  readonly rootPath: string;
+}
+
 export interface BashSandbox {
-  captureState(): Promise<Record<string, unknown> | null>;
+  captureState(): Promise<JustBashSessionMetadata>;
   dispose(): Promise<void>;
   readFileBytes(path: string): Promise<Buffer | null>;
   removePath(options: SandboxRemovePathOptions): Promise<void>;
@@ -114,7 +118,7 @@ export async function createBashSandbox(input: {
   const sandbox = await Sandbox.create({
     cwd: WORKSPACE_ROOT,
     customCommands: input.customCommands === undefined ? undefined : [...input.customCommands],
-    env: metadata?.env as Record<string, string> | undefined,
+    env: metadata === null ? undefined : { ...metadata.env },
     fs: filesystem,
     network: {
       dangerouslyAllowFullInternetAccess: true,
@@ -206,14 +210,13 @@ export async function justBashSetNetworkPolicyUnsupported(): Promise<never> {
 
 export function createJustBashHandle(
   sandbox: BashSandbox,
-): SandboxProviderHandle<Record<string, unknown>> {
+): SandboxProviderHandle<JustBashSessionMetadata> {
   const session = buildSandboxSession(
     createFileBackedInternalSandboxSession({ id: sandbox.sessionKey, sandbox }),
     justBashSetNetworkPolicyUnsupported,
   );
   return {
-    captureMetadata: async () => (await sandbox.captureState()) ?? {},
-    metadata: {},
+    captureMetadata: async () => await sandbox.captureState(),
     sandbox: session,
     async delete() {
       await sandbox.dispose();
@@ -249,11 +252,13 @@ async function readLocalMetadata(metadataPath: string): Promise<LocalSandboxMeta
     return null;
   }
 
-  const metadata = JSON.parse(
-    await readFile(metadataPath, "utf8"),
-  ) as Partial<LocalSandboxMetadata>;
+  const metadata: unknown = JSON.parse(await readFile(metadataPath, "utf8"));
 
-  if (metadata.version !== LOCAL_SANDBOX_METADATA_VERSION || !isStringRecord(metadata.env)) {
+  if (
+    !isRecord(metadata) ||
+    metadata.version !== LOCAL_SANDBOX_METADATA_VERSION ||
+    !isStringRecord(metadata.env)
+  ) {
     return null;
   }
 
@@ -269,6 +274,10 @@ async function writeLocalMetadata(
 ): Promise<void> {
   await mkdir(dirname(metadataPath), { recursive: true });
   await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {

@@ -15,7 +15,7 @@ describe("just-bash sandbox deletion", () => {
     await writeFile(join(rootPath, "state.txt"), "persisted");
     const dispose = vi.fn(async () => {});
     const sandbox = {
-      captureState: vi.fn(async () => null),
+      captureState: vi.fn(async () => ({ rootPath })),
       dispose,
       readFileBytes: vi.fn(async () => null),
       removePath: vi.fn(async () => {}),

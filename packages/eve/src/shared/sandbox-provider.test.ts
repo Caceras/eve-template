@@ -7,15 +7,15 @@ import { createSandboxProviderResources, defineSandboxProvider } from "#shared/s
 describe("defineSandboxProvider", () => {
   it("gives providers separate workspace and skill trees at their expected paths", async () => {
     const preparation = vi.fn(async () => {});
-    const getOrCreate = vi.fn(async (ctx) => {
+    const getOrCreate = vi.fn(async () => {
       const sandbox = mockSandbox().session;
-      return ctx.handle({
+      return {
+        captureMetadata: async () => ({ remoteId: "remote-1" }),
         delete: async () => {},
-        metadata: { remoteId: "remote-1" },
         sandbox,
         shutdown: async () => {},
         stop: async () => {},
-      });
+      };
     });
     const provider = defineSandboxProvider<
       { readonly image?: string },
@@ -26,15 +26,18 @@ describe("defineSandboxProvider", () => {
       environment: () => ({
         getOrCreate,
         async prepare(ctx) {
+          expect(ctx.resources.source).toEqual({
+            key: "resources-v1",
+            kind: "materialized",
+            path: "/tmp/resources",
+          });
           expect(ctx.resources.workspace).toMatchObject({
             mountPath: "/eve/resources/workspace",
-            path: "/tmp/resources/workspace",
             targetPath: "/workspace",
           });
           expect(ctx.resources.workspace?.files[0]?.relativePath).toBe("notes.txt");
           expect(ctx.resources.skills).toMatchObject({
             mountPath: "/eve/resources/skills",
-            path: "/tmp/resources/skills",
             targetPath: "$HOME/.agents/skills",
           });
           expect(ctx.resources.skills?.files[0]?.relativePath).toBe("review/SKILL.md");
@@ -65,12 +68,11 @@ describe("defineSandboxProvider", () => {
     await runtime.implementation.getOrCreate(
       {
         appRoot: "/tmp/app",
-        handle: (providerHandle) => providerHandle,
         options: undefined,
         resources,
-        sandboxName: "session-1",
+        session: { kind: "create", name: "session-1" },
       },
-      { artifact: {}, templateName: "template-v1" },
+      { artifact: {}, kind: "prepared", templateName: "template-v1" },
     );
     expect(getOrCreate).toHaveBeenCalledOnce();
   });

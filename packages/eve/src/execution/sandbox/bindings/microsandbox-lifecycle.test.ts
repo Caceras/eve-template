@@ -5,6 +5,7 @@ import {
   createMicrosandboxHandle as createMicrosandboxHandleImplementation,
   prewarmMicrosandboxTemplate as prewarmMicrosandboxTemplateImplementation,
 } from "#execution/sandbox/bindings/microsandbox-lifecycle.js";
+import type { MicrosandboxSessionMetadata } from "#execution/sandbox/bindings/microsandbox-metadata.js";
 import { createSandboxProviderResources } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
 import {
@@ -49,28 +50,41 @@ vi.mock("#execution/sandbox/bindings/microsandbox-runtime.js", async (importOrig
 }));
 
 function createMicrosandboxHandle(
-  input: Omit<Parameters<typeof createMicrosandboxHandleImplementation>[0], "context"> & {
-    context: Partial<Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"]> &
-      Pick<
-        Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"],
-        "appRoot" | "sandboxName"
-      >;
+  input: Omit<
+    Parameters<typeof createMicrosandboxHandleImplementation>[0],
+    "context" | "source"
+  > & {
+    context: Omit<
+      Partial<Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"]>,
+      "session"
+    > & {
+      readonly appRoot: string;
+      readonly existing?: MicrosandboxSessionMetadata;
+      readonly sandboxName: string;
+    };
+    readonly source?: Parameters<typeof createMicrosandboxHandleImplementation>[0]["source"];
   },
 ) {
+  const { existing, sandboxName, ...context } = input.context;
   return createMicrosandboxHandleImplementation({
     ...input,
     context: {
-      handle: (providerHandle) => providerHandle,
       options: {},
-      resources: {},
-      ...input.context,
+      resources: { source: { kind: "none" } },
+      session:
+        existing === undefined
+          ? { kind: "create", name: sandboxName }
+          : { kind: "restore", metadata: existing, name: sandboxName },
+      ...context,
     },
-    prepared: {
+    source: input.source ?? {
       artifact: {
+        image: null,
         optionsHash: input.optionsHash,
         snapshotName: "template-snapshot",
         version: 2,
       },
+      kind: "prepared",
       templateName: "template-key",
     },
   });
@@ -88,7 +102,7 @@ function prewarmMicrosandboxTemplate(
   return prewarmMicrosandboxTemplateImplementation({
     ...input,
     context: {
-      resources: {},
+      resources: { source: { kind: "none" } },
       runPreparation: async () => {},
       ...input.context,
     },
@@ -330,7 +344,7 @@ describe("prewarmMicrosandboxTemplate", () => {
       optionsHash: "options-hash",
       context: {
         appRoot,
-        resources: {},
+        resources: { source: { kind: "none" } },
         runPreparation: async () => {},
         templateName: "template-key",
       },

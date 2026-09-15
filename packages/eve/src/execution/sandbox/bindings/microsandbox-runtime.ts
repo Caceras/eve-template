@@ -100,6 +100,10 @@ export class MicrosandboxVm {
     return this.#input.sessionKey;
   }
 
+  get name(): string {
+    return this.#sandboxName;
+  }
+
   async captureState(optionsHash: string): Promise<MicrosandboxSessionMetadata> {
     this.#optionsHash = optionsHash;
     if (isEveDevEnvironment()) {

@@ -27,17 +27,15 @@ import {
 import { expectDockerSuccess } from "#execution/sandbox/bindings/docker-utils.js";
 import { buildSandboxDockerfile, dockerfileImageReference } from "#execution/sandbox/dockerfile.js";
 import {
-  hydrateSandboxFromImmutableResources,
+  hydrateSandboxProviderResources,
   prepareImmutableResources,
   resolveImmutableResourcesPath,
 } from "#execution/sandbox/bindings/immutable-resources.js";
-import { writeSandboxSeedFiles } from "#execution/sandbox/bindings/local-provider-utils.js";
 import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.js";
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import {
   isSandboxPreparedArtifactRecord,
-  providerResourceRoot,
-  providerResourceTargetFiles,
+  type NoSandboxProviderMetadata,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
 } from "#shared/sandbox-provider.js";
@@ -58,6 +56,10 @@ export {
  */
 export const DOCKER_PROVIDER_NAME = "docker";
 
+type DockerSandboxPreparedArtifact = {
+  readonly imageReference: string;
+};
+
 /**
  * Creates the Docker sandbox provider.
  *
@@ -74,7 +76,11 @@ export const DOCKER_PROVIDER_NAME = "docker";
 export function createDockerSandboxProvider(
   createOptions?: DockerSandboxEnvironmentOptions,
   dockerCli?: DockerCli,
-): SandboxProviderImplementation<DockerSandboxRuntimeOptions, Record<string, unknown>> {
+): SandboxProviderImplementation<
+  DockerSandboxRuntimeOptions,
+  NoSandboxProviderMetadata,
+  DockerSandboxPreparedArtifact
+> {
   const cli = dockerCli ?? createDockerCli();
   const options = resolveDockerSandboxOptions(createOptions);
   const optionsHash = createDockerSandboxOptionsHash(options);
@@ -97,16 +103,16 @@ export function createDockerSandboxProvider(
         templateKey: context.templateName,
       };
       const imageReference = dockerTemplateImageReference(templateReferenceInput);
-      const resourceRoot = providerResourceRoot(context.resources);
+      const resourceSource = context.resources.source;
       const resourcesPath =
-        resourceRoot.key === undefined || resourceRoot.path === undefined
-          ? undefined
-          : await prepareImmutableResources({
+        resourceSource.kind === "materialized"
+          ? await prepareImmutableResources({
               appRoot: context.appRoot,
               provider: DOCKER_PROVIDER_NAME,
-              resourcesKey: resourceRoot.key,
-              sourcePath: resourceRoot.path,
-            });
+              resourcesKey: resourceSource.key,
+              sourcePath: resourceSource.path,
+            })
+          : undefined;
       const markerPath = resolveDockerTemplateMarkerPath(context.appRoot, templateReferenceInput);
 
       context.log?.(`checking cached template image "${imageReference}"`);
@@ -158,15 +164,11 @@ export function createDockerSandboxProvider(
           (policy) => setDockerNetworkPolicy(cli, buildContainerIdentity, policy),
         );
 
-        if (resourcesPath === undefined) {
-          await writeSandboxSeedFiles(
-            templateSession,
-            providerResourceTargetFiles(context.resources),
-          );
-        } else {
-          context.log?.("hydrating workspace and skills from read-only resources");
-          await hydrateSandboxFromImmutableResources(templateSession);
-        }
+        await hydrateSandboxProviderResources({
+          log: context.log,
+          resources: context.resources,
+          session: templateSession,
+        });
 
         context.log?.("running sandbox preparation");
         await context.runPreparation(
@@ -201,10 +203,10 @@ export function createDockerSandboxProvider(
 
       return { artifact: { imageReference }, reused: false };
     },
-    async getOrCreate(context, prepared) {
+    async getOrCreate(context, source) {
       await ensureDaemon();
       const networkPolicy = context.options.networkPolicy ?? "allow-all";
-      const containerName = getDockerContainerName(context.existing) ?? context.sandboxName;
+      const containerName = context.session.name;
 
       const inspect = await cli.run([
         "container",
@@ -223,57 +225,47 @@ export function createDockerSandboxProvider(
         }
       } else {
         let image: string;
-        if (prepared === undefined) {
+        if (source.kind === "base") {
           await ensureDockerBaseImage(cli, options);
           image = options.image;
         } else {
-          const preparedImage = readPreparedDockerImage(prepared.artifact);
-          if (preparedImage === undefined || !(await dockerImageExists(cli, preparedImage))) {
+          const artifact = requirePreparedDockerArtifact(source.artifact, source.templateName);
+          image = artifact.imageReference;
+          if (!(await dockerImageExists(cli, image))) {
             throw new SandboxTemplateNotProvisionedError({
               providerName: DOCKER_PROVIDER_NAME,
-              templateKey: prepared.templateName,
+              templateKey: source.templateName,
             });
           }
-          image = preparedImage;
           await touchDockerTemplateMarker(
             resolveDockerTemplateMarkerPath(context.appRoot, {
               optionsHash,
-              templateKey: prepared.templateName,
+              templateKey: source.templateName,
             }),
             image,
           );
         }
 
-        try {
-          const resourceRoot = providerResourceRoot(context.resources);
-          await startDockerContainer({
-            cli,
-            containerName,
-            image,
-            initialNetworkPolicy: prepared === undefined ? "allow-all" : networkPolicy,
-            options,
-            resourcesPath:
-              resourceRoot.key === undefined
-                ? undefined
-                : resolveImmutableResourcesPath({
-                    appRoot: context.appRoot,
-                    provider: DOCKER_PROVIDER_NAME,
-                    resourcesKey: resourceRoot.key,
-                  }),
-            role: "session",
-            tags: context.tags,
-          });
-        } catch (error) {
-          if (prepared !== undefined) {
-            throw new SandboxTemplateNotProvisionedError({
-              providerName: DOCKER_PROVIDER_NAME,
-              templateKey: prepared.templateName,
-            });
-          }
-          throw error;
-        }
+        const resourceSource = context.resources.source;
+        await startDockerContainer({
+          cli,
+          containerName,
+          image,
+          initialNetworkPolicy: source.kind === "base" ? "allow-all" : networkPolicy,
+          options,
+          resourcesPath:
+            resourceSource.kind === "none"
+              ? undefined
+              : resolveImmutableResourcesPath({
+                  appRoot: context.appRoot,
+                  provider: DOCKER_PROVIDER_NAME,
+                  resourcesKey: resourceSource.key,
+                }),
+          role: "session",
+          tags: context.tags,
+        });
 
-        if (prepared === undefined) {
+        if (source.kind === "base") {
           await runDockerBaseSetup(cli, containerName);
           if (networkPolicy !== "allow-all") {
             await setDockerNetworkPolicy(cli, containerName, networkPolicy);
@@ -283,12 +275,14 @@ export function createDockerSandboxProvider(
 
       const containerIdentity = await resolveDockerHandleIdentity(cli, containerName);
       const session = buildSandboxSession(
-        createDockerInternalSession({ cli, containerIdentity, id: context.sandboxName }),
+        createDockerInternalSession({ cli, containerIdentity, id: context.session.name }),
         (policy) => setDockerNetworkPolicy(cli, containerIdentity, policy),
       );
 
-      return context.handle({
-        metadata: { containerName },
+      return {
+        async captureMetadata() {
+          return {};
+        },
         sandbox: session,
         async delete() {
           await stopDockerContainerIfRunning(cli, containerIdentity);
@@ -305,21 +299,19 @@ export function createDockerSandboxProvider(
         async shutdown() {
           await stopDockerContainerIfRunning(cli, containerIdentity);
         },
-      });
+      };
     },
   };
 }
 
-function readPreparedDockerImage(
-  artifact: SandboxPreparedArtifact | undefined,
-): string | undefined {
-  if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
-  return typeof artifact.imageReference === "string" ? artifact.imageReference : undefined;
-}
-
-function getDockerContainerName(metadata: Record<string, unknown> | undefined): string | undefined {
-  const containerName = metadata?.containerName;
-  return typeof containerName === "string" ? containerName : undefined;
+function requirePreparedDockerArtifact(
+  artifact: SandboxPreparedArtifact,
+  templateName: string,
+): DockerSandboxPreparedArtifact {
+  if (!isSandboxPreparedArtifactRecord(artifact) || typeof artifact.imageReference !== "string") {
+    throw new Error(`Invalid prepared Docker artifact for template "${templateName}".`);
+  }
+  return { imageReference: artifact.imageReference };
 }
 
 async function resolveDockerHandleIdentity(cli: DockerCli, containerName: string): Promise<string> {

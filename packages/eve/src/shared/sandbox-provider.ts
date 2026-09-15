@@ -1,5 +1,3 @@
-import { dirname, join } from "node:path";
-
 import {
   createSandboxEnvironment,
   type SandboxEnvironment,
@@ -12,6 +10,7 @@ export interface SandboxDeleteOptions {
 }
 
 export type SandboxProviderTags = Readonly<Record<string, string>>;
+export type NoSandboxProviderMetadata = Record<never, never>;
 
 export interface SandboxDockerfileInput {
   readonly contextPath: string;
@@ -28,12 +27,18 @@ export interface SandboxProviderResourceTree {
   readonly files: readonly SandboxProviderResourceFile[];
   readonly key: string;
   readonly mountPath: string;
-  readonly path?: string;
   readonly targetPath: string;
 }
 
+export type SandboxProviderResourceSource =
+  | { readonly kind: "none" }
+  | { readonly key: string; readonly kind: "inline" }
+  | { readonly key: string; readonly kind: "materialized"; readonly path: string }
+  | { readonly key: string; readonly kind: "reference" };
+
 export interface SandboxProviderResources {
   readonly skills?: SandboxProviderResourceTree;
+  readonly source: SandboxProviderResourceSource;
   readonly workspace?: SandboxProviderResourceTree;
 }
 
@@ -63,6 +68,8 @@ export type SandboxPreparedArtifact =
   | readonly SandboxPreparedArtifact[]
   | { readonly [key: string]: SandboxPreparedArtifact };
 
+export type SandboxProviderMetadata = Readonly<Record<string, SandboxPreparedArtifact>>;
+
 export function isSandboxPreparedArtifactRecord(
   artifact: SandboxPreparedArtifact | undefined,
 ): artifact is { readonly [key: string]: SandboxPreparedArtifact } {
@@ -78,26 +85,34 @@ export interface SandboxProviderPrepareContext {
   readonly templateName: string;
 }
 
-export interface SandboxProviderPreparedArtifact<
+export type SandboxProviderSource<
   PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
-> {
-  readonly artifact: PreparedArtifact;
-  readonly templateName: string;
-}
+> =
+  | { readonly kind: "base" }
+  | {
+      readonly artifact: PreparedArtifact;
+      readonly kind: "prepared";
+      readonly templateName: string;
+    };
+
+export type SandboxProviderSession<Metadata> =
+  | { readonly kind: "create"; readonly name: string }
+  | {
+      readonly kind: "restore";
+      readonly metadata: Readonly<Metadata>;
+      readonly name: string;
+    };
 
 export interface SandboxProviderCreateContext<CreateOptions, Metadata> {
   readonly appRoot: string;
-  readonly existing?: Readonly<Metadata>;
-  handle(input: SandboxProviderHandle<Metadata>): SandboxProviderHandle<Metadata>;
   readonly options: Readonly<CreateOptions>;
   readonly resources: SandboxProviderResources;
-  readonly sandboxName: string;
+  readonly session: SandboxProviderSession<Metadata>;
   readonly tags?: SandboxProviderTags;
 }
 
 export interface SandboxProviderHandle<Metadata> {
-  captureMetadata?(): Promise<Metadata>;
-  readonly metadata: Metadata;
+  captureMetadata(): Promise<Metadata>;
   readonly sandbox: SandboxSession;
   delete(options?: SandboxDeleteOptions): Promise<void>;
   shutdown(): Promise<void>;
@@ -114,14 +129,14 @@ export interface SandboxProviderImplementation<
   ): Promise<{ readonly artifact: PreparedArtifact; readonly reused: boolean }>;
   getOrCreate(
     context: SandboxProviderCreateContext<CreateOptions, Metadata>,
-    prepared?: SandboxProviderPreparedArtifact<PreparedArtifact>,
+    source: SandboxProviderSource<PreparedArtifact>,
   ): Promise<SandboxProviderHandle<Metadata>>;
 }
 
 export type SandboxProviderDefinition<
   EnvironmentOptions extends object,
   CreateOptions extends object | undefined,
-  Metadata extends Record<string, unknown>,
+  Metadata extends object,
   PreparedArtifact extends SandboxPreparedArtifact,
 > = {
   readonly name: string;
@@ -161,11 +176,13 @@ export interface SandboxProvider<
   ): SandboxEnvironment<CreateOptions>;
 }
 
+type ErasedSandboxProviderImplementation = SandboxProviderImplementation<
+  object | undefined,
+  SandboxProviderMetadata
+>;
+
 export interface SandboxProviderRuntime {
-  readonly implementation: SandboxProviderImplementation<
-    object | undefined,
-    Record<string, unknown>
-  >;
+  readonly implementation: ErasedSandboxProviderImplementation;
   readonly prepare?: SandboxPrepare;
   readonly providerName: string;
 }
@@ -173,7 +190,7 @@ export interface SandboxProviderRuntime {
 export function defineSandboxProvider<
   EnvironmentOptions extends object,
   CreateOptions extends object | undefined = undefined,
-  Metadata extends Record<string, unknown> = Record<string, unknown>,
+  Metadata extends object = NoSandboxProviderMetadata,
   PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
 >(
   definition: SandboxProviderDefinition<
@@ -186,25 +203,40 @@ export function defineSandboxProvider<
   return {
     name: definition.name,
     environment(...args: SandboxProviderEnvironmentArguments<EnvironmentOptions>) {
-      const authoredOptions =
-        args[0] ?? ({} as SandboxProviderEnvironmentOptions<EnvironmentOptions>);
-      const { prepare, ...environmentOptions } = authoredOptions;
-      const options = environmentOptions as EnvironmentOptions;
+      const { options, prepare } = splitSandboxEnvironmentOptions<EnvironmentOptions>(args[0]);
       if (definition.select !== undefined) return definition.select(options, prepare);
       return createSandboxEnvironment({
         configuration: { options, prepare },
         kind: definition.kind?.(options) ?? (prepare === undefined ? "default" : "prepared"),
         runtime: {
-          implementation: definition.environment(options) as SandboxProviderImplementation<
-            object | undefined,
-            Record<string, unknown>
-          >,
+          implementation: eraseSandboxProviderImplementation(definition.environment(options)),
           prepare,
           providerName: definition.name,
         },
       });
     },
   };
+}
+
+function splitSandboxEnvironmentOptions<Options extends object>(
+  authoredOptions: SandboxProviderEnvironmentOptions<Options> | undefined,
+): { readonly options: Readonly<Options>; readonly prepare: SandboxPrepare | undefined } {
+  const { prepare, ...options } = authoredOptions ?? {};
+  // Omit cannot prove that removing eve's `prepare` key reconstructs the
+  // provider's generic options, even though that is how the public type is defined.
+  return { options: options as Options, prepare };
+}
+
+function eraseSandboxProviderImplementation<
+  Options,
+  Metadata,
+  Artifact extends SandboxPreparedArtifact,
+>(
+  implementation: SandboxProviderImplementation<Options, Metadata, Artifact>,
+): ErasedSandboxProviderImplementation {
+  // Runtime registries contain heterogeneous providers; exact types remain at
+  // each implementation boundary and are erased only when entering the registry.
+  return implementation as ErasedSandboxProviderImplementation;
 }
 
 export function createSandboxProviderResources(input: {
@@ -215,22 +247,27 @@ export function createSandboxProviderResources(input: {
     readonly path: string;
   }[];
 }): SandboxProviderResources {
-  if (input.resourcesKey === undefined) return {};
+  if (input.resourcesKey === undefined) return { source: { kind: "none" } };
   const files = input.seedFiles ?? [];
+  const source: SandboxProviderResourceSource =
+    input.resourcesPath !== undefined
+      ? { key: input.resourcesKey, kind: "materialized", path: input.resourcesPath }
+      : input.seedFiles !== undefined
+        ? { key: input.resourcesKey, kind: "inline" }
+        : { key: input.resourcesKey, kind: "reference" };
   return {
     skills: createResourceTree({
       files: files.filter((file) => file.path.startsWith("$HOME/.agents/skills/")),
       key: `${input.resourcesKey}:skills`,
       mountPath: "/eve/resources/skills",
-      path: input.resourcesPath === undefined ? undefined : join(input.resourcesPath, "skills"),
       prefix: "$HOME/.agents/skills/",
       targetPath: "$HOME/.agents/skills",
     }),
+    source,
     workspace: createResourceTree({
       files: files.filter((file) => !file.path.startsWith("$HOME/.agents/skills/")),
       key: `${input.resourcesKey}:workspace`,
       mountPath: "/eve/resources/workspace",
-      path: input.resourcesPath === undefined ? undefined : join(input.resourcesPath, "workspace"),
       prefix: "/workspace/",
       targetPath: "/workspace",
     }),
@@ -241,7 +278,6 @@ function createResourceTree(input: {
   readonly files: readonly { readonly content: string | Uint8Array; readonly path: string }[];
   readonly key: string;
   readonly mountPath: string;
-  readonly path?: string;
   readonly prefix: string;
   readonly targetPath: string;
 }): SandboxProviderResourceTree {
@@ -254,19 +290,6 @@ function createResourceTree(input: {
     })),
     key: input.key,
     mountPath: input.mountPath,
-    path: input.path,
     targetPath: input.targetPath,
-  };
-}
-
-export function providerResourceRoot(resources: SandboxProviderResources): {
-  readonly key?: string;
-  readonly path?: string;
-} {
-  const resource = resources.workspace ?? resources.skills;
-  if (resource === undefined) return {};
-  return {
-    key: resource.key.slice(0, resource.key.lastIndexOf(":")),
-    path: resource.path === undefined ? undefined : dirname(resource.path),
   };
 }

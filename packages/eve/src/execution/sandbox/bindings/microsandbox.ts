@@ -1,8 +1,10 @@
 import {
   createMicrosandboxHandle,
+  type MicrosandboxPreparedArtifact,
   prewarmMicrosandboxTemplate,
 } from "#execution/sandbox/bindings/microsandbox-lifecycle.js";
 import { enrichMicrosandboxError } from "#execution/sandbox/bindings/microsandbox-create.js";
+import type { MicrosandboxSessionMetadata } from "#execution/sandbox/bindings/microsandbox-metadata.js";
 import {
   microsandboxOptionsForHash,
   resolveMicrosandboxOptions,
@@ -20,7 +22,11 @@ export const MICROSANDBOX_PROVIDER_NAME = "microsandbox";
 
 export function createMicrosandboxSandboxProvider(
   createOptions: MicrosandboxSandboxCreateOptions = {},
-): SandboxProviderImplementation<MicrosandboxSandboxRuntimeOptions, Record<string, unknown>> {
+): SandboxProviderImplementation<
+  MicrosandboxSandboxRuntimeOptions,
+  MicrosandboxSessionMetadata,
+  MicrosandboxPreparedArtifact
+> {
   const options = resolveMicrosandboxOptions(createOptions);
   const optionsHash = createStableHash(JSON.stringify(microsandboxOptionsForHash(options))).slice(
     0,
@@ -43,10 +49,10 @@ export function createMicrosandboxSandboxProvider(
         });
       }
     },
-    async getOrCreate(context, prepared) {
+    async getOrCreate(context, source) {
       return await createMicrosandboxHandle({
         context,
-        prepared,
+        source,
         options,
         optionsHash,
         providerName: MICROSANDBOX_PROVIDER_NAME,

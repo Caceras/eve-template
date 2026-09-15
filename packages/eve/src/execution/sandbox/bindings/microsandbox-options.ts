@@ -48,9 +48,17 @@ export function resolveMicrosandboxOptions(
  * compatibility hashing. Setup behavior intentionally stays out: how
  * the runtime got installed must not invalidate captured templates.
  */
+interface MicrosandboxTemplateOptions {
+  readonly cpus: number;
+  readonly env: Readonly<Record<string, string>>;
+  readonly image: string;
+  readonly memoryMiB: number;
+  readonly pullPolicy: ResolvedMicrosandboxOptions["pullPolicy"];
+}
+
 export function microsandboxOptionsForHash(
   options: ResolvedMicrosandboxOptions,
-): Record<string, unknown> {
+): MicrosandboxTemplateOptions {
   return {
     cpus: options.cpus,
     env: options.env,

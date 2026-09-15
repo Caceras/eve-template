@@ -54,6 +54,8 @@ export function defineDefaultSandboxProvider(probes: DefaultSandboxProbes) {
   });
 }
 
+// Default selection intentionally hides provider-specific live options while
+// preserving the selected environment object used by runtime identity checks.
 function withoutCreateOptions<Options extends object | undefined>(
   environment: SandboxEnvironment<Options>,
 ): SandboxEnvironment<undefined> {

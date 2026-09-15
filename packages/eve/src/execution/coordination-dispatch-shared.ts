@@ -190,7 +190,7 @@ export async function prepareActionDispatch<PlanEntry>(input: {
   const adapter = ctx.require(ChannelKey);
 
   // A corrupt handle store and rejected actions must resolve before sandbox
-  // initialization, which can provision backend resources and run onSession.
+  // initialization, which can provision provider resources and run preparation.
   getAgentHandleStore(durableSession.state);
   const plan = input.plan({
     bundle,

@@ -28,9 +28,11 @@ export async function setDockerNetworkPolicy(
     containerName,
   ]);
   expectDockerSuccess(inspect, `inspect networks of sandbox container "${containerName}"`);
-  const networks = Object.keys(
-    JSON.parse(inspect.stdout.trim() === "" ? "{}" : inspect.stdout) as object,
-  );
+  const networkSettings: unknown = JSON.parse(inspect.stdout.trim() === "" ? "{}" : inspect.stdout);
+  if (typeof networkSettings !== "object" || networkSettings === null) {
+    throw new Error(`Docker returned invalid network settings for "${containerName}".`);
+  }
+  const networks = Object.keys(networkSettings);
 
   if (policy === "deny-all") {
     for (const network of networks) {

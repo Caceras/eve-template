@@ -5,7 +5,6 @@ import {
 } from "#execution/sandbox/bindings/vercel-credentials.js";
 import type {
   VercelCreateOptions,
-  VercelDeleteGetOptions,
   VercelDeleteModule,
   VercelSandbox,
 } from "#execution/sandbox/bindings/vercel-sdk-types.js";
@@ -42,7 +41,7 @@ async function deleteVercelSandboxRecord(input: {
     name: input.sandbox.name,
     resume: false,
     signal: input.signal,
-  } as VercelDeleteGetOptions);
+  });
   await sandbox.delete({
     deleteOrphanSnapshots: true,
     signal: input.signal,

@@ -16,6 +16,7 @@ import type {
 import {
   isSandboxPreparedArtifactRecord,
   providerResourceTargetFiles,
+  type NoSandboxProviderMetadata,
   type SandboxPreparedArtifact,
   type SandboxProviderHandle,
   type SandboxProviderImplementation,
@@ -62,7 +63,11 @@ import type {
 
 export function createVercelSandboxProvider(
   environmentOptions: VercelCreateOptions,
-): SandboxProviderImplementation<VercelSandboxRuntimeOptions, Record<string, unknown>> {
+): SandboxProviderImplementation<
+  VercelSandboxRuntimeOptions,
+  NoSandboxProviderMetadata,
+  VercelSandboxPreparedArtifact
+> {
   return createVercelSandbox({ createOptions: environmentOptions });
 }
 
@@ -82,7 +87,11 @@ export interface CreateVercelSandboxInput {
  */
 export function createVercelSandbox(
   input: CreateVercelSandboxInput = {},
-): SandboxProviderImplementation<VercelSandboxRuntimeOptions, Record<string, unknown>> {
+): SandboxProviderImplementation<
+  VercelSandboxRuntimeOptions,
+  NoSandboxProviderMetadata,
+  VercelSandboxPreparedArtifact
+> {
   const loadSandboxModule =
     input.loadSandboxModule ??
     (async () => await import("#compiled/@vercel/sandbox-drives/index.js"));
@@ -96,42 +105,40 @@ export function createVercelSandbox(
   const createSandbox = input.createSandbox ?? createVercelEveImageSandbox;
 
   return {
-    async getOrCreate(context, prepared) {
+    async getOrCreate(context, source) {
       const { mounts, ...runtimeOptions } = context.options;
       const sessionCreateOptions = { ...createOptions, ...runtimeOptions };
       // Resolve tags up-front so tag-count validation fails fast before
       // we go to the network for the template snapshot.
       const tags = resolveVercelSandboxTags(sessionCreateOptions.tags, context.tags);
 
-      const template =
-        prepared === undefined
-          ? null
-          : requirePreparedVercelTemplate(prepared.artifact, prepared.templateName);
+      const snapshotId =
+        source.kind === "base"
+          ? undefined
+          : requirePreparedVercelTemplate(source.artifact, source.templateName).snapshotId;
 
       const sandboxModule = await loadSandboxModule();
       const ensureSessionInput: EnsureSessionInput = {
         createOptions: sessionCreateOptions,
         createSandbox,
-        existingMetadata: context.existing,
         resolveSessionCreateOptions: mounts === undefined ? undefined : async () => ({ mounts }),
         sandboxModule,
-        sessionId: context.tags?.sessionId ?? context.sandboxName,
-        sessionKey: context.sandboxName,
-        snapshotId: template?.snapshotId,
+        sessionKey: context.session.name,
+        snapshotId,
         tags,
       };
       let session: VercelSandboxSessionCreateResult;
       try {
         session = await ensureSession(ensureSessionInput);
       } catch (error) {
-        if (prepared !== undefined && isVercelSnapshotUnavailableError(error)) {
+        if (source.kind === "prepared" && isVercelSnapshotUnavailableError(error)) {
           throw new SandboxTemplateNotProvisionedError({
             providerName: "vercel",
-            templateKey: prepared.templateName,
+            templateKey: source.templateName,
           });
         }
         throw new Error(
-          `Failed to create sandbox session "${context.sandboxName}": ${errorMessage(error)}`,
+          `Failed to create sandbox session "${context.session.name}": ${errorMessage(error)}`,
           { cause: error },
         );
       }
@@ -142,7 +149,7 @@ export function createVercelSandbox(
           loadDeleteSandboxModule,
           session,
         });
-        if (template === null && session.created) {
+        if (source.kind === "base" && session.created) {
           await applyInitialVercelNetworkPolicy(
             session.sandbox,
             sessionCreateOptions.networkPolicy,
@@ -150,19 +157,17 @@ export function createVercelSandbox(
         }
       } catch (error) {
         throw new Error(
-          `Failed to initialize sandbox session "${context.sandboxName}": ${errorMessage(error)}`,
+          `Failed to initialize sandbox session "${context.session.name}": ${errorMessage(error)}`,
           { cause: error },
         );
       }
 
-      return context.handle(
-        createHandle({
-          createOptions: sessionCreateOptions,
-          loadDeleteSandboxModule,
-          sandbox: session.sandbox,
-          sessionKey: context.sandboxName,
-        }),
-      );
+      return createHandle({
+        createOptions: sessionCreateOptions,
+        loadDeleteSandboxModule,
+        sandbox: session.sandbox,
+        sessionKey: context.session.name,
+      });
     },
     async prepare(context) {
       let outcome: EnsureTemplateOutcome;
@@ -196,20 +201,14 @@ interface VercelSandboxTemplateRecord {
   readonly templateKey: string;
 }
 
-interface VercelSandboxPreparedArtifact {
+type VercelSandboxPreparedArtifact = {
   readonly snapshotId: string;
-}
+};
 
 function requirePreparedVercelTemplate(
-  artifact: SandboxPreparedArtifact | undefined,
+  artifact: SandboxPreparedArtifact,
   templateKey: string,
 ): VercelSandboxPreparedArtifact {
-  if (artifact === undefined) {
-    throw new SandboxTemplateNotProvisionedError({
-      providerName: "vercel",
-      templateKey,
-    });
-  }
   if (!isSandboxPreparedArtifactRecord(artifact) || typeof artifact.snapshotId !== "string") {
     throw new Error(`Invalid prepared Vercel sandbox artifact for template "${templateKey}".`);
   }
@@ -293,17 +292,19 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
    * framework snapshot, and we still owe `ensureSandboxWorkingDirectory`,
    * preparation, seed file writes, and `sandbox.snapshot()` on top.
    */
-  const hasFrameworkSnapshot =
+  const frameworkSnapshotId =
     typeof sandbox.currentSnapshotId === "string" &&
     sandbox.currentSnapshotId.length > 0 &&
-    sandbox.currentSnapshotId !== authorSnapshotId;
+    sandbox.currentSnapshotId !== authorSnapshotId
+      ? sandbox.currentSnapshotId
+      : null;
 
-  if (hasFrameworkSnapshot) {
+  if (frameworkSnapshotId !== null) {
     return {
       reused: true,
       template: {
         sandboxName: sandbox.name,
-        snapshotId: sandbox.currentSnapshotId as string,
+        snapshotId: frameworkSnapshotId,
         templateKey: input.templateKey,
       },
     };
@@ -343,12 +344,10 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
 interface EnsureSessionInput {
   readonly createOptions: VercelCreateOptions;
   readonly createSandbox: CreateVercelSandbox;
-  readonly existingMetadata?: Record<string, unknown>;
   readonly resolveSessionCreateOptions?: () =>
     | Promise<VercelSandboxMountOptions>
     | VercelSandboxMountOptions;
   readonly sandboxModule: VercelModule;
-  readonly sessionId: string;
   readonly sessionKey: string;
   readonly snapshotId?: string;
   readonly tags: Record<string, string> | undefined;
@@ -378,13 +377,13 @@ async function ensureUsableSession(input: {
     loadDeleteSandboxModule: input.loadDeleteSandboxModule,
     sandbox: input.session.sandbox,
   });
-  const replacement = await ensureSession({ ...input.input, existingMetadata: undefined });
+  const replacement = await ensureSession(input.input);
   await ensureVercelSandboxBaseRuntime(replacement.sandbox);
   return replacement;
 }
 
 async function ensureSession(input: EnsureSessionInput): Promise<VercelSandboxSessionCreateResult> {
-  const sandboxName = getVercelSandboxName(input.existingMetadata) ?? input.sessionKey;
+  const sandboxName = input.sessionKey;
   const existing = await getNamedVercelSandbox({
     createOptions: input.createOptions,
     sandboxModule: input.sandboxModule,
@@ -422,7 +421,10 @@ function createSessionCreateParams(
   sandboxName: string,
   sessionCreateOptions: VercelSandboxMountOptions = {},
 ): VercelSandboxCreateParams {
-  const createOptions = { ...input.createOptions, ...sessionCreateOptions } as VercelCreateOptions;
+  const createOptions: VercelCreateOptions = {
+    ...input.createOptions,
+    ...sessionCreateOptions,
+  };
   if (input.snapshotId === undefined) {
     return withBaseSetupNetworkPolicy({
       ...createOptions,
@@ -442,14 +444,13 @@ function createSessionCreateParams(
     runtime: _runtime,
     source: _source,
     ...baseSessionCreateOptions
-  } = createOptions as VercelCreateOptions &
-    Partial<Record<"image" | "runtime" | "source", unknown>>;
+  } = createOptions;
 
   return {
     ...baseSessionCreateOptions,
     name: sandboxName,
     persistent: true,
-    source: { snapshotId: input.snapshotId, type: "snapshot" as const },
+    source: { snapshotId: input.snapshotId, type: "snapshot" },
   };
 }
 
@@ -458,10 +459,12 @@ function createHandle(input: {
   readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
   readonly sandbox: VercelSandbox;
   readonly sessionKey: string;
-}): SandboxProviderHandle<Record<string, unknown>> {
+}): SandboxProviderHandle<NoSandboxProviderMetadata> {
   const { sandbox, sessionKey } = input;
   return {
-    metadata: { sandboxName: sandbox.name },
+    async captureMetadata() {
+      return {};
+    },
     sandbox: buildSandboxSession(
       createVercelInternalSandboxSession(sandbox, sessionKey),
       createVercelNetworkPolicySetter(sandbox),
@@ -597,16 +600,11 @@ function isUnprovisionedTerminalTemplateSandbox(
  * pre-existing value the way snapshot sources do.
  */
 function extractAuthorSnapshotId(createOptions: VercelCreateOptions): string | undefined {
-  const source = (createOptions as { source?: { type?: string; snapshotId?: string } }).source;
+  const source = createOptions.source;
   if (source?.type === "snapshot" && typeof source.snapshotId === "string") {
     return source.snapshotId;
   }
   return undefined;
-}
-
-function getVercelSandboxName(metadata: Record<string, unknown> | undefined): string | undefined {
-  const sandboxName = metadata?.sandboxName;
-  return typeof sandboxName === "string" ? sandboxName : undefined;
 }
 
 /**

@@ -151,14 +151,14 @@ const TEST_SANDBOX_PROVIDER = defineSandboxProvider({
       return { artifact: {}, reused: true };
     },
     async getOrCreate(context) {
-      const sandbox = mockSandbox({ id: context.sandboxName });
-      return context.handle({
+      const sandbox = mockSandbox({ id: context.session.name });
+      return {
+        captureMetadata: async () => ({}),
         delete: async (options) => await sandbox.access.delete?.(options),
-        metadata: {},
         sandbox: sandbox.session,
         shutdown: async () => undefined,
         stop: async () => undefined,
-      });
+      };
     },
   }),
 });

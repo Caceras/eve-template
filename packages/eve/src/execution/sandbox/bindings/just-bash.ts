@@ -16,6 +16,7 @@ import {
 import {
   createBashSandbox,
   createJustBashHandle,
+  type JustBashSessionMetadata,
   justBashSetNetworkPolicyUnsupported,
 } from "#execution/sandbox/bindings/just-bash-runtime.js";
 import {
@@ -43,6 +44,10 @@ const JUST_BASH_CACHE_DIRECTORY_NAME = "just-bash";
  */
 export const JUST_BASH_PROVIDER_NAME = "just-bash";
 
+type JustBashPreparedArtifact = {
+  readonly templateRootPath: string;
+};
+
 /**
  * Creates the just-bash sandbox provider.
  *
@@ -52,7 +57,7 @@ export const JUST_BASH_PROVIDER_NAME = "just-bash";
  */
 export function createJustBashSandboxProvider(
   options: JustBashSandboxCreateOptions = {},
-): SandboxProviderImplementation<undefined, Record<string, unknown>> {
+): SandboxProviderImplementation<undefined, JustBashSessionMetadata, JustBashPreparedArtifact> {
   const autoInstall = options.autoInstall ?? true;
   const customCommands = options.customCommands;
   const filesystem = options.filesystem;
@@ -118,21 +123,23 @@ export function createJustBashSandboxProvider(
 
       return { artifact: { templateRootPath }, reused: false };
     },
-    async getOrCreate(context, prepared) {
+    async getOrCreate(context, source) {
       const cacheDirectory = resolveSandboxCacheDirectory(context.appRoot);
       const sessionRootPath =
-        getLocalRootPath(context.existing) ??
-        resolveSessionRootPath(cacheDirectory, context.sandboxName);
+        context.session.kind === "restore"
+          ? context.session.metadata.rootPath
+          : resolveSessionRootPath(cacheDirectory, context.session.name);
 
       if (!(await pathExists(sessionRootPath))) {
-        if (prepared === undefined) {
+        if (source.kind === "base") {
           await mkdir(sessionRootPath, { recursive: true });
         } else {
-          const templateRootPath = readPreparedTemplateRootPath(prepared.artifact);
-          if (templateRootPath === undefined || !(await pathExists(templateRootPath))) {
+          const artifact = requirePreparedJustBashArtifact(source.artifact, source.templateName);
+          const templateRootPath = artifact.templateRootPath;
+          if (!(await pathExists(templateRootPath))) {
             throw new SandboxTemplateNotProvisionedError({
               providerName: JUST_BASH_PROVIDER_NAME,
-              templateKey: prepared.templateName,
+              templateKey: source.templateName,
             });
           }
 
@@ -146,10 +153,10 @@ export function createJustBashSandboxProvider(
         customCommands,
         filesystem,
         rootPath: sessionRootPath,
-        sessionKey: context.sandboxName,
+        sessionKey: context.session.name,
       });
 
-      return context.handle(createJustBashHandle(sandbox));
+      return createJustBashHandle(sandbox);
     },
   };
 }
@@ -213,9 +220,14 @@ export async function pruneJustBashSandboxTemplates(input: {
   );
 }
 
-function readPreparedTemplateRootPath(artifact: SandboxPreparedArtifact): string | undefined {
-  if (!isSandboxPreparedArtifactRecord(artifact)) return undefined;
-  return typeof artifact.templateRootPath === "string" ? artifact.templateRootPath : undefined;
+function requirePreparedJustBashArtifact(
+  artifact: SandboxPreparedArtifact,
+  templateName: string,
+): JustBashPreparedArtifact {
+  if (!isSandboxPreparedArtifactRecord(artifact) || typeof artifact.templateRootPath !== "string") {
+    throw new Error(`Invalid prepared just-bash artifact for template "${templateName}".`);
+  }
+  return { templateRootPath: artifact.templateRootPath };
 }
 
 function resolveTemplateRootPath(cacheDirectory: string, templateKey: string): string {
@@ -232,9 +244,4 @@ function resolveSessionRootPath(cacheDirectory: string, sessionKey: string): str
     JUST_BASH_CACHE_DIRECTORY_NAME,
     sessionKey,
   );
-}
-
-function getLocalRootPath(metadata: Record<string, unknown> | undefined): string | undefined {
-  const rootPath = metadata?.rootPath;
-  return typeof rootPath === "string" ? rootPath : undefined;
 }

@@ -51,7 +51,7 @@ describe.skipIf(onWindows)("microsandbox provider", () => {
 
     const prewarm = createMicrosandboxSandboxProvider().prepare({
       appRoot: "/tmp/eve-app",
-      resources: {},
+      resources: { source: { kind: "none" } },
       runPreparation: async () => {},
       templateName: "template-key",
     });

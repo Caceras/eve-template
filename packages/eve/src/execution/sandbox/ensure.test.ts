@@ -21,14 +21,14 @@ function fixture(
   const deleteSandbox = vi.fn(async () => {});
   const stopSandbox = vi.fn(async () => {});
   const create = vi.fn(async (context) => {
-    const sandbox = mockSandbox({ id: context.sandboxName });
-    return context.handle({
+    const sandbox = mockSandbox({ id: context.session.name });
+    return {
+      captureMetadata: async () => ({}),
       delete: deleteSandbox,
-      metadata: {},
       sandbox: sandbox.session,
       shutdown: async () => {},
       stop: stopSandbox,
-    });
+    };
   });
   const provider = defineSandboxProvider({
     name: "test",
@@ -108,7 +108,7 @@ describe("ensureSandboxAccess", () => {
   it("uses an authored shared name and protects its provider-owned lifetime", async () => {
     const value = fixture(true);
     const { access } = await open(value.registry);
-    expect(value.create.mock.calls[0]?.[0].sandboxName).toContain("team-acme");
+    expect(value.create.mock.calls[0]?.[0].session.name).toContain("team-acme");
     await expect(access.delete?.()).rejects.toThrow("provider-owned lifetime");
     await expect(access.stop()).rejects.toThrow("cannot be stopped");
     expect(value.deleteSandbox).not.toHaveBeenCalled();
@@ -193,7 +193,7 @@ describe("ensureSandboxAccess", () => {
     await open(value.registry, "durable-session", state, "principal-b");
 
     const secondCreate = value.create.mock.calls[0]?.[0];
-    expect(secondCreate?.sandboxName).not.toBe(firstCreate?.sandboxName);
-    expect(secondCreate?.existing).toBeUndefined();
+    expect(secondCreate?.session.name).not.toBe(firstCreate?.session.name);
+    expect(secondCreate?.session.kind).toBe("create");
   });
 });
