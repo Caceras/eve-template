@@ -244,7 +244,9 @@ Reset terminally retires the exact session ID. A reset ID never becomes a new se
 
 The stream is durable. Every event is recorded before a step completes, so consumers can reconnect from their cursor when an HTTP connection ends. A nonnegative `startIndex` is an absolute event count: use it to pick up where you dropped off or pass `0` to rewind to the start.
 
-A live stream response is not held open indefinitely. When ten seconds pass without a new event, eve ends the response normally and releases the server-side reader. This keeps each stream request bounded on serverless hosts, which may not tell the handler when a client disconnects. Treat a response that ends without a terminal event as a signal to reconnect from your cursor, not as an error. The TypeScript client reconnects immediately in this case.
+A single HTTP response is not held open indefinitely. When ten seconds pass without a new event, for example while a tool runs a long sandbox command, eve ends that response normally and releases its server-side reader. The run and the durable stream are unaffected: events written during or after the close are still recorded and are delivered on the next connection. This keeps each stream request bounded on serverless hosts, which may not tell the handler when a client disconnects.
+
+The TypeScript client and the frontend hooks handle this for you: they reopen the stream from their cursor immediately, and the consumer sees one continuous iteration with no gap in events. If you read the route directly, treat a response that ends without a terminal event as a cue to reconnect from your cursor, not as an error.
 
 If a reconnect overlaps events you already handled, [`meta.id`](#the-event-envelope) identifies the duplicates: it is unchanged across reconnects and rewinds, so a consumer keyed on it can replay safely.
 
