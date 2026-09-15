@@ -1,54 +1,33 @@
 import type { CompiledWorkspaceResourceRoot } from "#compiler/manifest.js";
 import type { ResolvedSandboxDefinition } from "#runtime/types.js";
+import { getSandboxEnvironmentPreparation } from "#shared/sandbox-environment.js";
 
-type EnvironmentGeneration = { readonly environmentHash: string };
+type SandboxGeneration = {
+  readonly contentHash?: string;
+  readonly revisionHash: string;
+};
 
-export type RuntimeSandboxTemplatePlan =
-  | (EnvironmentGeneration & { readonly contentHash?: undefined; readonly kind: "none" })
-  | (EnvironmentGeneration & { readonly contentHash?: string; readonly kind: "workspace-content" })
-  | (EnvironmentGeneration & {
-      readonly contentHash?: string;
-      readonly dockerfileHash?: string;
-      readonly kind: "prepared";
-    })
-  | (EnvironmentGeneration & {
-      readonly contentHash?: string;
-      readonly dockerfileHash: string;
-      readonly kind: "dockerfile";
-    });
+export type RuntimeSandboxTemplatePlan = SandboxGeneration &
+  ({ readonly kind: "none" } | { readonly kind: "prepared" });
 
 export function createRuntimeSandboxTemplatePlan(input: {
   readonly definition: ResolvedSandboxDefinition;
   readonly workspaceResourceRoot: CompiledWorkspaceResourceRoot;
 }): RuntimeSandboxTemplatePlan {
-  const environmentHash = input.definition.sourceHash;
-  if (environmentHash === undefined)
-    throw new Error(`Sandbox "${input.definition.logicalPath}" has no source hash.`);
+  const revisionHash = input.definition.revisionHash;
   const contentHash = input.workspaceResourceRoot.contentHash;
-  if (input.definition.kind === "independent" && input.definition.environment.kind === "prepared") {
-    return {
-      contentHash,
-      dockerfileHash: input.definition.dockerfileHash,
-      environmentHash,
-      kind: "prepared",
-    };
-  }
-  if (
+  const requiresPreparation =
     input.definition.kind === "independent" &&
-    input.definition.environment.kind === "dockerfile"
+    (input.definition.environment.kind === "prepared" ||
+      input.definition.environment.kind === "dockerfile" ||
+      getSandboxEnvironmentPreparation(input.definition.environment) !== undefined);
+
+  if (
+    requiresPreparation ||
+    contentHash !== undefined ||
+    input.workspaceResourceRoot.rootEntries.length > 0
   ) {
-    if (input.definition.dockerfileHash === undefined)
-      throw new Error(
-        `Sandbox "${input.definition.logicalPath}" uses a Dockerfile environment, but no compiled Dockerfile hash is available.`,
-      );
-    return {
-      contentHash,
-      dockerfileHash: input.definition.dockerfileHash,
-      environmentHash,
-      kind: "dockerfile",
-    };
+    return { contentHash, kind: "prepared", revisionHash };
   }
-  if (contentHash === undefined && input.workspaceResourceRoot.rootEntries.length === 0)
-    return { environmentHash, kind: "none" };
-  return { contentHash, environmentHash, kind: "workspace-content" };
+  return { kind: "none", revisionHash };
 }

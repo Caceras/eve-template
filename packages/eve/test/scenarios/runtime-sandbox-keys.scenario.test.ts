@@ -20,7 +20,7 @@ import { useTemporaryDirectories } from "../../src/internal/testing/use-temporar
  * disk-backed fallback paths behave as documented.
  */
 const createScratchDirectory = useTemporaryDirectories();
-const BOOTSTRAP_SOURCE_HASH = "bootstrap-source-hash";
+const SANDBOX_REVISION_HASH = "sandbox-revision";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -44,7 +44,7 @@ async function createTemporaryAppRoot(options?: { sourceGraphHash?: string }): P
       generator: { name: "eve", version: "0.0.0-test" },
       kind: "eve-compile-metadata",
       status: "ready",
-      version: 5,
+      version: 6,
     })}\n`,
   );
   return appRoot;
@@ -52,8 +52,8 @@ async function createTemporaryAppRoot(options?: { sourceGraphHash?: string }): P
 
 const WORKSPACE_PLAN = {
   contentHash: "workspace-hash",
-  environmentHash: "environment-v1",
-  kind: "workspace-content",
+  revisionHash: "environment-v1",
+  kind: "prepared",
 } as const;
 
 function stubEmptyVercelProjectSources(): void {
@@ -129,7 +129,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
     expect(key).toMatch(/^eve-sbx-tpl-vercel-/);
   });
 
-  it("uses stable Vercel project scope for workspace-content templates", async () => {
+  it("uses stable Vercel project scope for prepared templates", async () => {
     vi.stubEnv("VERCEL_PROJECT_ID", "prj_123");
     vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_one");
 
@@ -139,9 +139,9 @@ describe("createRuntimeSandboxTemplateKey", () => {
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
       templatePlan: {
-        environmentHash: "environment-v1",
+        revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "workspace-content",
+        kind: "prepared",
       },
     });
 
@@ -153,9 +153,9 @@ describe("createRuntimeSandboxTemplateKey", () => {
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
       templatePlan: {
-        environmentHash: "environment-v1",
+        revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "workspace-content",
+        kind: "prepared",
       },
     });
 
@@ -174,7 +174,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
 
@@ -188,7 +188,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
 
@@ -206,9 +206,9 @@ describe("createRuntimeSandboxTemplateKey", () => {
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
       templatePlan: {
-        environmentHash: "environment-v1",
+        revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "workspace-content",
+        kind: "prepared",
       },
     } as const;
 
@@ -232,7 +232,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
     const secondKey = await createRuntimeSandboxTemplateKey({
@@ -243,7 +243,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
 
@@ -261,7 +261,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: "bootstrap-source-hash-one",
+        revisionHash: "sandbox-revision-one",
       },
     });
     const secondKey = await createRuntimeSandboxTemplateKey({
@@ -272,7 +272,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash",
         kind: "prepared",
-        environmentHash: "bootstrap-source-hash-two",
+        revisionHash: "sandbox-revision-two",
       },
     });
 
@@ -290,7 +290,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash-one",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
     const secondKey = await createRuntimeSandboxTemplateKey({
@@ -301,14 +301,14 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         contentHash: "workspace-hash-two",
         kind: "prepared",
-        environmentHash: BOOTSTRAP_SOURCE_HASH,
+        revisionHash: SANDBOX_REVISION_HASH,
       },
     });
 
     expect(secondKey).not.toBe(firstKey);
   });
 
-  it("changes workspace-content template keys when the content hash changes", async () => {
+  it("changes prepared template keys when the content hash changes", async () => {
     vi.stubEnv("VERCEL_PROJECT_ID", "prj_123");
 
     const firstKey = await createRuntimeSandboxTemplateKey({
@@ -317,9 +317,9 @@ describe("createRuntimeSandboxTemplateKey", () => {
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
       templatePlan: {
-        environmentHash: "environment-v1",
+        revisionHash: "environment-v1",
         contentHash: "workspace-hash-one",
-        kind: "workspace-content",
+        kind: "prepared",
       },
     });
     const secondKey = await createRuntimeSandboxTemplateKey({
@@ -328,9 +328,9 @@ describe("createRuntimeSandboxTemplateKey", () => {
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
       templatePlan: {
-        environmentHash: "environment-v1",
+        revisionHash: "environment-v1",
         contentHash: "workspace-hash-two",
-        kind: "workspace-content",
+        kind: "prepared",
       },
     });
 
@@ -343,7 +343,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
-      templatePlan: { environmentHash: "environment-v1", kind: "none" },
+      templatePlan: { revisionHash: "environment-v1", kind: "none" },
     });
 
     expect(key).toBeNull();

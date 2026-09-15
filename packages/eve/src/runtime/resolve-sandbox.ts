@@ -13,12 +13,11 @@ export async function resolveSandboxDefinition(
 ): Promise<ResolvedSandboxDefinition> {
   if (definition.inheritsParent === true) {
     return {
-      dockerfileHash: definition.dockerfileHash,
       exportName: definition.exportName,
       kind: "parent",
       logicalPath: definition.logicalPath,
+      revisionHash: definition.revisionHash,
       selector: defineParentSandbox(),
-      sourceHash: definition.sourceHash,
       sourceId: definition.sourceId,
       sourceKind: "module",
     };
@@ -37,11 +36,10 @@ export async function resolveSandboxDefinition(
     ? record[definition.environmentExportName]
     : getBoundSandboxEnvironment(selector);
   const base = {
-    dockerfileHash: definition.dockerfileHash,
     exportName: definition.exportName,
     logicalPath: definition.logicalPath,
+    revisionHash: definition.revisionHash,
     selector: selector as ResolvedSandboxDefinition["selector"],
-    sourceHash: definition.sourceHash,
     sourceId: definition.sourceId,
     sourceKind: "module" as const,
   };

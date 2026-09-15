@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compileAgentManifest } from "#compiler/normalize-manifest.js";
@@ -48,9 +49,18 @@ describe("sandbox compilation", () => {
     const manifest = await compileAgentManifest(discovered.manifest);
     expect(manifest.sandbox).toMatchObject({
       providerName: "docker",
-      dockerfileHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       environmentExportName: "environment",
+      revisionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    expect(manifest.sandbox).not.toHaveProperty("dockerfileHash");
+
+    await writeFile(join(app.appRoot, "agent", "sandbox", "Dockerfile"), "FROM alpine:3.22\n");
+    const changed = await discoverAgent({
+      agentRoot: join(app.appRoot, "agent"),
+      appRoot: app.appRoot,
+    });
+    const changedManifest = await compileAgentManifest(changed.manifest);
+    expect(changedManifest.sandbox.revisionHash).not.toBe(manifest.sandbox.revisionHash);
   });
 
   it("compiles managed child resources for runtime rejection", async () => {

@@ -55,7 +55,7 @@ export const ROOT_COMPILED_AGENT_NODE_ID = "__root__";
 /**
  * Current compiled manifest schema version.
  */
-export const COMPILED_AGENT_MANIFEST_VERSION = 48;
+export const COMPILED_AGENT_MANIFEST_VERSION = 49;
 
 /**
  * Compiled channel entry preserved in the compiled manifest.
@@ -744,12 +744,11 @@ const compiledSandboxDefinitionSchema = z
      * time so build pipelines can make provider-aware decisions.
      */
     providerName: z.string().optional(),
-    dockerfileHash: z.string().optional(),
     environmentExportName: z.string().optional(),
     inheritsParent: z.boolean().optional(),
     exportName: z.string().optional(),
     logicalPath: z.string(),
-    sourceHash: z.string(),
+    revisionHash: z.string(),
     sourceId: z.string(),
     sourceKind: z.literal("module"),
   })

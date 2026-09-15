@@ -63,6 +63,7 @@ export function createTestAgentInfoResult(
       environmentExportName: "environment",
       logicalPath: "sandbox.ts",
       owner,
+      revisionHash: "sandbox-revision",
       sourceId: "sandbox.ts",
       sourceKind: "module",
     },
@@ -70,7 +71,7 @@ export function createTestAgentInfoResult(
     skills: { dynamic: [], static: [] },
     subagents: { local: [], total: 0 },
     tools: { dynamic: [], static: [] },
-    version: 5,
+    version: 6,
     workflow: { enabled: false, toolName: "Workflow" },
     workspace: { resourceRoot: null, rootEntries: [] },
   };

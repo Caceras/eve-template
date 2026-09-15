@@ -5,6 +5,7 @@ import type { ResolvedSandboxDefinition } from "#runtime/types.js";
 const parent: ResolvedSandboxDefinition = {
   kind: "parent",
   logicalPath: "sandbox.ts",
+  revisionHash: "parent-sandbox-revision",
   selector: defineParentSandbox(),
   sourceId: "sandbox",
   sourceKind: "module",

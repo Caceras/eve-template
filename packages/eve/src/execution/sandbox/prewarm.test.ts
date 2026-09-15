@@ -179,7 +179,7 @@ function createGraph(
     kind: "independent",
     logicalPath: "agent/sandbox/sandbox.ts",
     selector: defineSandbox(() => environment.create()),
-    sourceHash: "sandbox-source-hash",
+    revisionHash: "sandbox-source-hash",
     sourceId: "agent/sandbox/sandbox",
     sourceKind: "module",
   };

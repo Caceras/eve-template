@@ -10,6 +10,7 @@ export function createStubSandboxRegistry(): RuntimeSandboxRegistry {
         environment,
         kind: "independent",
         logicalPath: "sandbox.ts",
+        revisionHash: "stub-sandbox-revision",
         selector: defineSandbox(() => environment.create()),
         sourceId: "test:stub-sandbox",
         sourceKind: "module",

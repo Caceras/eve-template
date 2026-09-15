@@ -131,9 +131,8 @@ export interface ResolvedConnectionDefinition extends ResolvedModuleSourceRef {
  * explicitly inherit the dispatching agent's sandbox.
  */
 type ResolvedSandboxDefinitionBase = ResolvedModuleSourceRef & {
-  readonly dockerfileHash?: string;
+  readonly revisionHash: string;
   readonly selector: SandboxSelector;
-  readonly sourceHash?: string;
 };
 
 export type ResolvedSandboxDefinition = ResolvedSandboxDefinitionBase &

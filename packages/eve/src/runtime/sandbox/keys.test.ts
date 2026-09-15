@@ -20,7 +20,7 @@ import {
 } from "#runtime/sandbox/keys.js";
 import type { RuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
 
-const RUNTIME_SANDBOX_CONTRACT_VERSION = 7;
+const RUNTIME_SANDBOX_CONTRACT_VERSION = 8;
 
 const CONTENT_HASH = "a".repeat(64);
 
@@ -49,8 +49,10 @@ function sha256(value: string): string {
 
 function expectedTemplateKey(input: { scopeSource: string; version: string }): string {
   const scope = sha256(input.scopeSource).slice(0, 16);
-  const contentHash = sha256(`workspace-content:${CONTENT_HASH}:__root__:eve:default-sandbox`);
-  const templateVersion = sha256(`${contentHash}:`);
+  const generationHash = sha256(
+    `prepared:environment-v1:${CONTENT_HASH}:__root__:eve:default-sandbox`,
+  );
+  const templateVersion = sha256(`${generationHash}:`);
   const templateHash = sha256(
     `${input.version}:${RUNTIME_SANDBOX_CONTRACT_VERSION}:${templateVersion}`,
   ).slice(0, 20);
@@ -65,8 +67,8 @@ async function deriveTemplateKey(): Promise<string | null> {
     sourceId: "eve:default-sandbox",
     templatePlan: {
       contentHash: CONTENT_HASH,
-      environmentHash: "environment-v1",
-      kind: "workspace-content",
+      revisionHash: "environment-v1",
+      kind: "prepared",
     },
   });
 }
@@ -96,9 +98,9 @@ async function deriveSessionKey(input?: {
     sessionId: "session_1",
     sourceId: "eve:default-sandbox",
     templatePlan: {
-      environmentHash: "environment-v1",
+      revisionHash: "environment-v1",
       contentHash: input?.contentHash ?? CONTENT_HASH,
-      kind: "workspace-content",
+      kind: "prepared",
     },
   });
   return keys.sessionKey;
@@ -107,7 +109,7 @@ async function deriveSessionKey(input?: {
 async function deriveBootstrapKeys(
   templatePlan: Extract<RuntimeSandboxTemplatePlan, { kind: "prepared" }> = {
     kind: "prepared",
-    environmentHash: "sandbox-source-v1",
+    revisionHash: "sandbox-source-v1",
   },
 ) {
   return await createRuntimeSandboxKeys({
@@ -203,7 +205,7 @@ describe("createRuntimeSandboxKeys", () => {
           nodeId: "__root__",
           sessionId,
           sourceId: "sandbox.ts",
-          templatePlan: { environmentHash: "environment-v1", kind: "none" },
+          templatePlan: { revisionHash: "environment-v1", kind: "none" },
         })
       ).sessionKey;
     const prefix = "team-".repeat(40);
@@ -217,7 +219,7 @@ describe("createRuntimeSandboxKeys", () => {
       nodeId: "__root__",
       sessionId: "team-acme",
       sourceId: "sandbox.ts",
-      templatePlan: { environmentHash: "environment-v1", kind: "none" } as const,
+      templatePlan: { revisionHash: "environment-v1", kind: "none" } as const,
     };
     const first = await createRuntimeSandboxKeys({ ...input, configurationHash: "small" });
     const second = await createRuntimeSandboxKeys({ ...input, configurationHash: "large" });
@@ -234,11 +236,11 @@ describe("createRuntimeSandboxKeys", () => {
     } as const;
     const first = await createRuntimeSandboxKeys({
       ...input,
-      templatePlan: { environmentHash: "environment-v1", kind: "none" },
+      templatePlan: { revisionHash: "environment-v1", kind: "none" },
     });
     const second = await createRuntimeSandboxKeys({
       ...input,
-      templatePlan: { environmentHash: "environment-v2", kind: "none" },
+      templatePlan: { revisionHash: "environment-v2", kind: "none" },
     });
     expect(first.templateKey).toBeNull();
     expect(second.templateKey).toBeNull();
@@ -281,7 +283,7 @@ describe("createRuntimeSandboxKeys", () => {
     expect(withoutMetadata).toEqual(withMetadata);
   });
 
-  it.each([{ environmentHash: "sandbox-source-v2" }, { contentHash: CONTENT_HASH }])(
+  it.each([{ revisionHash: "sandbox-source-v2" }, { contentHash: CONTENT_HASH }])(
     "rotates both prepared keys when sandbox inputs change: %j",
     async (change) => {
       vi.stubEnv("VERCEL_PROJECT_ID", "prj_123");
@@ -289,7 +291,7 @@ describe("createRuntimeSandboxKeys", () => {
         const first = await deriveBootstrapKeys();
         const second = await deriveBootstrapKeys({
           kind: "prepared",
-          environmentHash: "sandbox-source-v1",
+          revisionHash: "sandbox-source-v1",
           ...change,
         });
 
@@ -308,8 +310,8 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox.ts",
       templatePlan: {
         contentHash: CONTENT_HASH,
-        environmentHash: "environment-v1",
-        kind: "workspace-content" as const,
+        revisionHash: "environment-v1",
+        kind: "prepared" as const,
       },
     };
     const sandboxScope = "stable-app-scope";
@@ -341,8 +343,8 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox.ts",
       templatePlan: {
         contentHash: CONTENT_HASH,
-        environmentHash: "environment-v1",
-        kind: "workspace-content",
+        revisionHash: "environment-v1",
+        kind: "prepared",
       } as const,
     };
     const first = await createRuntimeSandboxTemplateKey({

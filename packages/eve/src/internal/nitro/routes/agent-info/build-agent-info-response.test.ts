@@ -36,7 +36,7 @@ describe("buildAgentInfoResponse", () => {
       },
       capabilities: { devRoutes: true },
       kind: "eve-agent-info",
-      version: 5,
+      version: 6,
     });
     expect(response.tools.static).toContainEqual(
       expect.objectContaining({

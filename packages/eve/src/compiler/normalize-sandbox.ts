@@ -31,18 +31,21 @@ export async function compileSandboxDefinition(
     throw new Error(
       `Sandbox "${source.logicalPath}" uses a Dockerfile environment, but agent/sandbox/Dockerfile was not found.`,
     );
-  const value =
+  const authoredSource =
     options.binding.backing.kind === "programmatic"
       ? (options.binding.backing.semanticRevision ?? options.binding.backing.revision)
       : await readFile(options.binding.backing.sourcePath);
+  const revision = createHash("sha256").update("sandbox-source\0").update(authoredSource);
+  if (dockerfile !== undefined) {
+    revision.update("\0dockerfile-context\0").update(dockerfile.contentHash);
+  }
   return {
     providerName: candidate?.provider,
-    dockerfileHash: dockerfile?.contentHash,
     environmentExportName: isSandboxEnvironment(namespace.environment) ? "environment" : undefined,
     exportName: source.exportName,
     inheritsParent: inheritsParent || undefined,
     logicalPath: source.logicalPath,
-    sourceHash: createHash("sha256").update(value).digest("hex"),
+    revisionHash: revision.digest("hex"),
     sourceId: source.sourceId,
     sourceKind: "module",
   };

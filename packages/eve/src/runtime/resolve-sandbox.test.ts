@@ -6,7 +6,7 @@ import { resolveSandboxDefinition } from "#runtime/resolve-sandbox.js";
 const inheritedSandbox: CompiledSandboxDefinition = {
   inheritsParent: true,
   logicalPath: "sandbox.ts",
-  sourceHash: "parent-source-hash",
+  revisionHash: "parent-source-hash",
   sourceId: "parent-sandbox-source",
   sourceKind: "module",
 };

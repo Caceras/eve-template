@@ -13,10 +13,10 @@ import type { RuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.
 
 /*
  * Template keys include this version for sandbox runtime contract changes
- * that are not captured by source or resource hashes. Version 7 writes static
- * skill seed files to the sandbox user's $HOME/.agents/skills directory.
+ * that are not captured by revision or resource hashes. Version 8 replaces
+ * provider-specific template inputs with one compiled sandbox revision.
  */
-const RUNTIME_SANDBOX_CONTRACT_VERSION = 7;
+const RUNTIME_SANDBOX_CONTRACT_VERSION = 8;
 
 /**
  * Input for deriving the stable runtime keys used for one sandbox definition.
@@ -74,8 +74,8 @@ export async function createRuntimeSandboxTemplateKey(input: {
 
 /**
  * The facts both keys derive from, computed once per derivation:
- * compile metadata, the partition scope, and the sandbox definition's
- * version hash (`null` when the sandbox needs no template).
+ * compile metadata, the partition scope, and the sandbox generation hash
+ * (`null` when the sandbox needs no template).
  */
 interface RuntimeSandboxKeyParts {
   readonly environmentHash: string;
@@ -107,7 +107,7 @@ async function deriveRuntimeSandboxKeyParts(input: {
           })}:${input.environmentConfigurationHash ?? input.configurationHash ?? ""}`,
         );
   const environmentHash = createStableHash(
-    `environment:${input.templatePlan.environmentHash}:${input.templatePlan.contentHash ?? ""}:${"dockerfileHash" in input.templatePlan ? (input.templatePlan.dockerfileHash ?? "") : ""}:${input.shared === true ? "shared" : (input.configurationHash ?? "")}:${input.nodeId}:${input.sourceId}`,
+    `environment:${input.templatePlan.revisionHash}:${input.templatePlan.contentHash ?? ""}:${input.shared === true ? "shared" : (input.configurationHash ?? "")}:${input.nodeId}:${input.sourceId}`,
   );
   return { environmentHash, metadata, scope, templateHash };
 }
@@ -135,8 +135,8 @@ function buildRuntimeSandboxTemplateKey(
  * Session keys are pinned per durable session: the scope is stable across
  * deployments so a session reattaches to the same sandbox after a redeploy
  * and keeps its `/workspace` state. The key also folds in the sandbox
- * definition's version hash, so changing the sandbox itself (bootstrap
- * source, Dockerfile, or workspace seed content) rotates the
+ * compiled revision, so changing the sandbox source, a discovered preparation
+ * input, or managed resource content rotates the
  * session sandbox onto the new template — unrelated source changes do not.
  * The eve package version deliberately does not participate: upgrading
  * eve must not discard session sandbox state.
@@ -231,17 +231,9 @@ function resolveRuntimeSandboxTemplateHash(input: {
   // No seed files means empty content, independent of unrelated application source.
   const contentHash = input.templatePlan.contentHash ?? "";
 
-  if (input.templatePlan.kind === "prepared") {
-    return createStableHash(
-      `prepared:${input.templatePlan.environmentHash}:${input.templatePlan.dockerfileHash ?? ""}:${contentHash}:${input.nodeId}:${input.sourceId}`,
-    );
-  }
-  if (input.templatePlan.kind === "dockerfile") {
-    return createStableHash(
-      `dockerfile:${input.templatePlan.dockerfileHash}:${contentHash}:${input.nodeId}:${input.sourceId}`,
-    );
-  }
-  return createStableHash(`workspace-content:${contentHash}:${input.nodeId}:${input.sourceId}`);
+  return createStableHash(
+    `prepared:${input.templatePlan.revisionHash}:${contentHash}:${input.nodeId}:${input.sourceId}`,
+  );
 }
 
 function createStableHash(value: string): string {

@@ -149,7 +149,7 @@ export function buildAgentInfoResponse(
       ...toModuleSource(manifest, manifest.sandbox),
       provider: manifest.sandbox.providerName,
       environmentExportName: manifest.sandbox.environmentExportName,
-      sourceHash: manifest.sandbox.sourceHash,
+      revisionHash: manifest.sandbox.revisionHash,
     },
     schedules: manifest.schedules.map((schedule) => ({
       ...toOwnedSource(manifest, schedule),
@@ -207,7 +207,7 @@ export function buildAgentInfoResponse(
         requiresApproval: tool.requiresApproval,
       })),
     },
-    version: 5,
+    version: 6,
     workflow:
       manifest.workflowTool === undefined
         ? { enabled: false, toolName: WORKFLOW_TOOL_NAME }

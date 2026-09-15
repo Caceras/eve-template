@@ -213,7 +213,7 @@ const sandbox = source
   .extend({
     provider: z.string().optional(),
     environmentExportName: z.string().optional(),
-    sourceHash: z.string().optional(),
+    revisionHash: z.string(),
   })
   .strict();
 
@@ -315,7 +315,7 @@ export const AgentInfoResultSchema = z
     skills: z.object({ dynamic: z.array(dynamicResolver), static: z.array(skill) }).strict(),
     subagents: z.object({ local: z.array(subagent), total: z.number() }).strict(),
     tools: z.object({ dynamic: z.array(dynamicResolver), static: z.array(tool) }).strict(),
-    version: z.literal(5),
+    version: z.literal(6),
     workflow,
     workspace: z.object({ resourceRoot: z.unknown(), rootEntries: z.array(z.string()) }).strict(),
   })

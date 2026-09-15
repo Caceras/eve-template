@@ -93,7 +93,7 @@ function createSessionSandboxHarness() {
       initializedSessionIds.push(session.id);
       return environment.create();
     }),
-    sourceHash: "session-reset-sandbox-v1",
+    revisionHash: "session-reset-sandbox-v1",
     sourceId: "agent/sandbox/sandbox",
     sourceKind: "module",
   };

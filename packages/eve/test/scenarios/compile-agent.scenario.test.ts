@@ -775,12 +775,11 @@ describe("compileAgent", () => {
     ]);
     expect(result.manifest.sandbox).toEqual({
       providerName: expect.any(String),
-      dockerfileHash: undefined,
       environmentExportName: "environment",
       exportName: undefined,
       inheritsParent: undefined,
       logicalPath: "sandbox/sandbox.cjs",
-      sourceHash: expect.any(String),
+      revisionHash: expect.any(String),
       sourceId: "sandbox/sandbox.cjs",
       sourceKind: "module",
     });
