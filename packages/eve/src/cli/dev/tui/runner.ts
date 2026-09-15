@@ -1801,7 +1801,10 @@ export class EveTUIRunner {
    * once `/vc:login` succeeds) instead of lingering stale. Authoritative: unlike
    * the boot probe it re-reads detections and auth and is not stale-guarded.
    */
-  async #refreshSetupAttention(info: AgentInfoResult | undefined): Promise<void> {
+  async #refreshSetupAttention(
+    info: AgentInfoResult | undefined,
+    options: { readonly refreshAuth?: boolean } = {},
+  ): Promise<void> {
     const appRoot = this.#appRoot;
     if (appRoot === undefined) return;
     if (this.#renderer.renderSetupWarning === undefined) return;
@@ -1809,10 +1812,12 @@ export class EveTUIRunner {
     if (info !== undefined) context.info = info;
     try {
       this.#bootIssues = await detectSetupIssues(context, this.#bootDetections);
-      const status = await this.#getVercelAuthStatus(appRoot, {
-        signal: this.#authProbeAbort.signal,
-      });
-      this.#authIssue = authIssueForStatus(status);
+      if (options.refreshAuth !== false) {
+        const status = await this.#getVercelAuthStatus(appRoot, {
+          signal: this.#authProbeAbort.signal,
+        });
+        this.#authIssue = authIssueForStatus(status);
+      }
     } catch {
       return;
     }
@@ -1907,6 +1912,7 @@ export class EveTUIRunner {
       this.#authIssue = undefined;
       this.#paintSetupAttention();
       this.#vercelStatus?.applyEffect({ kind: "refresh-identity" });
+      await this.#refreshModelAccess(false);
       return;
     }
     if (effect === undefined) return;
@@ -2145,14 +2151,14 @@ export class EveTUIRunner {
    * shared by the status bar and setup detector. The Vercel auth probe stays
    * off the prompt path.
    */
-  async #refreshModelAccess(): Promise<void> {
+  async #refreshModelAccess(refreshAuth = true): Promise<void> {
     const appRoot = this.#appRoot;
     if (appRoot === undefined) return;
 
     await loadDevelopmentEnvironmentFiles(appRoot);
     await this.#runtimeArtifacts?.refreshAfterSourceChange({});
     const refreshedInfo = this.#replaceAgentInfo(await this.#readAgentInfo());
-    void this.#refreshSetupAttention(refreshedInfo);
+    void this.#refreshSetupAttention(refreshedInfo, { refreshAuth });
   }
 
   async #readAgentInfo(): Promise<AgentInfoResult | undefined> {
