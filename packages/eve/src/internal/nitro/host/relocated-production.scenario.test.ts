@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { prewarmBuiltAppSandboxes } from "#execution/sandbox/prewarm.js";
 import { useScenarioApp } from "#internal/testing/scenario-app.js";
 import { buildApplication } from "./build-application.js";
 import { startProductionServer } from "./start-production-server.js";
@@ -89,23 +88,6 @@ describe("relocated production applications", () => {
     await expect(access(buildRoot)).rejects.toMatchObject({ code: "ENOENT" });
 
     const runtimeAppRoot = join(runtimeRoot, "apps", "service");
-    const prewarmedRoots: string[] = [];
-    const seededPaths: string[] = [];
-    await prewarmBuiltAppSandboxes({
-      appRoot: runtimeAppRoot,
-      dispatch: async ({ context, provider }) => {
-        prewarmedRoots.push(context.appRoot);
-        seededPaths.push(
-          ...(context.resources.skills?.files.map(
-            (file) => `${context.resources.skills?.targetPath}/${file.relativePath}`,
-          ) ?? []),
-        );
-        return await provider.implementation.prepare(context);
-      },
-    });
-    expect(prewarmedRoots).toEqual([runtimeAppRoot]);
-    expect(seededPaths).toContain("$HOME/.agents/skills/probe/SKILL.md");
-
     const server = await startProductionServer(runtimeAppRoot, { host: "127.0.0.1", port: 0 });
     try {
       expect((await fetch(new URL("/eve/v1/health", server.url))).status).toBe(200);

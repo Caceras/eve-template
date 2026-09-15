@@ -7,7 +7,7 @@ import { ContextContainer, contextStorage } from "#context/container.js";
 import { SessionKey } from "#context/keys.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
-import { defineSandbox } from "#public/definitions/sandbox.js";
+import { defineParentSandbox, defineSandbox } from "#public/definitions/sandbox.js";
 import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
@@ -105,6 +105,33 @@ describe("ensureSandboxAccess", () => {
     expect((await open(value.registry)).sandbox?.id).toContain("session-1");
     expect(value.create).toHaveBeenCalledOnce();
   });
+  it("passes empty live options when a child inherits its parent sandbox", async () => {
+    const value = fixture();
+    const parent = value.registry.sandbox;
+    const registry: RuntimeSandboxRegistry = {
+      sandbox: {
+        definition: {
+          kind: "parent",
+          logicalPath: "sandbox.ts",
+          selector: defineParentSandbox(),
+          sourceHash: "child-hash",
+          sourceId: "child-sandbox",
+          sourceKind: "module",
+        },
+        inheritance: {
+          definition: parent.definition,
+          nodeId: "__root__",
+          workspaceResourceRoot: parent.workspaceResourceRoot,
+        },
+        workspaceResourceRoot: { logicalPath: "", rootEntries: [] },
+      },
+    };
+
+    await open(registry);
+
+    expect(value.create.mock.calls[0]?.[0].options).toEqual({});
+  });
+
   it("uses an authored shared name and protects its provider-owned lifetime", async () => {
     const value = fixture(true);
     const { access } = await open(value.registry);

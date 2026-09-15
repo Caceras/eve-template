@@ -2,7 +2,6 @@ import { join } from "node:path";
 
 import type { CompiledWorkspaceResourceRoot } from "#compiler/manifest.js";
 import { loadCompiledModuleMapFromAuthoredSource } from "#internal/authored-module-map-loader.js";
-import { resolvePackageSourceFilePath } from "#internal/application/package.js";
 import { createAuthoredSourceRuntimeCompiledArtifactsSource } from "#internal/application/runtime-compiled-artifacts-source.js";
 import {
   createSandboxProviderResources,
@@ -11,18 +10,11 @@ import {
   type SandboxProviderRuntime,
 } from "#shared/sandbox-provider.js";
 import {
-  createBundledRuntimeCompiledArtifactsSource,
-  createDiskRuntimeCompiledArtifactsSource,
   getRuntimeCompiledArtifactsSandboxAppRoot,
   type RuntimeCompiledArtifactsSource,
   type RuntimeDiskCompiledArtifactsSource,
 } from "#runtime/compiled-artifacts-source.js";
 import { type ResolvedAgentGraphBundle, ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
-import { loadCompileMetadata } from "#runtime/loaders/compile-metadata.js";
-import {
-  updateBundledSandboxPreparedArtifacts,
-  withBundledCompiledArtifacts,
-} from "#runtime/loaders/bundled-artifacts.js";
 import { loadCompiledManifest } from "#runtime/loaders/manifest.js";
 import { resolveRuntimeCompilerArtifactPaths } from "#runtime/loaders/artifact-paths.js";
 import { resolveRuntimeAgentGraph } from "#runtime/resolve-agent-graph.js";
@@ -243,65 +235,6 @@ export async function prewarmAppSandboxes(input: {
     preparedArtifactStore: input.preparedArtifactStore,
     shouldPrewarmSignature: input.shouldPrewarmSignature,
   });
-}
-
-/**
- * Loads one built app's bundled compiled artifacts and prewarms the sandbox
- * templates that its production Nitro runtime will request.
- */
-export async function prewarmBuiltAppSandboxes(input: {
-  readonly appRoot: string;
-  readonly log?: (message: string) => void;
-  readonly dispatch?: SandboxProviderPrepareDispatch;
-}): Promise<void> {
-  const builtArtifactsRoot = join(input.appRoot, ".output");
-  const builtArtifactsSource = createDiskRuntimeCompiledArtifactsSource(builtArtifactsRoot, {
-    moduleMapLoaderPath: resolvePackageSourceFilePath("src/internal/authored-module-map-loader.ts"),
-    sandboxAppRoot: input.appRoot,
-  });
-  const [metadata, manifest, moduleMap] = await Promise.all([
-    loadCompileMetadata({
-      compiledArtifactsSource: builtArtifactsSource,
-    }),
-    loadCompiledManifest({
-      compiledArtifactsSource: builtArtifactsSource,
-    }),
-    loadCompiledModuleMapFromAuthoredSource({
-      authoredAppRoot: input.appRoot,
-      compiledArtifactsSource: builtArtifactsSource,
-    }),
-  ]);
-
-  await withBundledCompiledArtifacts(
-    {
-      manifest,
-      metadata: metadata ?? undefined,
-      moduleMap,
-      sessionId: "built-app-prewarm",
-    },
-    async () => {
-      const compiledArtifactsSource = createBundledRuntimeCompiledArtifactsSource();
-      const graph = await resolveRuntimeAgentGraph({
-        manifest,
-        moduleMap,
-      });
-
-      await prewarmSandboxes({
-        appRoot: input.appRoot,
-        compileDirectoryPath:
-          resolveRuntimeCompilerArtifactPaths(builtArtifactsRoot).compileDirectoryPath,
-        compiledArtifactsSource,
-        dispatch: input.dispatch,
-        graph,
-        log: input.log,
-      });
-    },
-  );
-
-  const sandboxPreparedArtifacts = await loadSandboxPreparedArtifactsManifest(builtArtifactsSource);
-  if (sandboxPreparedArtifacts !== null) {
-    updateBundledSandboxPreparedArtifacts(sandboxPreparedArtifacts);
-  }
 }
 
 async function collectPrewarmTargets(input: {

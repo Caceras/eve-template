@@ -202,7 +202,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       const configurationHash = getSandboxEnvironmentConfigurationHash(definition.environment);
       await open(
         getSandboxEnvironmentRuntime(definition.environment),
-        undefined,
+        {},
         configurationHash,
         definition.environment,
         configurationHash,
