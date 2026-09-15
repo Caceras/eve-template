@@ -851,7 +851,6 @@ describe("workflowEntry integration", () => {
         expect(filterEventsByType(failedTurn, "turn.failed")).toHaveLength(1);
         expect(filterEventsByType(failedTurn, "session.failed")).toHaveLength(0);
 
-        await waitForHook({ runId: run.runId }, { token: continuationToken });
         shouldFail = false;
         await resumeHook(continuationToken, {
           kind: "send",
