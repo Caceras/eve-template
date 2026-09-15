@@ -96,6 +96,25 @@ describe("eveChannel GET stream", () => {
     expect(attachSession).toHaveBeenCalledTimes(1);
   });
 
+  it("returns 503 when the session lookup fails transiently", async () => {
+    const getRoute = createGetHandler();
+    const attachSession = createMockAttachSession(createEvents([]), {
+      async getStreamTailIndex() {
+        throw new Error("stream lookup failed");
+      },
+    });
+
+    const response = await (getRoute as any).handler(
+      new Request("https://example.com/eve/v1/session/session_xyz/stream", {
+        method: "GET",
+      }),
+      createArgs({ attachSession, params: { sessionId: "session_xyz" } }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "Session stream unavailable.", ok: false });
+  });
+
   it("accepts negative tail-relative startIndex values", async () => {
     const getRoute = createGetHandler();
     const attachSession = createMockAttachSession(createEvents([]));
