@@ -464,12 +464,12 @@ describe("routeProxiedDeliverStep", () => {
       expect.objectContaining({
         auth,
         caller,
-        deliveryMetadata: undefined,
         requestId: "request-1",
         taskDeliveryId: "task-delivery-1",
         turnPolicy: "queue",
       }),
     );
+    expect(resumeHookMock.mock.calls[1]?.[1]).not.toHaveProperty("deliveryMetadata");
     expect(result).toMatchObject({
       kind: "continue",
       remainder: {

@@ -74,14 +74,14 @@ export function deriveChildWorkIdentity(input: {
   readonly parentTurnId: string;
   readonly parentWork: ActivityWorkIdentityV1;
 }): ActivityWorkIdentityV1 {
-  return {
+  const identity = {
     callId: input.callId,
     id: deriveChildActivityWorkId(input),
     kind: input.kind,
-    label: input.label,
     name: input.name,
     parentId: input.parentWork.id,
     rootSessionId: input.parentWork.rootSessionId,
     rootTurnId: input.parentWork.rootTurnId,
   };
+  return input.label === undefined ? identity : { ...identity, label: input.label };
 }

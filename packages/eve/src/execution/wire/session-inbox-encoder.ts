@@ -11,6 +11,7 @@ import {
   encodeSessionCommandV2,
   type SessionInboxWireV2,
 } from "#execution/wire/session-inbox-wire.v2.js";
+import { normalizeSessionInboxWireV2 } from "#execution/wire/session-inbox-wire.v2-migration.js";
 import {
   encodeSessionCommandV3,
   type SessionInboxWireV3,
@@ -102,12 +103,13 @@ function encode(
   | SessionInboxWireV6
   | SessionInboxWireV7
   | Record<string, unknown> {
-  if (command.kind === "cancel" && command.tasks === true && target.version < 6) {
+  const normalized = normalizeSessionInboxWireV2(command) as SessionInboxCommand;
+  if (normalized.kind === "cancel" && normalized.tasks === true && target.version < 6) {
     throw new SessionInboxWireError(
       `Cannot encode session-owned task cancellation for wire version ${target.version}.`,
     );
   }
-  const encodable = target.version < 7 ? withoutActivityLabels(command) : command;
+  const encodable = target.version < 7 ? withoutActivityLabels(normalized) : normalized;
   if (target.version === 0) {
     const currentTaskWire =
       target.variant === "send" && encodable.kind === "send" && encodable.payload.task !== undefined
@@ -126,7 +128,7 @@ function encode(
     }
     const legacyRecord = legacy as Record<string, unknown>;
     const delivery = legacyRecord.delivery;
-    const acceptedDeploymentId = readAcceptedDeploymentId(command);
+    const acceptedDeploymentId = readAcceptedDeploymentId(normalized);
     if (
       target.variant !== "send" ||
       acceptedDeploymentId === undefined ||

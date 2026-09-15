@@ -52,6 +52,7 @@ describe("activity work identity", () => {
       rootSessionId: "root",
       rootTurnId: "turn-1",
     });
+    expect(grandchild).not.toHaveProperty("label");
   });
 
   it("keeps colon-containing root tuples distinct", () => {
