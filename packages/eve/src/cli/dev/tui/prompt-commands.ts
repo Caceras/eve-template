@@ -119,7 +119,7 @@ const PROMPT_COMMAND_DEFINITIONS = [
   {
     name: "link",
     aliases: [],
-    description: "Link this project to Vercel",
+    description: "Link this project to Vercel and pull AI Gateway credentials",
     takesArgument: false,
     build: () => ({ type: "extension", name: "link", argument: "" }),
     targets: ["local"],

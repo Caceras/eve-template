@@ -24,24 +24,13 @@ import {
 } from "./registry-result-message.js";
 import { createTuiPrompter, type TuiPrompterRenderer } from "./tui-prompter.js";
 import type { PromptCommandExtensionName } from "./prompt-commands.js";
-import type { SetupFlowIndicator, SetupFlowRenderer } from "./setup-flow.js";
+import type { SetupFlowRenderer } from "./setup-flow.js";
+import { runTuiLinkCommand } from "./link-command.js";
 import type { VercelStatusEffect } from "./vercel-status.js";
 
 export type TuiSetupCommand = PromptCommandExtensionName;
 
-/**
- * Panel title and loading indicator per command. The bordered panel never
- * repeats the echoed command verbatim, but it keeps a constant title as flows
- * move past their opening question.
- */
-export const SETUP_FLOW_CONFIG = {
-  "vc:install": { title: "Install the Vercel CLI", indicator: "pulse" },
-  "vc:login": { title: "Log in to Vercel", indicator: "pulse" },
-  link: { title: "Link to Vercel", indicator: "pulse" },
-  model: { title: "Configure the agent model", indicator: "pulse" },
-  add: { title: "Add to your agent", indicator: "pulse" },
-  deploy: { title: "Deploy to Vercel", indicator: "spinner" },
-} satisfies Record<TuiSetupCommand, { title: string; indicator: SetupFlowIndicator }>;
+export { SETUP_FLOW_CONFIG } from "./setup-command-config.js";
 
 export type TuiSetupCommandRenderer = TuiPrompterRenderer &
   Pick<
@@ -268,21 +257,11 @@ async function executeSetupCommand(
       case "vc:login": {
         return loginResultMessage(await flows.runLoginFlow({ appRoot, prompter, signal }));
       }
-      case "link": {
-        const result = await flows.runLinkFlow({
-          appRoot,
-          prompter,
-          projectSelection: "create-or-link",
-          signal,
-        });
-        return result.kind === "cancelled"
-          ? { message: "/link dismissed.", cancelled: true, preserveFlowDiagnostics: false }
-          : {
-              message: "Linked this project to Vercel.",
-              preserveFlowDiagnostics: false,
-              effect: { kind: "refresh-identity" },
-            };
-      }
+      case "link":
+        return await runTuiLinkCommand(
+          { appRoot, prompter, signal },
+          { runLinkFlow: flows.runLinkFlow },
+        );
       case "model": {
         const pickProvider: ProviderPicker = (request) => renderer.readProviderPicker(request);
         const modelInput: Parameters<TuiSetupFlows["runModelFlow"]>[0] = {

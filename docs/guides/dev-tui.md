@@ -18,7 +18,7 @@ The transcript remains in your terminal scrollback after you exit. Run `/help` i
 | `/model`      | Configure the model and its provider. Pass a model ID to set it directly: `/model provider/model-id`.                                                                    |
 | `/add`        | Select and install channels, MCP connections, extensions, and observability integrations. Pass an item address to confirm and install it directly: `/add channel/slack`. |
 | `/deploy`     | Deploy the agent to Vercel production. Links the directory first if needed.                                                                                              |
-| `/link`       | Link the local project to Vercel.                                                                                                                                        |
+| `/link`       | Link the local project to Vercel and pull AI Gateway credentials into `.env.local`.                                                                                      |
 | `/vc:install` | Install the Vercel CLI.                                                                                                                                                  |
 | `/vc:login`   | Log in to Vercel or restore access to a remote deployment.                                                                                                               |
 | `/info`       | Show the resolved application, compiled artifacts, discovery diagnostics, and messaging routes.                                                                          |
