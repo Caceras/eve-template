@@ -36,6 +36,7 @@ import {
   type DevelopmentRuntimeArtifactRefresher,
 } from "#services/dev-client.js";
 import { inspectApplication } from "#services/inspect-application.js";
+import { readVercelProjectLink } from "#internal/vercel/project-link.js";
 import { toErrorMessage } from "#shared/errors.js";
 import { SubagentPump, type SubagentPumpOptions, type SubagentView } from "./subagent-pump.js";
 export type {
@@ -194,8 +195,8 @@ export type AgentTUITurnState = {
   boundaryEvent?: "session.completed" | "session.failed" | "session.waiting";
   pendingApprovals: AgentTUIToolApprovalRequest[];
   pendingQuestions: InputRequest[];
-  projectLinkRequired?: boolean;
-  projectLinkReplaySafe?: boolean;
+  localVercelAuthContinuation?: SetupCommandContinuation;
+  localVercelAuthReplaySafe?: boolean;
   sawSessionFailure: boolean;
   /** Id of the streaming turn, once `turn.started` names it. Scopes cancels. */
   turnId?: string;
@@ -431,6 +432,43 @@ export interface PromptCommandOutcome {
   cancelled?: true;
 }
 
+interface SetupCommandContinuation {
+  prompt?: string;
+  readonly resumeAfterEffect: "project-linked" | "refresh-identity";
+}
+
+interface QueuedSetupCommand {
+  readonly command: Extract<PromptCommand, { type: "extension" }>;
+  readonly continuation?: SetupCommandContinuation;
+  readonly key: string;
+  readonly suppressSuccessfulTranscript?: true;
+  readonly title: string;
+}
+
+export function setupContinuationPrompt(
+  continuation: SetupCommandContinuation | undefined,
+  outcome: PromptCommandOutcome | undefined,
+): string | undefined {
+  return continuation !== undefined && outcome?.effect?.kind === continuation.resumeAfterEffect
+    ? continuation.prompt
+    : undefined;
+}
+
+export function localVercelAuthRecoveryCommand(linked: boolean): {
+  readonly command: Extract<PromptCommand, { type: "extension" }>;
+  readonly resumeAfterEffect: SetupCommandContinuation["resumeAfterEffect"];
+} {
+  return linked
+    ? {
+        command: { type: "extension", name: "vc:login", argument: "" },
+        resumeAfterEffect: "refresh-identity",
+      }
+    : {
+        command: { type: "extension", name: "link", argument: "" },
+        resumeAfterEffect: "project-linked",
+      };
+}
+
 export interface PromptCommandHandler {
   handle(
     command: Extract<PromptCommand, { type: "extension" }>,
@@ -499,6 +537,8 @@ export type EveTUIRunnerOptions = TuiDisplayOptions & {
   bootDetections?: readonly BootDetection[];
   /** Test seam for the status line's Vercel link probe; defaults to the real one. */
   detectProjectIdentity?: typeof detectProjectIdentity;
+  /** Test seam for first-use Connect recovery routing. */
+  readVercelProjectLink?: typeof readVercelProjectLink;
   /** Test seam for `/info`; defaults to the filesystem application inspector. */
   inspectApplication?: typeof inspectApplication;
   /** Test seam for the off-critical-path boot login probe; defaults to the real one. */
@@ -549,6 +589,7 @@ export class EveTUIRunner {
   readonly #remoteConnection?: RemoteConnectionController;
   readonly #bootDetections: readonly BootDetection[];
   readonly #getVercelAuthStatus: typeof getVercelAuthStatus;
+  readonly #readVercelProjectLink: typeof readVercelProjectLink;
   readonly #inspectApplication: typeof inspectApplication;
   #onBootProgress?: DevBootProgressReporter;
   /** Set when the run loop unwinds, so a late boot login probe cannot paint into a torn-down terminal. */
@@ -588,15 +629,9 @@ export class EveTUIRunner {
   /** Idle wake result handed from the prompt follower into the normal HITL response loop. */
   #idleInputResult?: AgentTUIStreamResult;
   /** Setup commands queued by tool results on root or child streams. */
-  readonly #pendingSetupCommands: Array<{
-    readonly command: Extract<PromptCommand, { type: "extension" }>;
-    readonly key: string;
-    readonly suppressSuccessfulTranscript?: true;
-    readonly title: string;
-  }> = [];
+  readonly #pendingSetupCommands: QueuedSetupCommand[] = [];
   #activeSetupCommandKey?: string;
-  #projectLinkRetryPrompt?: string;
-  #projectLinkReplayPending = false;
+  #setupReplayPending = false;
   /** True only while the idle prompt owns terminal input. */
   #readingPrompt = false;
   /**
@@ -702,6 +737,7 @@ export class EveTUIRunner {
     }
     this.#bootDetections = options.bootDetections ?? BOOT_DETECTIONS;
     this.#getVercelAuthStatus = options.getVercelAuthStatus ?? getVercelAuthStatus;
+    this.#readVercelProjectLink = options.readVercelProjectLink ?? readVercelProjectLink;
     this.#inspectApplication = options.inspectApplication ?? inspectApplication;
     if (options.onBootProgress !== undefined) this.#onBootProgress = options.onBootProgress;
     if (options.serverUrl !== undefined) this.#serverUrl = options.serverUrl;
@@ -869,14 +905,8 @@ export class EveTUIRunner {
         }
         followCurrentSession = false;
         streamWithoutPrompt = false;
-        prompt =
-          pendingSetupCommand.key === "project-link" &&
-          outcome?.cancelled !== true &&
-          outcome?.tone !== "error"
-            ? this.#projectLinkRetryPrompt
-            : undefined;
-        this.#projectLinkReplayPending = prompt !== undefined;
-        this.#projectLinkRetryPrompt = undefined;
+        prompt = setupContinuationPrompt(pendingSetupCommand.continuation, outcome);
+        this.#setupReplayPending = prompt !== undefined;
         continue;
       }
       if (!streamWithoutPrompt) {
@@ -1127,8 +1157,8 @@ export class EveTUIRunner {
       if (acceptedSessionId !== undefined) {
         this.#renderer.setSessionId?.(acceptedSessionId);
       }
-      let submittedPrompt = this.#projectLinkReplayPending ? undefined : prompt;
-      this.#projectLinkReplayPending = false;
+      let submittedPrompt = this.#setupReplayPending ? undefined : prompt;
+      this.#setupReplayPending = false;
       let respondedToInputRequest = false;
 
       try {
@@ -1211,16 +1241,17 @@ export class EveTUIRunner {
             continue;
           }
 
-          if (result.turnState?.projectLinkRequired === true) {
-            this.#projectLinkRetryPrompt =
-              result.turnState.projectLinkReplaySafe === true ? submittedPrompt : undefined;
+          if (result.turnState?.localVercelAuthContinuation !== undefined) {
+            if (result.turnState.localVercelAuthReplaySafe === true) {
+              result.turnState.localVercelAuthContinuation.prompt = submittedPrompt;
+            }
             this.#failedSession = this.#session;
           }
 
           if (
             result.turnState &&
             result.turnState.boundaryEvent === undefined &&
-            result.turnState.projectLinkRequired !== true
+            result.turnState.localVercelAuthContinuation === undefined
           ) {
             if (!result.turnState.aborted) {
               const strandedSessionId = this.#session?.state.sessionId;
@@ -1270,7 +1301,7 @@ export class EveTUIRunner {
       // on screen. Server-side context is gone with the old session.
       this.#recoverFailedSession(
         result.turnState?.aborted === true,
-        result.turnState?.projectLinkRequired === true,
+        result.turnState?.localVercelAuthContinuation !== undefined,
       );
     }
   }
@@ -1662,12 +1693,13 @@ export class EveTUIRunner {
           this.#appRoot === undefined
             ? undefined
             : async (address) => this.#queueRegistrySetup(address),
-        onProjectLinkRequired:
+        onLocalVercelAuthRequired:
           this.#appRoot === undefined
             ? undefined
             : async () => {
-                this.#queueProjectLinkSetup();
+                const continuation = await this.#queueLocalVercelAuthRecovery();
                 await this.#requestTurnCancellation(turnState, sourceSession);
+                return continuation;
               },
         onTerminalFailure: () => {
           this.#failedSession = sourceSession;
@@ -1678,13 +1710,29 @@ export class EveTUIRunner {
     };
   }
 
-  #queueProjectLinkSetup(): void {
-    this.#queueSetupCommand({
-      command: { type: "extension", name: "link", argument: "" },
-      key: "project-link",
-      suppressSuccessfulTranscript: true,
-      title: "Link to Vercel",
-    });
+  async #queueLocalVercelAuthRecovery(): Promise<SetupCommandContinuation> {
+    const linked = (await this.#readVercelProjectLink(this.#appRoot!)) !== undefined;
+    const recovery = localVercelAuthRecoveryCommand(linked);
+    const continuation: SetupCommandContinuation = {
+      resumeAfterEffect: recovery.resumeAfterEffect,
+    };
+    if (linked) {
+      this.#queueSetupCommand({
+        command: recovery.command,
+        continuation,
+        key: "vercel-login",
+        title: "Log in to Vercel",
+      });
+    } else {
+      this.#queueSetupCommand({
+        command: recovery.command,
+        continuation,
+        key: "project-link",
+        suppressSuccessfulTranscript: true,
+        title: "Link to Vercel",
+      });
+    }
+    return continuation;
   }
 
   #queueRegistrySetup(address: string): void {
@@ -1695,12 +1743,7 @@ export class EveTUIRunner {
     });
   }
 
-  #queueSetupCommand(input: {
-    readonly command: Extract<PromptCommand, { type: "extension" }>;
-    readonly key: string;
-    readonly suppressSuccessfulTranscript?: true;
-    readonly title: string;
-  }): void {
+  #queueSetupCommand(input: QueuedSetupCommand): void {
     if (
       this.#activeSetupCommandKey === input.key ||
       this.#pendingSetupCommands.some((pending) => pending.key === input.key)
@@ -2250,7 +2293,7 @@ type EveStreamTranslatorInput = {
   onConnectionAuthCompleted?: (event: AuthorizationCompletedStreamEvent) => void;
   /** Opens a setup-bearing registry item in the existing `/add` flow. */
   onRegistryHandoff?: (address: string) => Promise<void>;
-  onProjectLinkRequired?: () => Promise<void>;
+  onLocalVercelAuthRequired?: () => Promise<SetupCommandContinuation>;
   onTerminalFailure?: (event: SessionFailedStreamEvent) => void;
   /**
    * Replaces a failure's structured hint with a surface-local one (the
@@ -2263,16 +2306,27 @@ type EveStreamTranslatorInput = {
 const SELFMOD_REGISTRY_ADD_TOOL = "selfmod__registry_add";
 const CONNECTION_SEARCH_TOOL = "connection_search";
 
-export function connectionSearchRequiresProjectLink(
+export function connectionSearchRequiresLocalVercelAuth(
   toolName: string | undefined,
+  input: unknown,
   output: unknown,
 ): boolean {
-  if (toolName !== CONNECTION_SEARCH_TOOL || !Array.isArray(output)) return false;
-  return output.some(
+  if (
+    toolName !== CONNECTION_SEARCH_TOOL ||
+    typeof input !== "object" ||
+    input === null ||
+    typeof (input as { connection?: unknown }).connection !== "string" ||
+    (input as { connection: string }).connection.length === 0 ||
+    !Array.isArray(output) ||
+    output.length === 0
+  ) {
+    return false;
+  }
+  return output.every(
     (item) =>
       typeof item === "object" &&
       item !== null &&
-      (item as { requiresProjectLink?: unknown }).requiresProjectLink === true,
+      (item as { requiresLocalVercelAuth?: unknown }).requiresLocalVercelAuth === true,
   );
 }
 
@@ -2309,13 +2363,14 @@ async function* eveEventsToTUIStream(
     onConnectionAuthRequired,
     onConnectionAuthCompleted,
     onRegistryHandoff,
-    onProjectLinkRequired,
+    onLocalVercelAuthRequired,
     onTerminalFailure,
     failureHintOverride,
   } = input;
   const textParts = new Map<string, StreamPartState>();
   const reasoningParts = new Map<string, StreamPartState>();
   const toolNames = new Map<string, string>();
+  const toolInputs = new Map<string, unknown>();
   // Dropping re-delivered events here means every case below is a new emission.
   const seenEvents = createEventDeduper();
   // Counts `step.started` events. The harness reuses `stepIndex` across the
@@ -2343,7 +2398,7 @@ async function* eveEventsToTUIStream(
       continue;
     }
     if (
-      turnState.projectLinkRequired === true &&
+      turnState.localVercelAuthContinuation !== undefined &&
       event.type !== "turn.cancelled" &&
       event.type !== "session.failed" &&
       event.type !== "session.waiting" &&
@@ -2519,6 +2574,7 @@ async function* eveEventsToTUIStream(
 
         for (const action of actions) {
           toolNames.set(action.callId, action.toolName);
+          toolInputs.set(action.callId, action.input);
           if (knownToolCalls.has(action.callId)) continue;
           knownToolCalls.add(action.callId);
           yield {
@@ -2539,6 +2595,7 @@ async function* eveEventsToTUIStream(
         for (const request of requests) {
           const toolCallId = request.action.callId;
           toolNames.set(toolCallId, request.action.toolName);
+          toolInputs.set(toolCallId, request.action.input);
 
           // The session-limit continuation is harness-authored — no model
           // tool call exists behind it, so fabricating a transcript entry
@@ -2589,10 +2646,9 @@ async function* eveEventsToTUIStream(
           case "completed": {
             const output = resultEvent.data.result.output;
             const toolName = toolNames.get(callId);
-            if (connectionSearchRequiresProjectLink(toolName, output)) {
-              turnState.projectLinkRequired = true;
+            if (connectionSearchRequiresLocalVercelAuth(toolName, toolInputs.get(callId), output)) {
               yield { type: "tool-discard", toolCallId: callId };
-              await onProjectLinkRequired?.();
+              turnState.localVercelAuthContinuation = await onLocalVercelAuthRequired?.();
               break;
             }
             yield {
@@ -2668,8 +2724,8 @@ async function* eveEventsToTUIStream(
       case "turn.cancelled":
         // Explicit cooperative cancellation preserves the session.
         // `session.waiting` follows and finishes the stream normally.
-        if (turnState.projectLinkRequired === true) {
-          turnState.projectLinkReplaySafe = true;
+        if (turnState.localVercelAuthContinuation !== undefined) {
+          turnState.localVercelAuthReplaySafe = true;
           break;
         }
         onTurnCancelled?.(event.data.turnId);

@@ -16,7 +16,7 @@ import { ConnectionAuthorizationFailedError } from "#connections/errors.js";
 import type { AuthorizationDefinition, ConnectionPrincipal } from "#shared/connection-types.js";
 import { isVercelOidcIssuer } from "#shared/vercel-project.js";
 
-import { VercelProjectLinkRequiredError } from "./project-link-required.js";
+import { LocalVercelAuthRequiredError } from "./local-vercel-auth-required.js";
 
 /**
  * Stable string key identifying one principal within a connection's
@@ -99,7 +99,7 @@ export function resolveConnectionPrincipalFromAuth(
 
   if (current === null || current === undefined || current.principalType !== "user") {
     if (authorization.vercelConnect !== undefined && current?.authenticator === "local-dev") {
-      throw new VercelProjectLinkRequiredError(connectionName);
+      throw new LocalVercelAuthRequiredError(connectionName);
     }
     throw new ConnectionAuthorizationFailedError(connectionName, {
       message: buildUserPrincipalRequiredMessage(connectionName, ctx, current),

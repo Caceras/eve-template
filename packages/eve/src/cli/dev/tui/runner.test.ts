@@ -21,10 +21,12 @@ import { createDevelopmentCredentialGate } from "#services/dev-client/credential
 import type { VercelDeploymentResolution } from "#setup/vercel-deployment.js";
 
 import {
-  connectionSearchRequiresProjectLink,
+  connectionSearchRequiresLocalVercelAuth,
   EveTUIRunner,
+  localVercelAuthRecoveryCommand,
   parsePromptCommand,
   registryHandoffAddress,
+  setupContinuationPrompt,
   type AgentTUIAgentHeader,
   type AgentTUIRenderer,
   type AgentTUISessionOptions,
@@ -52,17 +54,48 @@ const VERCEL_SSO_URL =
   "https://vercel.com/sso-api?url=https%3A%2F%2Fvpoke.playground-vercel.tools&nonce=test";
 
 describe("connection search project-link recovery", () => {
-  it("recognizes only explicit connection_search project-link results", () => {
+  it("replays only after the queued recovery reports its required effect", () => {
+    const continuation = { prompt: "query linear", resumeAfterEffect: "project-linked" as const };
+    expect(setupContinuationPrompt(continuation, { effect: { kind: "project-linked" } })).toBe(
+      "query linear",
+    );
     expect(
-      connectionSearchRequiresProjectLink("connection_search", [
-        { connection: "linear", requiresProjectLink: true },
-      ]),
+      setupContinuationPrompt(continuation, { effect: { kind: "refresh-identity" } }),
+    ).toBeUndefined();
+    expect(setupContinuationPrompt(continuation, undefined)).toBeUndefined();
+  });
+
+  it("routes unlinked projects to /link and linked projects to /vc:login", () => {
+    expect(localVercelAuthRecoveryCommand(false)).toEqual({
+      command: { type: "extension", name: "link", argument: "" },
+      resumeAfterEffect: "project-linked",
+    });
+    expect(localVercelAuthRecoveryCommand(true)).toEqual({
+      command: { type: "extension", name: "vc:login", argument: "" },
+      resumeAfterEffect: "refresh-identity",
+    });
+  });
+  it("recognizes only an explicitly targeted, wholly blocked connection search", () => {
+    const blocked = [{ connection: "linear", requiresLocalVercelAuth: true }];
+    expect(
+      connectionSearchRequiresLocalVercelAuth(
+        "connection_search",
+        { connection: "linear", keywords: "issues" },
+        blocked,
+      ),
     ).toBe(true);
-    expect(connectionSearchRequiresProjectLink("connection_search", [])).toBe(false);
     expect(
-      connectionSearchRequiresProjectLink("other_tool", [
-        { connection: "linear", requiresProjectLink: true },
-      ]),
+      connectionSearchRequiresLocalVercelAuth("connection_search", { keywords: "issues" }, blocked),
+    ).toBe(false);
+    expect(
+      connectionSearchRequiresLocalVercelAuth(
+        "connection_search",
+        { connection: "linear", keywords: "issues" },
+        [...blocked, { connection: "calendar", qualifiedName: "calendar__list" }],
+      ),
+    ).toBe(false);
+    expect(
+      connectionSearchRequiresLocalVercelAuth("other_tool", { connection: "linear" }, blocked),
     ).toBe(false);
   });
 
@@ -110,7 +143,7 @@ describe("connection search project-link recovery", () => {
           result: {
             callId: "search-linear",
             kind: "tool-result",
-            output: [{ connection: "linear", requiresProjectLink: true }],
+            output: [{ connection: "linear", requiresLocalVercelAuth: true }],
           },
           status: "completed",
         },
@@ -132,6 +165,7 @@ describe("connection search project-link recovery", () => {
       bootDetections: [],
       detectProjectIdentity: vi.fn(async () => undefined),
       getVercelAuthStatus: vi.fn(async (): Promise<"logged-out"> => "logged-out"),
+      readVercelProjectLink: vi.fn(async () => undefined),
       promptCommandHandler: { handle },
     }).run();
 
@@ -174,6 +208,11 @@ describe("registryHandoffAddress", () => {
         status: "needs-terminal",
         address: "channel/slack",
       }),
+    ).toBeUndefined();
+    expect(
+      registryHandoffAddress("connection_search", [
+        { connection: "linear", requiresLocalVercelAuth: true },
+      ]),
     ).toBeUndefined();
   });
 

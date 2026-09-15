@@ -9,7 +9,7 @@ import {
   PendingAuthorizationResultKey,
 } from "#harness/authorization.js";
 import { ConnectionAuthorizationRequiredError } from "#connections/errors.js";
-import { VercelProjectLinkRequiredError } from "#runtime/connections/project-link-required.js";
+import { LocalVercelAuthRequiredError } from "#runtime/connections/local-vercel-auth-required.js";
 import type { ToolContext } from "#tools/definition.js";
 import type {
   ConnectionToolExecuteOptions,
@@ -244,13 +244,13 @@ describe("connection_search", () => {
     ).rejects.toThrow('Connection "incidents" is not registered. Available connections: incident.');
   });
 
-  it("returns a project-link prerequisite instead of failing the search", async () => {
+  it("returns a local Vercel auth prerequisite instead of failing the search", async () => {
     const linear = connection("linear");
     const connectionRegistry = registry({
       connections: [linear],
       loadTools: {
         linear: async () => {
-          throw new VercelProjectLinkRequiredError("linear");
+          throw new LocalVercelAuthRequiredError("linear");
         },
       },
     });
@@ -264,8 +264,35 @@ describe("connection_search", () => {
       {
         connection: "linear",
         description: "linear connection",
-        requiresProjectLink: true,
+        requiresLocalVercelAuth: true,
       },
+    ]);
+  });
+
+  it("preserves usable matches beside an unrelated local Vercel auth prerequisite", async () => {
+    const calendar = connection("calendar");
+    const linear = connection("linear");
+    const connectionRegistry = registry({
+      connections: [calendar, linear],
+      loadTools: {
+        calendar: async () => [
+          {
+            description: "List issues from the calendar",
+            inputSchema: { type: "object" },
+            name: "list_issues",
+          },
+        ],
+        linear: async () => {
+          throw new LocalVercelAuthRequiredError("linear");
+        },
+      },
+    });
+
+    await expect(
+      executeConnectionSearch(connectionRegistry, { keywords: "list issues" }),
+    ).resolves.toMatchObject([
+      { connection: "calendar", qualifiedName: "calendar__list_issues" },
+      { connection: "linear", requiresLocalVercelAuth: true },
     ]);
   });
 

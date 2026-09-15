@@ -2,4 +2,4 @@
 "eve": patch
 ---
 
-Local Vercel Connect connections now open the project-link flow on first use when needed, then resume the original request without exposing an intermediate authorization failure.
+In the local `eve dev` terminal UI, a root request targeting an unavailable Vercel Connect connection now starts project linking or login on first use. After recovery, eve retries the original request without showing an intermediate authorization failure.

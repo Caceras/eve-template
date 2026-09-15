@@ -7,7 +7,7 @@ import {
   isConnectionAuthorizationFailedError,
 } from "#connections/errors.js";
 import { principalKey, resolveConnectionPrincipal } from "#runtime/connections/principal.js";
-import { isVercelProjectLinkRequiredError } from "#runtime/connections/project-link-required.js";
+import { isLocalVercelAuthRequiredError } from "#runtime/connections/local-vercel-auth-required.js";
 import type { AuthorizationDefinition } from "#shared/connection-types.js";
 
 function ctxWithAuth(current: SessionAuthContext | null): ContextContainer {
@@ -212,8 +212,8 @@ describe("resolveConnectionPrincipal", () => {
     try {
       contextStorage.run(ctx, () => resolveConnectionPrincipal("notion", connectUserAuthDef));
     } catch (error) {
-      expect(isVercelProjectLinkRequiredError(error)).toBe(true);
-      expect((error as Error).message).toContain("Run `eve link`, then retry");
+      expect(isLocalVercelAuthRequiredError(error)).toBe(true);
+      expect((error as Error).message).toContain("requires local Vercel authentication");
     }
   });
 
