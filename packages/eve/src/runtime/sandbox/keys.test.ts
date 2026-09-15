@@ -9,7 +9,10 @@ import {
 import { compileFromMemory } from "#compiler/compile-from-memory.js";
 import { resolveInstalledPackageInfo } from "#internal/application/package.js";
 import { createFakeVercelOidcToken } from "#internal/testing/vercel-oidc-token.js";
-import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
+import {
+  createBundledRuntimeCompiledArtifactsSource,
+  createDiskRuntimeCompiledArtifactsSource,
+} from "#runtime/compiled-artifacts-source.js";
 import { withBundledCompiledArtifacts } from "#runtime/loaders/bundled-artifacts.js";
 import {
   createRuntimeSandboxKeys,
@@ -298,6 +301,38 @@ describe("createRuntimeSandboxKeys", () => {
 });
 
 describe("createRuntimeSandboxTemplateKey", () => {
+  it("uses the same explicit app scope for build-time disk and bundled runtime sources", async () => {
+    const input = {
+      nodeId: "__root__",
+      providerName: "docker",
+      sourceId: "sandbox.ts",
+      templatePlan: {
+        contentHash: CONTENT_HASH,
+        environmentHash: "environment-v1",
+        kind: "workspace-content" as const,
+      },
+    };
+    const sandboxScope = "stable-app-scope";
+
+    const buildKey = await createRuntimeSandboxTemplateKey({
+      ...input,
+      compiledArtifactsSource: createDiskRuntimeCompiledArtifactsSource("/build/workspace", {
+        sandboxScope,
+      }),
+    });
+    const runtimeKey = await createRuntimeSandboxTemplateKey({
+      ...input,
+      compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(sandboxScope),
+    });
+    const otherAppKey = await createRuntimeSandboxTemplateKey({
+      ...input,
+      compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource("other-app-scope"),
+    });
+
+    expect(runtimeKey).toBe(buildKey);
+    expect(otherAppKey).not.toBe(runtimeKey);
+  });
+
   it("rotates the template when provider environment options change", async () => {
     const input = {
       providerName: "docker",

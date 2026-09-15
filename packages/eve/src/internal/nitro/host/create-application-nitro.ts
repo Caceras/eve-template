@@ -848,7 +848,7 @@ export async function createProductionApplicationNitro(
 
   if (preparedHost.scheduleRegistrations.length > 0) {
     applyEveCronHandlerRoute(nitro);
-    const artifactsConfig = createProductionNitroArtifactsConfig();
+    const artifactsConfig = createProductionNitroArtifactsConfig(preparedHost.appRoot);
     registerScheduleTaskHandlers(nitro, {
       artifactsConfig,
       dispatchModulePath: resolvePackageSourceFilePath(

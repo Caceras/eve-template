@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { resolvePackageSourceFilePath } from "#internal/application/package.js";
 import { createDiskRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { resolveDevelopmentRuntimeArtifactsPointerPath } from "#internal/nitro/dev-runtime-artifacts.js";
@@ -49,8 +51,11 @@ export function createDevelopmentNitroArtifactsConfig(input: {
  * Runtime-artifacts wiring for built output: routes require the artifacts
  * bundled into the server at build time and never touch the filesystem.
  */
-export function createProductionNitroArtifactsConfig(): ProductionNitroArtifactsConfig {
+export function createProductionNitroArtifactsConfig(
+  appRoot: string,
+): ProductionNitroArtifactsConfig {
   return {
     kind: "production",
+    sandboxScope: createHash("sha256").update(appRoot).digest("hex").slice(0, 16),
   };
 }

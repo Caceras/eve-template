@@ -208,6 +208,10 @@ async function resolveRuntimeSandboxScope(input: {
     }
   }
 
+  if (input.compiledArtifactsSource.sandboxScope !== undefined) {
+    return input.compiledArtifactsSource.sandboxScope;
+  }
+
   const appRoot = getRuntimeCompiledArtifactsSandboxAppRoot(input.compiledArtifactsSource);
   if (appRoot !== undefined) {
     return createStableHash(await realpath(appRoot)).slice(0, 16);

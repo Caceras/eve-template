@@ -38,6 +38,7 @@ import {
   prepareProductionApplicationHost,
   refreshProductionCompiledArtifacts,
 } from "#internal/nitro/host/prepare-application-host.js";
+import { createProductionNitroArtifactsConfig } from "#internal/nitro/host/artifacts-config.js";
 import { runVercelBuildPrewarm } from "#internal/nitro/host/vercel-build-prewarm.js";
 import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
 import type { ApplicationBuildOptions } from "#internal/nitro/host/types.js";
@@ -315,6 +316,7 @@ async function buildApplicationInWorkspace(
     );
   }
   const publicRoutePrefix = options.publicRoutePrefix ?? inferredPublicRoutePrefix;
+  const sandboxScope = createProductionNitroArtifactsConfig(workspace.appRoot).sandboxScope;
   const nitro = await measureBuildPhase(profiler, "nitro.create", () =>
     createProductionApplicationNitro(preparedHost, {
       buildDir: workspace.nitro.buildDir,
@@ -337,6 +339,7 @@ async function buildApplicationInWorkspace(
               "src/internal/authored-module-map-loader.ts",
             ),
             sandboxAppRoot: preparedHost.appRoot,
+            sandboxScope,
           },
         ),
         log(message: string) {

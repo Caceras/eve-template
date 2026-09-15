@@ -70,6 +70,7 @@ describe("loadAgentInfoData", () => {
 
       const agentInfoCompiledArtifactsSource = resolveAgentInfoCompiledArtifactsSource({
         kind: "production",
+        sandboxScope: "test-sandbox-scope",
       });
       expect(agentInfoCompiledArtifactsSource.kind).toBe("bundled");
       const data = await loadAgentInfoManifestData({
