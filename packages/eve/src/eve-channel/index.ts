@@ -21,7 +21,6 @@ import {
 import {
   EVE_SESSION_ID_HEADER,
   EVE_STREAM_FORMAT_HEADER,
-  EVE_STREAM_IDLE_CLOSE_HEADER,
   EVE_STREAM_TAIL_INDEX_HEADER,
   EVE_STREAM_VERSION_HEADER,
   type SubagentCalledStreamEvent,
@@ -657,7 +656,6 @@ export function eveChannel(input: EveChannelInput): EveChannel {
           "x-accel-buffering",
           EVE_SESSION_ID_HEADER,
           EVE_STREAM_FORMAT_HEADER,
-          EVE_STREAM_IDLE_CLOSE_HEADER,
           EVE_STREAM_TAIL_INDEX_HEADER,
           EVE_STREAM_VERSION_HEADER,
         ]) {

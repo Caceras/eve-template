@@ -19,9 +19,7 @@ import {
   EVE_MESSAGE_STREAM_FORMAT,
   EVE_MESSAGE_STREAM_VERSION,
   EVE_SESSION_ID_HEADER,
-  EVE_SESSION_STREAM_IDLE_CLOSE_MS,
   EVE_STREAM_FORMAT_HEADER,
-  EVE_STREAM_IDLE_CLOSE_HEADER,
   EVE_STREAM_TAIL_INDEX_HEADER,
   EVE_STREAM_VERSION_HEADER,
 } from "#protocol/message.js";
@@ -33,6 +31,8 @@ import {
 import { isInputResponse, type ValidatedInputResponse } from "#shared/input.js";
 import { parseJsonObject, type JsonObject } from "#shared/json.js";
 import type { RunMode } from "#shared/run-mode.js";
+
+const SESSION_STREAM_IDLE_CLOSE_MS = 10_000;
 
 interface ParsedCreateBody {
   activityObserver?: ActivityObserverConfig;
@@ -318,7 +318,6 @@ export async function createSessionStreamResponse(
       "x-accel-buffering": "no",
       [EVE_SESSION_ID_HEADER]: session.id,
       [EVE_STREAM_FORMAT_HEADER]: EVE_MESSAGE_STREAM_FORMAT,
-      [EVE_STREAM_IDLE_CLOSE_HEADER]: String(EVE_SESSION_STREAM_IDLE_CLOSE_MS),
       [EVE_STREAM_VERSION_HEADER]: EVE_MESSAGE_STREAM_VERSION,
     });
     if (tailIndex !== undefined) {
@@ -635,7 +634,7 @@ function serializeAsNdjson(
       } catch {
         // The response was cancelled while the timer callback was already queued.
       }
-    }, EVE_SESSION_STREAM_IDLE_CLOSE_MS);
+    }, SESSION_STREAM_IDLE_CLOSE_MS);
   };
   const transform = new TransformStream<unknown, Uint8Array>({
     start(controller) {

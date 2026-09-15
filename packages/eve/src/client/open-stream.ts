@@ -1,9 +1,5 @@
 import type { MessageStreamEvent } from "#protocol/message.js";
-import {
-  EVE_SESSION_STREAM_READ_IDLE_TIMEOUT_MS,
-  EVE_STREAM_IDLE_CLOSE_HEADER,
-  EVE_STREAM_TAIL_INDEX_HEADER,
-} from "#protocol/message.js";
+import { EVE_STREAM_TAIL_INDEX_HEADER } from "#protocol/message.js";
 import type { MessageStreamVersion } from "#protocol/message-version.js";
 import { createEveSessionStreamRoutePath } from "#protocol/routes.js";
 import { ClientError } from "#client/client-error.js";
@@ -28,6 +24,8 @@ interface ResolvedStreamReconnectPolicy {
   readonly streamIdleReconnectPolicy: RetryPolicy;
   readonly streamOpenReconnectPolicy: RetryPolicy;
 }
+
+const DEFAULT_STREAM_READ_IDLE_TIMEOUT_MS = 15_000;
 
 const DEFAULT_STREAM_RECONNECT_POLICY: ResolvedStreamReconnectPolicy = {
   retryableErrorStatuses: new Set([404, 409, 425, 500, 502, 503, 504]),
@@ -105,14 +103,10 @@ interface OpenStreamInput extends FollowStreamInput {
  * Follows a session's durable event stream from an absolute cursor,
  * transparently reconnecting whenever the transport ends.
  *
- * Transport endings reconnect from the advanced cursor. A server that
- * advertises an idle-close interval ends a quiet live response on purpose;
- * such a close reconnects at once and never counts against the idle budget.
- * Progress resets that budget; every other empty connection, including an
- * ordinary EOF, counts toward it and backs off, so repeated empty connections
- * eventually stop the follow. Callers own boundary handling. Negative
- * tail-relative cursors use one connection because they cannot be advanced
- * safely.
+ * Transport endings reconnect from the advanced cursor. Progress resets the
+ * idle budget; repeated empty streams eventually stop the follow. Callers own
+ * boundary handling. Negative tail-relative cursors use one connection because
+ * they cannot be advanced safely.
  *
  * With `follow: false`, the first connection fixes the bound: the iterator
  * yields events until the cursor passes that tail, reconnecting as needed,
@@ -168,16 +162,13 @@ export async function* followStreamIterable(
     }
 
     let deliveredEvent = false;
-    let closedCleanly = false;
-    let lastActivityAt = Date.now();
     try {
       for await (const event of readNdjsonStream(connection.body, {
-        idleTimeoutMs: input.streamReadIdleTimeoutMs ?? EVE_SESSION_STREAM_READ_IDLE_TIMEOUT_MS,
+        idleTimeoutMs: input.streamReadIdleTimeoutMs ?? DEFAULT_STREAM_READ_IDLE_TIMEOUT_MS,
         streamVersion: connection.streamVersion,
       })) {
         startIndex += 1;
         deliveredEvent = true;
-        lastActivityAt = Date.now();
         reconnectDelayMs = idleRetryPolicy.baseDelayMs;
         idleReconnects = 0;
         yield event;
@@ -186,7 +177,6 @@ export async function* followStreamIterable(
           return;
         }
       }
-      closedCleanly = true;
     } catch (error) {
       if (!isStreamDisconnectError(error)) throw error;
     } finally {
@@ -197,21 +187,16 @@ export async function* followStreamIterable(
       return;
     }
 
-    const firstConnection = initialConnection;
-    initialConnection = false;
-    if (closedCleanly && isIdleClose(connection.idleCloseMs, Date.now() - lastActivityAt)) {
-      continue;
-    }
-
     if (
       input.keepAlive !== true &&
       !deliveredEvent &&
-      !firstConnection &&
+      !initialConnection &&
       (idleReconnects += 1) >= idleRetryPolicy.maxAttempts
     ) {
       return;
     }
 
+    initialConnection = false;
     await sleep(reconnectDelayMs, input.signal);
     if (input.signal?.aborted) {
       return;
@@ -220,23 +205,10 @@ export async function* followStreamIterable(
   }
 }
 
-/**
- * Whether a clean EOF was the server's advertised idle close rather than an
- * ordinary end of stream. The server closes after `idleCloseMs` of silence
- * measured from its last write; the client measures from its last read, so
- * allow for delivery jitter by requiring only half the interval. A settled
- * stream that ends within milliseconds never qualifies.
- */
-function isIdleClose(idleCloseMs: number | undefined, quietMs: number): boolean {
-  return idleCloseMs !== undefined && quietMs >= idleCloseMs / 2;
-}
-
-/** An opened connection: the response body plus policy reported by the response headers. */
+/** An opened connection: the response body plus the tail index from the response header, if any. */
 interface OpenedStream {
   readonly body: ReadableStream<Uint8Array>;
   close(): void;
-  /** Server idle-close interval from {@link EVE_STREAM_IDLE_CLOSE_HEADER}, when advertised. */
-  readonly idleCloseMs: number | undefined;
   readonly streamVersion: MessageStreamVersion;
   readonly tailIndex: number | undefined;
 }
@@ -315,7 +287,6 @@ export async function openStreamBody(
           response.body?.cancel().catch(() => {});
           connectionController.abort();
         },
-        idleCloseMs: parsePositiveIntegerHeader(response.headers, EVE_STREAM_IDLE_CLOSE_HEADER),
         streamVersion: readMessageStreamVersion(response.headers),
         tailIndex: parseTailIndexHeader(response.headers),
       };
@@ -336,15 +307,6 @@ export async function openStreamBody(
   }
 
   throw new ClientError(lastStatus ?? 0, lastBody ?? "Failed to open message stream.", lastHeaders);
-}
-
-function parsePositiveIntegerHeader(headers: Headers, name: string): number | undefined {
-  const raw = headers.get(name);
-  if (raw === null || !/^\d+$/.test(raw)) {
-    return undefined;
-  }
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseTailIndexHeader(headers: Headers): number | undefined {
