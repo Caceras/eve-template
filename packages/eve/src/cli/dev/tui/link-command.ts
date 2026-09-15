@@ -17,10 +17,15 @@ export async function runTuiLinkCommand(
     signal: input.signal,
   });
   return result.kind === "cancelled"
-    ? { message: "/link dismissed.", cancelled: true as const, preserveFlowDiagnostics: false }
+    ? {
+        message: "/link dismissed.",
+        cancelled: true as const,
+        preserveFlowDiagnostics: false,
+        effect: { kind: "refresh-identity" as const },
+      }
     : {
         message: "Linked this project to Vercel.",
         preserveFlowDiagnostics: false,
-        effect: { kind: "refresh-identity" as const },
+        effect: { kind: "model-access-changed" as const },
       };
 }

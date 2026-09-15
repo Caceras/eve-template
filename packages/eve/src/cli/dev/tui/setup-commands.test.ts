@@ -202,7 +202,7 @@ describe("runTuiSetupCommand", () => {
     await expect(run({ command: "link", flows })).resolves.toEqual({
       message: "Linked this project to Vercel.",
       preserveFlowDiagnostics: false,
-      effect: { kind: "refresh-identity" },
+      effect: { kind: "model-access-changed" },
     });
     expect(flows.runLinkFlow).toHaveBeenCalledWith(
       expect.objectContaining({ appRoot: APP_ROOT, projectSelection: "create-or-link" }),
@@ -218,6 +218,7 @@ describe("runTuiSetupCommand", () => {
       message: "/link dismissed.",
       cancelled: true,
       preserveFlowDiagnostics: false,
+      effect: { kind: "refresh-identity" },
     });
   });
 
