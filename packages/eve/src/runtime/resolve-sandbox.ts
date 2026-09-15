@@ -1,6 +1,7 @@
 import { ROOT_COMPILED_AGENT_NODE_ID, type CompiledSandboxDefinition } from "#compiler/manifest.js";
 import type { CompiledModuleMap } from "#compiler/module-map.js";
 import { expectObjectRecord, getAuthoredModuleExport } from "#internal/authored-module.js";
+import { defineParentSandbox } from "#public/definitions/sandbox.js";
 import { ResolveAgentError } from "#runtime/resolve-helpers.js";
 import type { ResolvedSandboxDefinition } from "#runtime/types.js";
 import { getBoundSandboxEnvironment, isSandboxEnvironment } from "#shared/sandbox-environment.js";
@@ -10,6 +11,19 @@ export async function resolveSandboxDefinition(
   moduleMap: CompiledModuleMap,
   nodeId: string | undefined,
 ): Promise<ResolvedSandboxDefinition> {
+  if (definition.inheritsParent === true) {
+    return {
+      dockerfileHash: definition.dockerfileHash,
+      exportName: definition.exportName,
+      kind: "parent",
+      logicalPath: definition.logicalPath,
+      selector: defineParentSandbox(),
+      sourceHash: definition.sourceHash,
+      sourceId: definition.sourceId,
+      sourceKind: "module",
+    };
+  }
+
   const namespace =
     moduleMap.nodes[nodeId ?? ROOT_COMPILED_AGENT_NODE_ID]?.modules[definition.sourceId];
   const record = expectObjectRecord(
@@ -31,7 +45,6 @@ export async function resolveSandboxDefinition(
     sourceId: definition.sourceId,
     sourceKind: "module" as const,
   };
-  if (definition.inheritsParent === true) return { ...base, kind: "parent" };
   if (!isSandboxEnvironment(environment))
     throw new ResolveAgentError(`Sandbox "${definition.logicalPath}" has no environment.`);
   return { ...base, environment, kind: "independent" };
