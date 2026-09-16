@@ -44,10 +44,8 @@ import { slackChannel } from "eve/channels/slack";
 export default slackChannel({
   credentials: connectSlackCredentials("slack/my-agent"),
   bot: {
-    alwaysOnline: true,
     backgroundColor: "#000000",
     description: "Answers support questions.",
-    longDescription: "Answers support questions using the team's knowledge base.",
     name: "Support agent",
   },
   eventSubscriptions: ["message.channels", "message.groups"],

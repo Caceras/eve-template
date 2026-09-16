@@ -13,13 +13,11 @@ type SlackBotEvent = NonNullable<
 >[number];
 
 export interface SlackAppManifestOptions {
-  readonly alwaysOnline?: boolean;
   readonly backgroundColor?: string;
   readonly botEvents?: readonly string[];
   readonly botScopes?: readonly string[];
   readonly description?: string;
   readonly displayName?: string;
-  readonly longDescription?: string;
   readonly optionalBotScopes?: readonly string[];
 }
 
@@ -44,25 +42,15 @@ export function defineSlackAppManifest(
       };
       if (optionalBotScopes.length > 0) oauthScopes.bot_optional = optionalBotScopes;
       const botEvents = [...unique(["app_mention"], input.botEvents)] as SlackBotEvent[];
-      const eventSubscriptions = { bot_events: botEvents };
-      const interactivity = { is_enabled: true } as const;
-      const botUser: { always_online?: boolean; display_name: string } = {
-        display_name: name,
-      };
-      if (input.alwaysOnline !== undefined) botUser.always_online = input.alwaysOnline;
       const displayInformation: {
         background_color?: string;
         description?: string;
-        long_description?: string;
         name: string;
       } = { name };
       if (input.backgroundColor !== undefined) {
         displayInformation.background_color = input.backgroundColor;
       }
       if (input.description !== undefined) displayInformation.description = input.description;
-      if (input.longDescription !== undefined) {
-        displayInformation.long_description = input.longDescription;
-      }
       const manifest = {
         $type: SLACK_APP_MANIFEST_TYPE,
         display_information: displayInformation,

@@ -645,14 +645,10 @@ export type SlackApprovalChannelResolver = (
 ) => SlackApprovalChannel | Promise<SlackApprovalChannel>;
 
 export interface SlackBotConfig {
-  /** Whether the Slack bot always appears online. Omitted from the manifest by default. */
-  readonly alwaysOnline?: boolean;
   /** Hex color used behind the Slack app's information hovercard. */
   readonly backgroundColor?: string;
   /** Short Slack app description, up to 140 characters. */
   readonly description?: string;
-  /** Longer Slack app description, up to 4,000 characters. */
-  readonly longDescription?: string;
   /** Display name used for the Slack app and bot. */
   readonly name?: string;
 }
@@ -1072,13 +1068,11 @@ export function slackChannel(config: SlackChannelConfig = {}): SlackChannel {
   const credentials = config.credentials as { readonly vercelConnect?: unknown } | undefined;
   return Object.assign(channel, {
     manifest: defineSlackAppManifest({
-      alwaysOnline: config.bot?.alwaysOnline,
       backgroundColor: config.bot?.backgroundColor,
       botEvents: config.eventSubscriptions,
       botScopes: config.scopes,
       description: config.bot?.description,
       displayName: config.bot?.name,
-      longDescription: config.bot?.longDescription,
       optionalBotScopes: config.optionalScopes,
     }),
     vercelConnect: credentials?.vercelConnect,

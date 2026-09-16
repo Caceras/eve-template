@@ -747,10 +747,8 @@ describe("compileAgentManifest source graph", () => {
         loadNamespace: async () => ({
           default: slackChannel({
             bot: {
-              alwaysOnline: true,
               backgroundColor: "#000000",
               description: "Answers support questions.",
-              longDescription: "Answers support questions using the team's knowledge base.",
               name: "Support agent",
             },
             eventSubscriptions: ["message.channels"],
@@ -770,7 +768,6 @@ describe("compileAgentManifest source graph", () => {
       display_information: {
         background_color: "#000000",
         description: "Answers support questions.",
-        long_description: "Answers support questions using the team's knowledge base.",
         name: "Support agent",
       },
       features: {
@@ -779,7 +776,7 @@ describe("compileAgentManifest source graph", () => {
           messages_tab_enabled: true,
           messages_tab_read_only_enabled: false,
         },
-        bot_user: { display_name: "Support agent", always_online: true },
+        bot_user: { display_name: "Support agent" },
       },
       oauth_config: {
         scopes: {
@@ -791,7 +788,6 @@ describe("compileAgentManifest source graph", () => {
         event_subscriptions: {
           bot_events: ["app_mention", "message.channels"],
         },
-        interactivity: { is_enabled: true },
         org_deploy_enabled: false,
         socket_mode_enabled: false,
         token_rotation_enabled: false,
