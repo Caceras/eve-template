@@ -124,7 +124,7 @@ async function createTestVercelSession() {
     appRoot: "/tmp/test-app-root",
     seedFiles: [],
   });
-  const handle = await backend.open({
+  const handle = await backend.openSession({
     appRoot: "/tmp/test-app-root",
     sandboxName: "session-key",
   });
@@ -169,7 +169,7 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/test-app-root",
       prepared: { snapshotId: "prepared-snapshot" },
       sandboxName: "session-key",
@@ -347,7 +347,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -386,7 +386,7 @@ describe("createVercelSandbox", () => {
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -425,7 +425,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -446,7 +446,7 @@ describe("createVercelSandbox", () => {
       }),
       { mounts: { "/workspace/repos": { drive: "team-drive", mode: "read-write" } } },
     );
-    await provider.open({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -495,7 +495,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -527,7 +527,7 @@ describe("createVercelSandbox", () => {
     });
 
     await expect(
-      backend.open({
+      backend.openSession({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "expired-template-snapshot" },
         sandboxName: "session-key",
@@ -599,7 +599,7 @@ describe("createVercelSandbox", () => {
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -639,7 +639,7 @@ describe("createVercelSandbox", () => {
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -678,7 +678,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -723,7 +723,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -811,7 +811,7 @@ describe("createVercelSandbox", () => {
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -855,7 +855,7 @@ describe("createVercelSandbox", () => {
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -905,7 +905,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });

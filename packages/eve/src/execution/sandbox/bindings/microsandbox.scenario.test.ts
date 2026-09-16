@@ -46,7 +46,7 @@ async function createPrewarmedHandle(input: {
     appRoot: input.appRoot,
     seedFiles: [],
   });
-  return await backend.open({
+  return await backend.openSession({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
   });
@@ -93,7 +93,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       appRoot,
       seedFiles: [],
     });
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot,
       sandboxName: "session-dockerfile",
     });
@@ -227,7 +227,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       version: 2,
     });
 
-    const reconnectedHandle = await backend.open({
+    const reconnectedHandle = await backend.openSession({
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
@@ -269,7 +269,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     });
 
     expect(second).toEqual(first);
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot,
       sandboxName: "session-reuse-report",
     });

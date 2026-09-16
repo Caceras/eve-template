@@ -46,7 +46,7 @@ describe("sandbox workspace folder convention", () => {
       seedFiles: files.map((file) => ({ content: file.content, path: file.path })),
     });
 
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot,
       sandboxName: "session-default-workspace",
     });
@@ -78,7 +78,7 @@ describe("sandbox workspace folder convention", () => {
       seedFiles: [],
     });
 
-    const handle = await backend.open({
+    const handle = await backend.openSession({
       appRoot,
       sandboxName: "session-empty-workspace",
     });

@@ -321,7 +321,7 @@ describe("Docker provider create", () => {
     });
 
     await expect(
-      createEngine({ cli }).open({
+      createEngine({ cli }).openSession({
         appRoot,
         sandboxName: SESSION_KEY,
       }),
@@ -348,7 +348,7 @@ describe("Docker provider create", () => {
     });
 
     await expect(
-      createEngine({ cli }).open({
+      createEngine({ cli }).openSession({
         appRoot,
         sandboxName: SESSION_KEY,
       }),
@@ -367,7 +367,7 @@ describe("Docker provider create", () => {
     });
 
     try {
-      const handle = await createEngine({ cli }).open({
+      const handle = await createEngine({ cli }).openSession({
         appRoot,
         sandboxName: SESSION_KEY,
       });
@@ -410,7 +410,7 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).open({
+    await createEngine({ cli }).openSession({
       appRoot,
       sandboxName: SESSION_KEY,
     });
@@ -431,7 +431,7 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).open({
+    await createEngine({ cli }).openSession({
       existing: { containerName: PROVIDER_CONTAINER_NAME, version: 1 },
       appRoot,
       sandboxName: SESSION_KEY,
@@ -452,7 +452,7 @@ describe("Docker provider create", () => {
       }
       return input.respond?.(args);
     });
-    const handle = await createEngine({ cli, options: input.options }).open({
+    const handle = await createEngine({ cli, options: input.options }).openSession({
       appRoot,
       sandboxName: SESSION_KEY,
     });

@@ -59,7 +59,7 @@ export function createSandboxProviderHarness<
       preparedArtifact = artifact;
       return artifact;
     },
-    async open(input: {
+    async openSession(input: {
       readonly appRoot: string;
       readonly existing?: SessionState;
       readonly prepared?: PreparedArtifact;

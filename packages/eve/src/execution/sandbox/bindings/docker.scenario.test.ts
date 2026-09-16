@@ -115,7 +115,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
         appRoot,
         seedFiles: [],
       });
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("dockerfile"),
       });
@@ -152,7 +152,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       });
       expect(second).toEqual(first);
 
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("seeded"),
       });
@@ -171,7 +171,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
     async () => {
       const appRoot = await createScratchDirectory("eve-docker-scenario-");
       const engine = createEngine();
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("env"),
       });
@@ -201,7 +201,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
     async () => {
       const appRoot = await createScratchDirectory("eve-docker-scenario-");
       const engine = createEngine();
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("kill-tree"),
       });
@@ -250,7 +250,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
     async () => {
       const appRoot = await createScratchDirectory("eve-docker-scenario-");
       const engine = createEngine();
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("files"),
       });
@@ -288,7 +288,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       // Create from the suite's prewarmed template: bash is already
       // baked in there, which a `--network none` container could not
       // install on the fly.
-      const handle = await engine.open({
+      const handle = await engine.openSession({
         appRoot,
         sandboxName: nextSessionKey("network-flip"),
       });
@@ -328,7 +328,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       // transparently.
       await firstHandle.onRuntimeShutdown();
 
-      const reconnected = await engine.open({
+      const reconnected = await engine.openSession({
         existing: state,
         appRoot,
         sandboxName: sessionKey,

@@ -28,7 +28,7 @@ describe("Docker sandbox deletion", () => {
       {},
       { preparedArtifact: () => ({ imageReference: "prepared-image" }) },
     );
-    const handle = await provider.open({
+    const handle = await provider.openSession({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
     });
@@ -64,13 +64,13 @@ describe("Docker sandbox deletion", () => {
       {},
       { preparedArtifact: () => ({ imageReference: "prepared-image" }) },
     );
-    const oldHandle = await backend.open({
+    const oldHandle = await backend.openSession({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
     });
     await oldHandle.onSessionDelete();
     containerId = "container-id-2";
-    await backend.open({
+    await backend.openSession({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
     });
