@@ -18,6 +18,9 @@ export default defineTool({
   inputSchema: z.object({}),
   async execute(_input, ctx) {
     const sandbox = await ctx.getSandbox();
+    if (sandbox.setNetworkPolicy === undefined) {
+      throw new Error("The selected sandbox provider does not support mutable network policies.");
+    }
     await sandbox.setNetworkPolicy("deny-all");
     const result = await sandbox.run({
       command: "curl -sS --max-time 5 -o /dev/null https://example.com",
