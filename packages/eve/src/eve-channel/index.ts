@@ -286,12 +286,15 @@ export function eveChannel(input: EveChannelInput): EveChannel {
           }
         }
 
-        const messageResult = await resolveOnMessage({
-          auth: forwarded.auth,
-          config: input,
-          message: body.message,
-          request: req,
-        });
+        const messageResult =
+          body.message === undefined
+            ? { auth: forwarded.auth }
+            : await resolveOnMessage({
+                auth: forwarded.auth,
+                config: input,
+                message: body.message,
+                request: req,
+              });
         if (messageResult instanceof Response) return messageResult;
         const createSession = readRouteSessionCreator(args);
         if (createSession === undefined) {

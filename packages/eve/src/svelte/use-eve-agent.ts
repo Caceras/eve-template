@@ -57,6 +57,8 @@ export interface UseEveAgentReturn<TData> {
   readonly events: readonly MessageStreamEvent[];
   /** Replay the attached durable session and follow its in-flight turn, if any. */
   readonly resume: () => Promise<void>;
+  /** Create the session without starting its first turn. */
+  readonly prewarm: () => Promise<void>;
   /** Clear all state and start a new session. */
   readonly reset: () => void;
   /** Send a message with optional turn settings. */
@@ -194,6 +196,10 @@ class SvelteEveAgent<TData> implements UseEveAgentReturn<TData> {
 
   reset = (): void => {
     this.#store.reset();
+  };
+
+  prewarm = (): Promise<void> => {
+    return this.#store.prewarm();
   };
 
   resume = (): Promise<void> => {

@@ -21,6 +21,7 @@ import { createSessionTimeoutControl } from "#execution/session/timeout-control.
 import { SessionHandoff, sessionAnchorToken } from "#execution/session/handoff.js";
 import { signalSessionAnchorStep } from "#execution/session/handoff-steps.js";
 import type { WorkflowEntryResult } from "#execution/session/entry-input.js";
+import { initializeSessionStep } from "#execution/session/initialize-step.js";
 
 /** The run's own failure never carries internals; the terminal event already logged them. */
 function createSafeOuterWorkflowError(): Error {
@@ -48,6 +49,8 @@ export interface SessionBoot {
   readonly capabilities?: SessionCapabilities;
   readonly deploymentId: string;
   readonly initialInput: DeliverHookPayload | undefined;
+  /** Runs session-level lifecycle initialization, then parks before turn zero. */
+  readonly initializeBeforeFirstTurn: boolean;
   readonly mode: RunMode;
   readonly retention?: AgentWorkflowRetentionDefinition;
   readonly serializedContext: Record<string, unknown>;
@@ -61,6 +64,10 @@ export interface SessionBoot {
 type SessionLoopOutcome =
   | { readonly kind: "terminal"; readonly outcome: SessionTerminalOutcome }
   | { readonly kind: "transferred" };
+
+type InitialSessionAction =
+  | { readonly action: TurnOutcome; readonly kind: "action" }
+  | SessionLoopOutcome;
 
 /** Mutable facts the crash path needs that do not live in the state cursor. */
 interface SessionProgress {
@@ -246,15 +253,59 @@ async function runSessionLoop(
     progress.caller = undefined;
     return settled;
   };
+  const awaitPrewarmedAction = async (): Promise<InitialSessionAction> => {
+    while (true) {
+      const next = await nextParkedActivity(new Set());
+      switch (next.kind) {
+        case "expired":
+        case "reset":
+        case "closed":
+          return { kind: "terminal", outcome: { kind: "expired" } };
+        case "clear":
+        case "compact":
+          return { action: await runTurn({ control: next.kind }), kind: "action" };
+        case "turn": {
+          const transfer = await handoff.tryTransfer(next, {
+            serializedContext: cursor.serializedContext,
+            sessionState: cursor.sessionState,
+          });
+          if (transfer.kind === "transferred") return transfer;
+          if (next.delivery.caller !== undefined) progress.caller = next.delivery.caller;
+          return { action: await runTurn({ delivery: next.delivery }), kind: "action" };
+        }
+        case "cancel-turn":
+        case "authorization-resume":
+          continue;
+      }
+    }
+  };
+  const runInitialAction = async (): Promise<InitialSessionAction> => {
+    if (boot.initializeBeforeFirstTurn) {
+      await cursor.apply(
+        await initializeSessionStep({
+          sessionWritable: boot.sessionWritable,
+          serializedContext: cursor.serializedContext,
+          sessionState: cursor.sessionState,
+        }),
+      );
+      return await awaitPrewarmedAction();
+    }
+    const action = await runTurn(
+      boot.initialInput === undefined ? undefined : { delivery: boot.initialInput },
+    );
+    return { action, kind: "action" };
+  };
 
   try {
     const [actionResult, timerResult] = await Promise.allSettled([
-      runTurn(boot.initialInput === undefined ? undefined : { delivery: boot.initialInput }),
+      runInitialAction(),
       sessionTimeout?.start(),
     ]);
     if (timerResult.status === "rejected") throw timerResult.reason;
     if (actionResult.status === "rejected") throw actionResult.reason;
-    let action: TurnOutcome = actionResult.value;
+    const initial = actionResult.value as InitialSessionAction;
+    if (initial.kind !== "action") return initial;
+    let action = initial.action;
 
     while (true) {
       if (action.kind === "done") {

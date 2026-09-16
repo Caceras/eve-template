@@ -33,13 +33,28 @@ React, Vue, and Svelte apps reach for [`useEveAgent()`](../guides/frontend/overv
 
 ## Start a session
 
+Create and park a conversation session before its first turn by omitting `message`:
+
+```bash
+curl -X POST http://127.0.0.1:2000/eve/v1/session \
+  -H 'content-type: application/json' \
+  -d '{}'
+```
+
+eve starts the durable workflow, runs session-scoped initialization, emits `session.started` and
+`session.waiting`, and waits for the first message. The first message sent to the returned
+`sessionId` remains `turn_0`. Message-free creation supports conversation mode only and does not
+accept turn-scoped `clientContext`, `outputSchema`, callbacks, or activity observers.
+
+To create the session and start its first turn in one request, include the message:
+
 ```bash
 curl -X POST http://127.0.0.1:2000/eve/v1/session \
   -H 'content-type: application/json' \
   -d '{"message":"Summarize the latest forecast."}'
 ```
 
-eve responds with `202` and the durable `sessionId` in the JSON body and
+In both forms, eve responds with `202` and the durable `sessionId` in the JSON body and
 `x-eve-session-id` header as soon as Workflow accepts the run. The command inbox can still be
 starting at that point. An immediate follow-up can return `409 session_not_active`; wait for
 `session.waiting` before sending the next message.

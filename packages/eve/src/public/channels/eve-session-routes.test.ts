@@ -47,6 +47,46 @@ function createArgs(session = createFixedSession()): RouteHandlerArgs {
 }
 
 describe("eve ID-addressed session routes", () => {
+  it("creates and parks a conversation without invoking the first-message hook", async () => {
+    const createSession = vi.fn().mockResolvedValue({
+      events: new ReadableStream(),
+      sessionId: "wrun_A",
+    });
+    const args = attachRouteSessionCreator(createArgs(), createSession);
+    const onMessage = vi.fn();
+
+    const response = await route("POST", "/eve/v1/session", {
+      auth: none(),
+      onMessage,
+    })(
+      new Request("https://eve.test/eve/v1/session", {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      args,
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      sessionId: "wrun_A",
+      status: "accepted",
+    });
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: { requestInput: true },
+        input: {
+          context: undefined,
+          message: undefined,
+          outputSchema: undefined,
+        },
+        mode: "conversation",
+      }),
+    );
+  });
+
   it("creates a session without a continuation token", async () => {
     const createSession = vi.fn().mockResolvedValue({
       events: new ReadableStream(),

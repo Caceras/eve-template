@@ -1,5 +1,12 @@
 import { Client } from "#client/client.js";
-import type { ActiveTurn, PendingMessageSubmission } from "#client/eve-agent-store-state.js";
+import type {
+  ActiveTurn,
+  EveAgentStoreCallbacks,
+  EveAgentStoreInit,
+  EveAgentStoreSnapshot,
+  EveAgentStoreStatus,
+  PendingMessageSubmission,
+} from "#client/eve-agent-store-state.js";
 import type { MessageResponse } from "#client/message-response.js";
 import type { EveAgentReducer, EveAgentReducerEvent } from "#client/reducer.js";
 import type { ClientSession } from "#client/session.js";
@@ -17,84 +24,15 @@ import {
   updatePendingAuthorizations,
 } from "#client/eve-agent-store-helpers.js";
 import { toError } from "#shared/errors.js";
-import type {
-  CancelSessionResult,
-  ClientAuth,
-  HeadersValue,
-  SendTurnPayload,
-  ClientSessionState,
-} from "#client/types.js";
+import type { CancelSessionResult, SendTurnPayload } from "#client/types.js";
 
-/**
- * Lifecycle state of an {@link EveAgentStore}: `ready` (idle), `resuming`
- * (checking an attached session for continuation), `submitted` (turn sent,
- * awaiting the first event), `streaming` (events arriving), and `error` (the
- * turn failed). A new turn advances `ready` to `submitted` to `streaming` to
- * `ready` (or `error`).
- */
-export type EveAgentStoreStatus = "error" | "ready" | "resuming" | "streaming" | "submitted";
-
-/**
- * Prepares one outbound turn immediately before the client sends it, e.g. to
- * attach fresh one-turn client state such as page context via `clientContext`.
- */
-export type PrepareSend = (input: SendTurnPayload) => SendTurnPayload | Promise<SendTurnPayload>;
-
-/**
- * Immutable projected state of an {@link EveAgentStore}, read on every render.
- *
- * `data` is the reducer output, `events` is the raw server stream-event log for
- * this session, `session` is the current serializable cursor, `status` is the
- * turn lifecycle state, and `error` is the last failure (or `undefined`).
- */
-export interface EveAgentStoreSnapshot<TData> {
-  readonly data: TData;
-  readonly error: Error | undefined;
-  readonly events: readonly MessageStreamEvent[];
-  readonly session: ClientSessionState | undefined;
-  readonly status: EveAgentStoreStatus;
-}
-
-/**
- * Hooks invoked while the store processes a turn.
- *
- * `onEvent`, `onError`, `onFinish`, and `onSessionChange` are observe-only.
- * `prepareSend` runs before each turn is sent and may return a modified
- * {@link SendTurnPayload} (for example to attach one-turn client context).
- */
-export interface EveAgentStoreCallbacks<TData> {
-  readonly onError?: (error: Error) => void;
-  readonly onEvent?: (event: MessageStreamEvent) => void;
-  readonly onFinish?: (snapshot: EveAgentStoreSnapshot<TData>) => void;
-  readonly onSessionChange?: (session: ClientSessionState | undefined) => void;
-  readonly prepareSend?: PrepareSend;
-}
-
-/**
- * Configuration for constructing an {@link EveAgentStore}.
- *
- * Requires a {@link EveAgentReducer | reducer}, plus either connection options
- * (`host`, `auth`, `headers`, `initialSession`) for a
- * store-owned session or an existing {@link ClientSession} via `session`.
- *
- * `optimistic` (default `true`) projects submitted user messages before the
- * server confirms them. `host` defaults to `""`. `initialEvents` and
- * `initialSession` seed prior state on construction. Passing `session` makes
- * `reset()` reuse that external session rather than create a new one.
- * `initialEvents` must be an ordered prefix of the same session's stream; its
- * endpoint may overlap the cursor because repeated ids are applied once.
- */
-export interface EveAgentStoreInit<TData> {
-  readonly auth?: ClientAuth;
-  readonly headers?: HeadersValue;
-  readonly host?: string;
-  /** Ordered prefix of the session stream used to rehydrate projected state. */
-  readonly initialEvents?: readonly MessageStreamEvent[];
-  readonly initialSession?: ClientSessionState;
-  readonly optimistic?: boolean;
-  readonly reducer: EveAgentReducer<TData>;
-  readonly session?: ClientSession;
-}
+export type {
+  EveAgentStoreCallbacks,
+  EveAgentStoreInit,
+  EveAgentStoreSnapshot,
+  EveAgentStoreStatus,
+  PrepareSend,
+} from "#client/eve-agent-store-state.js";
 
 const detachStore = Symbol("detachEveAgentStore");
 
@@ -127,6 +65,8 @@ export class EveAgentStore<TData> {
   #error: Error | undefined;
   #events: readonly MessageStreamEvent[];
   #pendingMessageSubmissions: readonly PendingMessageSubmission[] = [];
+  #prewarmGeneration = 0;
+  #prewarmPromise: Promise<void> | undefined;
   #projectionEvents: readonly EveAgentReducerEvent[];
   #resumePromise: Promise<void> | undefined;
   #session: ClientSession | undefined;
@@ -177,6 +117,46 @@ export class EveAgentStore<TData> {
     return () => {
       this.#subscribers.delete(callback);
     };
+  }
+
+  /** Creates this store's owned session without starting a turn. */
+  prewarm(): Promise<void> {
+    if (this.#session !== undefined || this.#externalSession) return Promise.resolve();
+    if (this.#prewarmPromise !== undefined) return this.#prewarmPromise;
+    if (this.#activeTurn !== undefined) {
+      return this.#activeTurn.response.then(() => {});
+    }
+    const client = this.#client;
+    if (client === undefined) {
+      return Promise.reject(new Error("This eve agent store does not own a session client."));
+    }
+
+    const generation = this.#prewarmGeneration;
+    const promise = (async () => {
+      try {
+        const created = await client.sessions.create();
+        if (generation !== this.#prewarmGeneration) return;
+        this.#session = created.session;
+        this.#error = undefined;
+        if (this.#status === "error") this.#status = "ready";
+        this.#callbacks.onSessionChange?.(created.session.state);
+        this.#publish();
+      } catch (error) {
+        if (generation === this.#prewarmGeneration) {
+          this.#error = toError(error);
+          this.#status = "error";
+          this.#callbacks.onError?.(this.#error);
+          this.#publish();
+        }
+        throw error;
+      }
+    })();
+    this.#prewarmPromise = promise;
+    const clear = () => {
+      if (this.#prewarmPromise === promise) this.#prewarmPromise = undefined;
+    };
+    void promise.then(clear, clear);
+    return promise;
   }
 
   async send<TOutput = unknown>(input: SendTurnPayload<TOutput>): Promise<void> {
@@ -404,6 +384,8 @@ export class EveAgentStore<TData> {
 
   [detachStore](): void {
     this.#activeTurn?.abortController.abort();
+    this.#prewarmGeneration += 1;
+    this.#prewarmPromise = undefined;
   }
 
   reset(): void {
@@ -412,6 +394,8 @@ export class EveAgentStore<TData> {
     turn?.resolveResponse(undefined);
     turn?.resolveCompletion();
     turn?.abortController.abort();
+    this.#prewarmGeneration += 1;
+    this.#prewarmPromise = undefined;
     if (!this.#externalSession) this.#session = undefined;
     this.#events = [];
     this.#seenEvents = createEventDeduper();
@@ -504,6 +488,12 @@ export class EveAgentStore<TData> {
   async #dispatchTurn<TOutput>(
     input: SendTurnPayload<TOutput>,
   ): Promise<Awaited<ReturnType<ClientSession["send"]>>> {
+    if (this.#session === undefined && this.#prewarmPromise !== undefined) {
+      await this.#prewarmPromise;
+      if (this.#session === undefined) {
+        throw new DOMException("Session prewarming was discarded.", "AbortError");
+      }
+    }
     if (this.#session === undefined) return await this.#createFirstTurn(input);
     if (input.inputResponses === undefined) {
       const { message, ...options } = input;

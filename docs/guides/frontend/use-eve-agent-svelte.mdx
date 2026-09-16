@@ -45,14 +45,14 @@ Call the binding once for a conversation and read its reactive getters directly.
 
 The state fields are reactive getters; the commands are ordinary methods:
 
-| Property                                       | Svelte shape                      |
-| ---------------------------------------------- | --------------------------------- |
-| `data`                                         | `TData`                           |
-| `status`                                       | `UseEveAgentStatus`               |
-| `error`                                        | `Error \| undefined`              |
-| `events`                                       | `readonly MessageStreamEvent[]`   |
-| `session`                                      | `ClientSessionState \| undefined` |
-| `send`, `respond`, `resume`, `cancel`, `reset` | Methods                           |
+| Property                                                  | Svelte shape                      |
+| --------------------------------------------------------- | --------------------------------- |
+| `data`                                                    | `TData`                           |
+| `status`                                                  | `UseEveAgentStatus`               |
+| `error`                                                   | `Error \| undefined`              |
+| `events`                                                  | `readonly MessageStreamEvent[]`   |
+| `session`                                                 | `ClientSessionState \| undefined` |
+| `send`, `respond`, `prewarm`, `resume`, `cancel`, `reset` | Methods                           |
 
 Read the getters directly in templates, `$derived`, or `$effect`. The [shared returned-state reference](./overview#returned-state) describes what each value and command does.
 

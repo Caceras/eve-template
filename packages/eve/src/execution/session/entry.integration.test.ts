@@ -218,6 +218,71 @@ function expectSingleTurn(events: readonly MessageStreamEvent[], turnId: string)
 }
 
 describe("workflowEntry integration", () => {
+  it("initializes and parks a session before its first turn", async () => {
+    let initializedSessions = 0;
+    const runtime = await createTestRuntime({
+      agent: { name: "workflow-entry-prewarm" },
+      modules: [
+        {
+          logicalPath: "hooks/initialize-session.ts",
+          loadNamespace: async () => ({
+            default: defineHook({
+              events: {
+                async "session.started"(_event, ctx) {
+                  await ctx.getSandbox();
+                  initializedSessions += 1;
+                },
+              },
+            }),
+          }),
+        },
+      ],
+    });
+
+    await runtime.run(async () => {
+      const run = await start(workflowEntry, [
+        {
+          kind: "initial",
+          ownerDeploymentId: "dpl_inline",
+          input: {},
+          serializedContext: buildSerializedContext({
+            channelKind: "http",
+            mode: "conversation",
+          }),
+        },
+      ]);
+      const stream = captureTurnEvents(run);
+
+      try {
+        const initialized = await stream.nextTurn();
+        expect(initialized.map((event) => event.type)).toEqual([
+          "session.started",
+          "session.waiting",
+        ]);
+        expect(initializedSessions).toBe(1);
+        expect(filterEventsByType(initialized, "turn.started")).toHaveLength(0);
+        await expectHookClaims(run.runId, [sessionCommandHookToken(run.runId)], {
+          cancellation: false,
+        });
+
+        await resumeHook(sessionInboxHookToken(sessionCommandHookToken(run.runId)), {
+          auth: null,
+          kind: "send",
+          payload: { message: "Say hello to Alice." },
+          turnPolicy: "steer",
+        });
+
+        const firstTurn = await stream.nextTurn();
+        expect(filterEventsByType(firstTurn, "session.started")).toHaveLength(0);
+        expectSingleTurn(firstTurn, "turn_0");
+        expect(firstTurn.at(-1)?.type).toBe("session.waiting");
+      } finally {
+        stream.dispose();
+        await run.cancel();
+      }
+    });
+  });
+
   it("persists model output before settlement when a stream append exceeds the SDK flush window", async () => {
     const runtime = await createTestRuntime({ agent: { name: "workflow-stream-order" } });
     const world = await getWorld();
@@ -2220,7 +2285,11 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   }
 }
 
-async function expectHookClaims(runId: string, tokens: string[]): Promise<void> {
+async function expectHookClaims(
+  runId: string,
+  tokens: string[],
+  options: { readonly cancellation?: boolean } = {},
+): Promise<void> {
   const events = await (
     await getWorld()
   ).events.list({
@@ -2232,7 +2301,7 @@ async function expectHookClaims(runId: string, tokens: string[]): Promise<void> 
     event.eventType === "hook_created" ? [event.eventData.token] : [],
   );
   const cancellation = claims.filter((token) => token.startsWith("abrt_"));
-  expect(cancellation).toHaveLength(1);
+  expect(cancellation).toHaveLength(options.cancellation === false ? 0 : 1);
   expect(claims.filter((token) => !token.startsWith("abrt_")).sort()).toEqual(
     tokens.map(sessionInboxHookToken).sort(),
   );

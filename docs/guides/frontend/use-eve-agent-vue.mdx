@@ -44,14 +44,14 @@ async function handleSubmit() {
 
 The state fields are computed refs; the commands are ordinary methods:
 
-| Property                                       | Vue shape                                      |
-| ---------------------------------------------- | ---------------------------------------------- |
-| `data`                                         | `ComputedRef<TData>`                           |
-| `status`                                       | `ComputedRef<UseEveAgentStatus>`               |
-| `error`                                        | `ComputedRef<Error \| undefined>`              |
-| `events`                                       | `ComputedRef<readonly MessageStreamEvent[]>`   |
-| `session`                                      | `ComputedRef<ClientSessionState \| undefined>` |
-| `send`, `respond`, `resume`, `cancel`, `reset` | Methods                                        |
+| Property                                                  | Vue shape                                      |
+| --------------------------------------------------------- | ---------------------------------------------- |
+| `data`                                                    | `ComputedRef<TData>`                           |
+| `status`                                                  | `ComputedRef<UseEveAgentStatus>`               |
+| `error`                                                   | `ComputedRef<Error \| undefined>`              |
+| `events`                                                  | `ComputedRef<readonly MessageStreamEvent[]>`   |
+| `session`                                                 | `ComputedRef<ClientSessionState \| undefined>` |
+| `send`, `respond`, `prewarm`, `resume`, `cancel`, `reset` | Methods                                        |
 
 Destructuring preserves reactivity because each state value remains a ref. Read refs with `.value` in `<script>` and without `.value` in a template. The [shared returned-state reference](./overview#returned-state) describes what each value and command does.
 

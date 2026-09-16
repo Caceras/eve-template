@@ -97,7 +97,10 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   return runSessionStep(rawInput);
 }
 
-async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> {
+export async function runSessionStep(
+  input: TurnStepInput,
+  options: { readonly initializeOnly?: boolean } = {},
+): Promise<DurableStepResult> {
   // The delivery as accepted, before authorization callbacks are matched out of it.
   const rawDelivery = input.input?.delivery;
   let delivery = rawDelivery;
@@ -390,6 +393,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
         handleEvent,
         historyProjector: history.projector,
         historyView: history.prepare(modelSession),
+        initializeOnly: options.initializeOnly,
         instrumentation,
         mode,
         modelResolutionScope: {

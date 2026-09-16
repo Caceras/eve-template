@@ -19,6 +19,7 @@ import type {
   ClientSessionState,
   CompactResult,
   ClientRedirectPolicy,
+  CreateSessionOptions,
   RespondTurnOptions,
   ResetResult,
   SendTurnInput,
@@ -65,6 +66,16 @@ export class ClientSession {
       response: session.#messageResponse<TOutput>(response, input, 0),
       session,
     };
+  }
+
+  /** @internal */
+  static async prewarm(
+    context: ClientSessionContext,
+    options: CreateSessionOptions = {},
+  ): Promise<ClientSession> {
+    const response = await postCreateSession(context, options);
+    const { sessionId } = await readAcceptedMessage(response);
+    return new ClientSession(context, { sessionId, streamIndex: 0 });
   }
 
   /** Current fixed session identity and durable stream cursor. */
@@ -317,6 +328,26 @@ async function postSessionSend(
     input.signal?.throwIfAborted();
     retryDelayMs *= 2;
   }
+}
+
+async function postCreateSession(
+  context: ClientSessionContext,
+  options: CreateSessionOptions,
+): Promise<Response> {
+  const headers = await context.resolveHeaders(options.headers);
+  headers.set("content-type", "application/json");
+  const response = await fetch(createClientUrl(context.host, EVE_SESSION_ROUTE_PATH), {
+    body: "{}",
+    headers,
+    method: "POST",
+    redirect: context.redirect,
+    signal: options.signal ?? null,
+  });
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new ClientError(response.status, responseBody, response.headers);
+  }
+  return response;
 }
 
 function isSessionNotActive(error: unknown): error is ClientError {

@@ -24,7 +24,7 @@ The default eve channel inspects the agent, creates sessions, accepts callbacks 
 
 - `GET /eve/v1/health` (check whether the application is reachable)
 - `GET /eve/v1/info` (inspect the agent)
-- `POST /eve/v1/session` (start a session and send its first message)
+- `POST /eve/v1/session` (create a session, optionally sending its first message)
 - `POST /eve/v1/session/:sessionId` (send a follow-up)
 - `POST /eve/v1/session/:sessionId/cancel` (cancel the in-flight turn)
 - `POST /eve/v1/session/:sessionId/clear` (clear the session's model history)
@@ -38,7 +38,21 @@ The session routes use only durable session IDs. Create a session explicitly, th
 
 ### Start and continue a session
 
-Start a session with an initial message, then use the returned `sessionId` for every follow-up and control operation:
+Create a conversation session before its first message by sending an empty object:
+
+```bash
+curl -X POST https://<deployment>/eve/v1/session \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# {"ok":true,"sessionId":"wrun_A","status":"accepted"}
+```
+
+The workflow runs session-scoped initialization and parks without starting `turn_0`. Because the
+request has no message, it does not invoke `onMessage`; that hook runs when the first message is
+sent to the returned session ID. Task mode and turn-scoped fields such as `clientContext` and
+`outputSchema` require a message on the create request.
+
+Include an initial message to create the session and start its first turn in one request:
 
 ```bash
 curl -X POST https://<deployment>/eve/v1/session \
@@ -69,7 +83,7 @@ curl -X POST https://<deployment>/eve/v1/session \
 # {"ok":true,"sessionId":"wrun_A","status":"accepted"}
 ```
 
-The first request requires `message`. A follow-up request accepts exactly one of
+When the create request includes a message, a follow-up request accepts exactly one of
 `message` or `inputResponses`; use the latter to answer a pending HITL request:
 
 ```bash

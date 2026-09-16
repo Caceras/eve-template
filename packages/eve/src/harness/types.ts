@@ -290,6 +290,8 @@ export interface ToolLoopHarnessConfig {
   readonly historyProjector?: HistoryViewProjector;
   /** Execution-prepared view of the history supplied to the first harness step. */
   readonly historyView?: PreparedHistoryView;
+  /** Emits the initial session boundary and parks without opening a turn. */
+  readonly initializeOnly?: boolean;
   /**
    * Internal lifecycle hooks injected into each actual model attempt.
    * Omitted in production until an instrumentation runtime opts in.

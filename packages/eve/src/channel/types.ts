@@ -529,7 +529,8 @@ export interface RunInput {
    */
   readonly initiatorAuth?: SessionAuthContext | null;
   readonly input: {
-    readonly message: string | UserContent;
+    /** Omitted only when creating a conversation session before its first turn. */
+    readonly message?: string | UserContent;
     readonly context?: readonly string[];
     readonly outputSchema?: JsonObject;
   };

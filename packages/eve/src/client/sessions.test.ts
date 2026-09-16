@@ -8,6 +8,25 @@ afterEach(() => {
 });
 
 describe("Client.sessions", () => {
+  it("creates a session without starting a turn or opening its stream", async () => {
+    const requests: Array<{ readonly body?: string; readonly url: string }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (request, init) => {
+      requests.push({ body: init?.body as string | undefined, url: String(request) });
+      return Response.json(
+        { ok: true, sessionId: "wrun_prewarmer", status: "accepted" },
+        { status: 202 },
+      );
+    });
+    const client = new Client({ host: "https://eve.test" });
+
+    const { session } = await client.sessions.create();
+
+    expect(requests).toHaveLength(1);
+    expect(new URL(requests[0]!.url).pathname).toBe("/eve/v1/session");
+    expect(JSON.parse(requests[0]!.body!)).toEqual({});
+    expect(session.state).toEqual({ sessionId: "wrun_prewarmer", streamIndex: 0 });
+  });
+
   it("returns structured output when fetch instrumentation clones the live stream", async () => {
     const events = [
       { type: "result.completed", data: { result: { answer: "child-result" } } },

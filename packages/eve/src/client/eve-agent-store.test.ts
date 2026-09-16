@@ -190,6 +190,80 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("EveAgentStore prewarming", () => {
+  it("shares one creation request without starting a turn", async () => {
+    const accepted = Promise.withResolvers<Response>();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValue(accepted.promise);
+    const onFinish = vi.fn();
+    const onSessionChange = vi.fn();
+    const prepareSend = vi.fn();
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+    store.setCallbacks({ onFinish, onSessionChange, prepareSend });
+
+    const first = store.prewarm();
+    const second = store.prewarm();
+    expect(first).toBe(second);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    accepted.resolve(
+      Response.json({ ok: true, sessionId: "session_1", status: "accepted" }, { status: 202 }),
+    );
+    await first;
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({});
+    expect(store.snapshot.session).toEqual({ sessionId: "session_1", streamIndex: 0 });
+    expect(store.snapshot.status).toBe("ready");
+    expect(onSessionChange).toHaveBeenCalledWith({ sessionId: "session_1", streamIndex: 0 });
+    expect(prepareSend).not.toHaveBeenCalled();
+    expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  it("discards a creation result after reset", async () => {
+    const accepted = Promise.withResolvers<Response>();
+    vi.spyOn(globalThis, "fetch").mockReturnValue(accepted.promise);
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+
+    const prewarm = store.prewarm();
+    store.reset();
+    accepted.resolve(
+      Response.json({ ok: true, sessionId: "stale_session", status: "accepted" }, { status: 202 }),
+    );
+    await prewarm;
+
+    expect(store.snapshot.session).toBeUndefined();
+  });
+
+  it("sends through the prewarmed session when submission races creation", async () => {
+    const accepted = Promise.withResolvers<Response>();
+    const events = turnEvents().map((event) => ({
+      ...event,
+      meta: { ...event.meta, deliveryIds: ["delivery_1"] },
+    }));
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(accepted.promise)
+      .mockResolvedValueOnce(startedResponse())
+      .mockResolvedValueOnce(streamResponse(events));
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+
+    const prewarm = store.prewarm();
+    const send = store.send({ message: "Hello" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    accepted.resolve(
+      Response.json({ ok: true, sessionId: "session_1", status: "accepted" }, { status: 202 }),
+    );
+    await Promise.all([prewarm, send]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]![0]).toBe("/eve/v1/session");
+    expect(fetchMock.mock.calls[1]![0]).toBe("/eve/v1/session/session_1");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toMatchObject({
+      message: "Hello",
+    });
+    expect(store.snapshot.status).toBe("ready");
+  });
+});
+
 describe("EveAgentStore stream overlap", () => {
   it("reconstructs a split message across an in-memory stream reconnect", async () => {
     const events = streamingTurnEvents();

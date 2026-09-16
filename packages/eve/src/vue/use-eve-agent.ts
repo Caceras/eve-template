@@ -55,6 +55,8 @@ export interface UseEveAgentReturn<TData> {
   readonly events: ComputedRef<readonly MessageStreamEvent[]>;
   /** Replay the attached durable session and follow its in-flight turn, if any. */
   readonly resume: () => Promise<void>;
+  /** Create the session without starting its first turn. */
+  readonly prewarm: () => Promise<void>;
   /** Clear all state and start a new session. */
   readonly reset: () => void;
   /** Send a message with optional turn settings. */
@@ -156,7 +158,7 @@ export function useEveAgent<TData>(
  * Without a `reducer`, events project into `EveMessageData` via
  * `defaultMessageReducer()`; pass `reducer` to project into a custom `TData`.
  * Returns reactive refs (`data`, `error`, `events`, `session`, `status`) plus
- * `send`, `respond`, `resume`, `cancel`, and `reset`. Configuration is read once on store creation;
+ * `prewarm`, `send`, `respond`, `resume`, `cancel`, and `reset`. Configuration is read once on store creation;
  * remount to change it. On scope dispose, the in-flight request is detached and
  * the store unsubscribed.
  */
@@ -206,6 +208,7 @@ export function useEveAgent<TData>(
     data: computed(() => snapshot.value.data),
     error: computed(() => snapshot.value.error),
     events: computed(() => snapshot.value.events),
+    prewarm: () => store.prewarm(),
     reset: () => store.reset(),
     respond: <TOutput = unknown>(
       inputResponses: Parameters<ClientSession["respond"]>[0],

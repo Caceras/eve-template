@@ -74,6 +74,8 @@ export interface CreateExecutionNodeStepInput {
   readonly handleEvent?: HandleEventFn;
   readonly historyProjector?: HistoryViewProjector;
   readonly historyView?: PreparedHistoryView;
+  /** Runs session lifecycle initialization without opening a turn or calling the model. */
+  readonly initializeOnly?: boolean;
   readonly instrumentation: ExecutionInstrumentation | undefined;
   readonly mode: RunMode;
   readonly modelResolutionScope: RuntimeModelResolutionScope;
@@ -104,6 +106,7 @@ export function createExecutionNodeStep(input: CreateExecutionNodeStepInput): St
     handleEvent: input.handleEvent,
     historyProjector: input.historyProjector,
     historyView: input.historyView,
+    initializeOnly: input.initializeOnly,
     instrumentation: sessionInstrumentation,
     mode: input.mode,
     onCompaction: preserveFrameworkStateOnCompaction,
