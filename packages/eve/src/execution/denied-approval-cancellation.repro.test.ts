@@ -6,7 +6,7 @@ import { ContextContainer } from "#context/container.js";
 import { AuthKey, ContinuationTokenKey, ModeKey, SessionIdKey } from "#context/keys.js";
 import { serializeContext } from "#context/serialize.js";
 import { createDurableSessionState } from "#execution/durable-session-store.js";
-import { turnStep } from "#execution/workflow-steps.js";
+import { turnStep } from "#execution/session/turn-step.js";
 import { appendPendingInputBatch, hasPendingInputBatch } from "#harness/input-requests.js";
 import { createToolLoopHarness } from "#harness/tool-loop.js";
 import { TurnCancelledError } from "#harness/turn-cancellation.js";
@@ -116,32 +116,33 @@ describe("issue #3414", () => {
       }),
     });
 
-    mocks.createExecutionNodeStep.mockImplementation((input: {
-      readonly abortSignal?: AbortSignal;
-      readonly handleEvent?: (
-        event: UnstampedMessageStreamEvent,
-        messages?: readonly import("ai").ModelMessage[],
-      ) => Promise<void>;
-      readonly mode: "conversation" | "task";
-    }) =>
-      createToolLoopHarness({
-        abortSignal: input.abortSignal,
-        handleEvent: async (event, messages) => {
-          events.push(event);
-          await input.handleEvent?.(event, messages);
-          if (
-            event.type === "action.result" &&
-            event.data.status === "rejected" &&
-            (event.data.result as { readonly output?: { readonly code?: string } }).output?.code ===
-              "TOOL_EXECUTION_DENIED"
-          ) {
-            sawRejectedAction = true;
-          }
-        },
-        mode: input.mode,
-        resolveModel: vi.fn().mockResolvedValue(model),
-        tools: new Map(),
-      }),
+    mocks.createExecutionNodeStep.mockImplementation(
+      (input: {
+        readonly abortSignal?: AbortSignal;
+        readonly handleEvent?: (
+          event: UnstampedMessageStreamEvent,
+          messages?: readonly import("ai").ModelMessage[],
+        ) => Promise<void>;
+        readonly mode: "conversation" | "task";
+      }) =>
+        createToolLoopHarness({
+          abortSignal: input.abortSignal,
+          handleEvent: async (event, messages) => {
+            events.push(event);
+            await input.handleEvent?.(event, messages);
+            if (
+              event.type === "action.result" &&
+              event.data.status === "rejected" &&
+              (event.data.result as { readonly output?: { readonly code?: string } }).output
+                ?.code === "TOOL_EXECUTION_DENIED"
+            ) {
+              sawRejectedAction = true;
+            }
+          },
+          mode: input.mode,
+          resolveModel: vi.fn().mockResolvedValue(model),
+          tools: new Map(),
+        }),
     );
 
     const session = appendPendingInputBatch({
@@ -191,12 +192,12 @@ describe("issue #3414", () => {
     const result = await turnStep({
       abortSignal: controller.signal,
       input: {
-        kind: "deliver",
-        payloads: [
-          { inputResponses: [{ optionId: "cancel", requestId: "approval-1" }] },
-        ],
+        delivery: {
+          kind: "deliver",
+          payloads: [{ inputResponses: [{ optionId: "cancel", requestId: "approval-1" }] }],
+        },
       },
-      parentWritable: createWritable(),
+      sessionWritable: createWritable(),
       serializedContext: createSerializedContext(bundle),
       sessionState: createDurableSessionState({ session }),
     });
