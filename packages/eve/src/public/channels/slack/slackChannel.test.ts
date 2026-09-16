@@ -438,6 +438,7 @@ describe("slackChannel()", () => {
       connector: "slack/my-agent",
       connectorType: "slack",
       principalTypes: ["app" as const],
+      service: "slack",
     };
     const credentials = { botToken: "xoxb-test", vercelConnect };
 

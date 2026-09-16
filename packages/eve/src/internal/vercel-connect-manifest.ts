@@ -7,7 +7,6 @@ export const VERCEL_CONNECT_MANIFEST_SCHEMA_VERSION = 1;
 
 const RFC_7591_MANIFEST_TYPE = "https://datatracker.ietf.org/doc/html/rfc7591";
 const SLACK_API_URL = "https://docs.slack.dev/apis/web-api/";
-const SLACK_MANIFEST_TYPE = "https://docs.slack.dev/reference/app-manifest/";
 const VERCEL_CONNECT_CALLBACK_URL = "https://connect.vercel.com/callback";
 const VERCEL_CONNECT_TRIGGER_URL = "https://connect.vercel.com/trigger?path=";
 
@@ -46,7 +45,7 @@ export function buildVercelConnectRequirements(manifest: {
   readonly channelRoutes: {
     readonly effective: readonly Pick<
       CompiledAgentManifest["channelRoutes"]["effective"][number],
-      "adapterKind" | "logicalPath" | "name" | "slackAppManifest" | "urlPath" | "vercelConnect"
+      "adapterKind" | "logicalPath" | "name" | "manifest" | "urlPath" | "vercelConnect"
     >[];
   };
 }): readonly VercelConnectRequirement[] {
@@ -55,7 +54,8 @@ export function buildVercelConnectRequirements(manifest: {
       const vercelConnect = connection.vercelConnect;
       if (
         vercelConnect?.connectorType === undefined ||
-        vercelConnect.principalTypes === undefined
+        vercelConnect.principalTypes === undefined ||
+        vercelConnect.service === undefined
       ) {
         return [];
       }
@@ -65,7 +65,7 @@ export function buildVercelConnectRequirements(manifest: {
           interfaces: [{ protocol: connection.protocol, url: connection.url }],
           connect: {
             subjectTypes: vercelConnect.principalTypes,
-            service: connectService(vercelConnect.connector, vercelConnect.connectorType),
+            service: vercelConnect.service,
             type: vercelConnect.connectorType,
             manifest: { $type: RFC_7591_MANIFEST_TYPE },
           },
@@ -84,8 +84,9 @@ export function buildVercelConnectRequirements(manifest: {
       if (
         vercelConnect?.connectorType !== "slack" ||
         vercelConnect.principalTypes === undefined ||
+        vercelConnect.service === undefined ||
         channel.adapterKind !== "slack" ||
-        channel.slackAppManifest === undefined
+        channel.manifest === undefined
       ) {
         return [];
       }
@@ -95,9 +96,9 @@ export function buildVercelConnectRequirements(manifest: {
           interfaces: [{ protocol: "custom" as const, url: SLACK_API_URL, npm: "@slack/web-api" }],
           connect: {
             subjectTypes: vercelConnect.principalTypes,
-            service: "slack",
+            service: vercelConnect.service,
             type: vercelConnect.connectorType,
-            manifest: buildConnectSlackManifest(channel.slackAppManifest, channel.urlPath),
+            manifest: buildConnectSlackManifest(channel.manifest, channel.urlPath),
           },
           uses: [
             { kind: "channel" as const, name: channel.name, logicalPath: channel.logicalPath },
@@ -118,7 +119,6 @@ function buildConnectSlackManifest(manifest: JsonObject, triggerPath: string): J
 
   return {
     ...copy,
-    $type: SLACK_MANIFEST_TYPE,
     oauth_config: {
       ...oauthConfig,
       redirect_urls: [VERCEL_CONNECT_CALLBACK_URL],
@@ -133,11 +133,6 @@ function buildConnectSlackManifest(manifest: JsonObject, triggerPath: string): J
 
 function objectValue(value: JsonObject[string] | undefined): JsonObject {
   return isJsonObjectValue(value) ? value : {};
-}
-
-function connectService(connector: string, connectorType: string): string {
-  if (connectorType === "slack") return "slack";
-  return connector.split("/").at(-1) ?? connector;
 }
 
 export async function emitVercelConnectManifest(input: {

@@ -6,6 +6,7 @@ const metadata = {
   connector: "slack/my-agent",
   connectorType: "slack",
   principalTypes: ["app"],
+  service: "slack",
 };
 
 describe("extractVercelConnectMetadata", () => {

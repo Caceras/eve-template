@@ -8,6 +8,7 @@ import {
 describe("Slack app manifests", () => {
   it("builds the native baseline manifest", () => {
     expect(buildSlackAppManifest(defineSlackAppManifest({}), "support")).toEqual({
+      $type: "https://docs.slack.dev/reference/app-manifest/",
       display_information: { name: "support" },
       features: {
         app_home: {

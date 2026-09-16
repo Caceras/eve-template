@@ -148,6 +148,7 @@ describe("normalizeMcpClientConnectionDefinition", () => {
               connector: "oauth/mcp-linear-app",
               connectorType: "oauth",
               principalTypes: ["user"],
+              service: "linear",
             },
           },
         }),
@@ -158,6 +159,7 @@ describe("normalizeMcpClientConnectionDefinition", () => {
         connector: "oauth/mcp-linear-app",
         connectorType: "oauth",
         principalTypes: ["user"],
+        service: "linear",
       });
     });
 

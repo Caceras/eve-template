@@ -71,10 +71,10 @@ export async function compileChannelDefinition(
       exportName: source.exportName,
       adapterKind: extractAdapterKind(definition.adapter),
       cors: definition.cors,
-      slackAppManifest: buildSlackAppManifest(
+      manifest: buildSlackAppManifest(
         rawValue === null || typeof rawValue !== "object"
           ? undefined
-          : (rawValue as { readonly slackAppManifest?: unknown }).slackAppManifest,
+          : (rawValue as { readonly manifest?: unknown }).manifest,
         channelName,
       ),
       vercelConnect: extractVercelConnectMetadata(

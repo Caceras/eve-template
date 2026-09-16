@@ -91,7 +91,7 @@ export interface CompiledChannelDefinition {
    * channel leaves CORS untouched.
    */
   readonly cors?: NormalizedChannelCorsOptions;
-  readonly slackAppManifest?: JsonObject;
+  readonly manifest?: JsonObject;
   readonly vercelConnect?: VercelConnectMetadata;
 }
 
@@ -500,6 +500,7 @@ const compiledVercelConnectMetadataSchema = z
       .array(z.enum(["app", "user"]))
       .readonly()
       .optional(),
+    service: z.string().optional(),
   })
   .strict() satisfies z.ZodType<VercelConnectMetadata>;
 
@@ -515,7 +516,7 @@ const compiledChannelDefinitionSchema = z
     exportName: z.string().optional(),
     adapterKind: z.string().optional(),
     cors: compiledChannelCorsSchema.optional(),
-    slackAppManifest: jsonObjectSchema.optional(),
+    manifest: jsonObjectSchema.optional(),
     vercelConnect: compiledVercelConnectMetadataSchema.optional(),
   })
   .strict();

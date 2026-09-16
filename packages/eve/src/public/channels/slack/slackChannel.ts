@@ -1051,7 +1051,7 @@ export function slackChannel(config: SlackChannelConfig = {}): SlackChannel {
   });
   const credentials = config.credentials as { readonly vercelConnect?: unknown } | undefined;
   return Object.assign(channel, {
-    slackAppManifest: defineSlackAppManifest({ botName: config.botName }),
+    manifest: defineSlackAppManifest({ botName: config.botName }),
     vercelConnect: credentials?.vercelConnect,
   });
 }

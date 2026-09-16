@@ -2,6 +2,8 @@ import type { AppsManifestCreateArguments } from "@slack/web-api";
 
 import { parseJsonObject, type JsonObject } from "#shared/json.js";
 
+export const SLACK_APP_MANIFEST_TYPE = "https://docs.slack.dev/reference/app-manifest/";
+
 export interface SlackAppManifestBuildDefinition {
   readonly build: (channelName: string) => JsonObject;
 }
@@ -13,6 +15,7 @@ export function defineSlackAppManifest(input: {
     build(channelName) {
       const name = (input.botName ?? channelName).slice(0, 35);
       const manifest = {
+        $type: SLACK_APP_MANIFEST_TYPE,
         display_information: { name },
         features: {
           app_home: {
