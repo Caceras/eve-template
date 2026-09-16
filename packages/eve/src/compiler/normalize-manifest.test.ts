@@ -764,7 +764,8 @@ describe("compileAgentManifest source graph", () => {
     const support = compiled.channelRoutes.effective.find(
       (channel) => channel.logicalPath === "channels/support.ts",
     );
-    expect(support?.slackAppManifest).toEqual({
+    expect(support?.manifest).toEqual({
+      $type: "https://docs.slack.dev/reference/app-manifest/",
       display_information: {
         background_color: "#000000",
         description: "Answers support questions.",

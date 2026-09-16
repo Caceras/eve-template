@@ -456,10 +456,11 @@ describe("slackChannel()", () => {
       optionalScopes: ["reactions:write"],
       scopes: ["channels:history"],
     }) as ReturnType<typeof slackChannel> & {
-      readonly slackAppManifest: { readonly build: (channelName: string) => unknown };
+      readonly manifest: { readonly build: (channelName: string) => unknown };
     };
 
-    expect(channel.slackAppManifest.build("support")).toEqual({
+    expect(channel.manifest.build("support")).toEqual({
+      $type: "https://docs.slack.dev/reference/app-manifest/",
       display_information: {
         background_color: "#000000",
         description: "Answers support questions.",
