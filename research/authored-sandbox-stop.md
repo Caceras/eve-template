@@ -52,7 +52,7 @@ flowchart LR
   Vercel stops its persistent sandbox, Docker stops its session container,
   microsandbox stops and detaches its VM, and just-bash disposes its interpreter.
 - A resolved stop preserves the durable session state. A later callback opens
-  the same session through the provider's normal `getOrCreate()` path. Vercel also
+  the same session through the provider's normal `open()` path. Vercel also
   automatically resumes the same handle on later I/O, matching its inactivity
   timeout behavior.
 - eve does not create stop-specific reconnect state. Ordinary step persistence
