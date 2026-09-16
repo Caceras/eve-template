@@ -414,7 +414,7 @@ describe("useEveAgent (Vue composable wiring)", () => {
       .mockResolvedValueOnce(createEagerStreamResponse(events));
 
     const scope = effectScope();
-    const agent = scope.run(() => useEveAgent());
+    const agent = scope.run(() => useEveAgent({ prewarm: false }));
     if (agent === undefined) throw new Error("effect scope did not run");
 
     expect(agent.status.value).toBe("ready");
@@ -451,7 +451,7 @@ describe("useEveAgent (Vue composable wiring)", () => {
       );
 
     const scope = effectScope();
-    const agent = scope.run(() => useEveAgent());
+    const agent = scope.run(() => useEveAgent({ prewarm: false }));
     if (agent === undefined) throw new Error("effect scope did not run");
 
     const dataBeforeDispose = agent.data.value;

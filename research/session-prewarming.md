@@ -16,7 +16,7 @@ the user is still composing their first turn.
 
 The HTTP API accepts `POST /eve/v1/session` with an empty object. The TypeScript client exposes the
 same operation as `client.sessions.create()`. React, Vue, and Svelte accept
-`useEveAgent({ prewarm: true })` to initialize on mount and after reset; `prewarm()` is also available
+`useEveAgent()` to initialize on mount and after reset by default (`prewarm: false` opts out); `prewarm()` is also available
 for explicit control. Existing `client.sessions.create({ message })` calls still create the session and start
 turn zero in one request.
 
@@ -45,7 +45,7 @@ can fall back to create-with-message; an accepted session that fails initializat
 
 ```mermaid
 flowchart LR
-  Mount["mount / reset with prewarm: true"] --> Create["sessions.create()"]
+  Mount["mount / reset (prewarm defaults to true)"] --> Create["sessions.create()"]
   Create --> Pump["session stream"]
   Pump --> Ready["initial session.waiting"]
   Ready --> Send["send pending message"]

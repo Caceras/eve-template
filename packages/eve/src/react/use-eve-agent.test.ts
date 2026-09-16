@@ -150,7 +150,7 @@ afterEach(async () => {
 });
 
 describe("useEveAgent", () => {
-  it("prewarms once in Strict Mode and opens a fresh session after reset", async () => {
+  it.each([undefined, true])("prewarms in Strict Mode (prewarm=%s)", async (prewarm) => {
     const streams: Array<{ signal: AbortSignal; cancel: ReturnType<typeof vi.fn> }> = [];
     let creates = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_request, init) => {
@@ -170,7 +170,7 @@ describe("useEveAgent", () => {
     });
     let agent: UseEveAgentHelpers<EveMessageData> | undefined;
     function Chat() {
-      agent = useEveAgent({ prewarm: true });
+      agent = useEveAgent({ prewarm });
       return null;
     }
     let root: ReturnType<typeof create> | undefined;
@@ -206,7 +206,7 @@ describe("useEveAgent", () => {
     let root: ReturnType<typeof create> | undefined;
 
     function TestComponent({ label: _label }: { readonly label: string }) {
-      seenHelpers.push(useEveAgent());
+      seenHelpers.push(useEveAgent({ prewarm: false }));
       return null;
     }
 
@@ -247,7 +247,7 @@ describe("useEveAgent", () => {
     let root: ReturnType<typeof create> | undefined;
 
     function TestComponent() {
-      helpers = useEveAgent();
+      helpers = useEveAgent({ prewarm: false });
       return null;
     }
 
@@ -274,7 +274,7 @@ describe("useEveAgent", () => {
     });
   });
 
-  it("sends a message and projects streamed events with the default reducer", async () => {
+  it("defers creation until send with prewarm disabled and projects streamed events", async () => {
     const events = [
       createMessageReceivedEvent({
         message: "Hello",
@@ -303,6 +303,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         onEvent(event) {
           lifecycle.push(`event:${event.type}`);
           seenEvents.push(event);
@@ -318,6 +319,15 @@ describe("useEveAgent", () => {
     await act(async () => {
       create(createElement(TestComponent));
     });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      helpers?.reset();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(helpers?.session).toBeUndefined();
+    lifecycle.length = 0;
+    seenSessions.length = 0;
 
     let sendPromise: Promise<void> | undefined;
     await act(async () => {
@@ -366,7 +376,7 @@ describe("useEveAgent", () => {
     let helpers: UseEveAgentHelpers<EveMessageData> | undefined;
 
     function TestComponent() {
-      helpers = useEveAgent();
+      helpers = useEveAgent({ prewarm: false });
       return null;
     }
 
@@ -408,6 +418,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         prepareSend(input) {
           return {
             ...input,
@@ -463,6 +474,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         agent: "support",
       });
       return null;
@@ -497,6 +509,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         onError(error) {
           seenErrors.push(error);
         },
@@ -546,6 +559,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         onFinish(snapshot) {
           seenFinishes.push(snapshot.data);
         },
@@ -628,6 +642,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         onError(error) {
           seenErrors.push(error);
         },
@@ -696,6 +711,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
+        prewarm: false,
         onError(error) {
           seenErrors.push(error);
         },
@@ -726,7 +742,7 @@ describe("useEveAgent", () => {
 
   it("requires a session when automatic resume is enabled", async () => {
     function TestComponent() {
-      useEveAgent({ resume: true });
+      useEveAgent({ prewarm: false, resume: true });
       return null;
     }
 

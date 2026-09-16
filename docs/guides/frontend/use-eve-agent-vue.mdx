@@ -109,7 +109,8 @@ See [Human-in-the-loop prompts](./overview#human-in-the-loop-prompts) for reques
 
 ## Cancel, reset, and resume
 
-Pass `prewarm: true` to `useEveAgent` to prepare an owned session on mount and after reset.
+`useEveAgent` prepares an owned session on mount and after reset by default. Pass
+`prewarm: false` to defer session creation until the first send.
 The binding waits for session readiness before sending and keeps the session stream open across
 turns. See [Prewarming and returned state](./overview#returned-state) for creation, failure, and
 connection behavior.

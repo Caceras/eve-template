@@ -77,7 +77,7 @@ export class EveAgentStore<TData> {
   #status: EveAgentStoreStatus = "ready";
 
   constructor(init: EveAgentStoreInit<TData>) {
-    this.#autoPrewarm = init.prewarm ?? false;
+    this.#autoPrewarm = init.prewarm ?? true;
     this.#externalSession = init.session !== undefined;
     this.#client = this.#externalSession
       ? undefined

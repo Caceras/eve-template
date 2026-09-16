@@ -141,6 +141,7 @@ describe("useEveAgent (Svelte rune binding)", () => {
     const seenEvents: UnstampedMessageStreamEvent[] = [];
 
     const agent = useEveAgent({
+      prewarm: false,
       onEvent(event) {
         seenEvents.push(event);
       },

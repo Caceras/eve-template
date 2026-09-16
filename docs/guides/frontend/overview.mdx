@@ -86,17 +86,19 @@ export function Chat() {
 
 Most chat UIs only need `data.messages` and `status`. Drop down to `events` when you need the authoritative wire events directly, for example to persist an audit log or build a custom projection.
 
-Pass `prewarm: true` to prepare a session when the chat mounts and after each reset:
+`useEveAgent()` prepares a session when the chat mounts and after each reset by default:
 
 ```tsx
 import { useEveAgent } from "eve/react";
 
 export function Chat() {
-  const agent = useEveAgent({ prewarm: true });
+  const agent = useEveAgent();
 
   return <button onClick={agent.reset}>New chat</button>;
 }
 ```
+
+Pass `prewarm: false` to defer session creation until the first send.
 
 Prewarming creates the session, opens its event stream, and waits for the initial
 `session.waiting` event. It leaves the composer at `"ready"` and does not run `prepareSend`.
@@ -116,8 +118,8 @@ does not close the connection. The transport reconnects from its cursor after a 
 server's renewable 60-second lease; lease renewal does not start a turn or clear UI state.
 Unmounting or resetting closes the local stream without cancelling the old durable session.
 
-`reset()` reuses the hook instance and clears the conversation. With `prewarm: true`, it immediately
-prepares the next owned session; otherwise, the next send creates it. An explicitly supplied
+`reset()` reuses the hook instance and clears the conversation. By default, it immediately
+prepares the next owned session; with `prewarm: false`, the next send creates it. An explicitly supplied
 `session` remains externally owned and is never replaced by prewarming or reset. Use
 `initialSession` with `resume: true` to restore a saved chat.
 

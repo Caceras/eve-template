@@ -111,7 +111,7 @@ export interface UseEveAgentOptions<TData> extends EveAgentStoreCallbacks<TData>
    * @default true
    */
   readonly optimistic?: boolean;
-  /** Prewarm an owned session on mount and after reset. @default false */
+  /** Prewarm an owned session on mount and after reset. @default true */
   readonly prewarm?: boolean;
   readonly reducer?: EveAgentReducer<TData>;
   /**
