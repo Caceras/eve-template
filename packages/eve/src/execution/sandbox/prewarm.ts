@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import type { CompiledWorkspaceResourceRoot } from "#compiler/manifest.js";
 import { loadCompiledModuleMapFromAuthoredSource } from "#internal/authored-module-map-loader.js";
@@ -204,10 +205,7 @@ async function collectPrewarmTargets(input: {
 
   await Promise.all(
     collectNodeSandboxes(input.graph).map(async ({ definition, nodeId, workspaceResourceRoot }) => {
-      const resolvedAgentRoot =
-        nodeId === ROOT_RUNTIME_AGENT_NODE_ID
-          ? join(input.appRoot, "agent")
-          : join(input.appRoot, "agent", nodeId);
+      const resolvedAgentRoot = await resolveAuthoredAgentRoot(input.appRoot, nodeId);
       const sandboxRoot = join(resolvedAgentRoot, "sandbox");
       const templatePlan = createRuntimeSandboxTemplatePlan({
         definition,
@@ -301,6 +299,12 @@ async function loadGraphFromArtifacts(input: {
     manifest,
     moduleMap,
   });
+}
+
+async function resolveAuthoredAgentRoot(appRoot: string, nodeId: string): Promise<string> {
+  const path =
+    nodeId === ROOT_RUNTIME_AGENT_NODE_ID ? join(appRoot, "agent") : join(appRoot, "agent", nodeId);
+  return (await stat(path)).isDirectory() ? path : dirname(path);
 }
 
 function collectNodeSandboxes(graph: ResolvedAgentGraphBundle): readonly NodeSandbox[] {
