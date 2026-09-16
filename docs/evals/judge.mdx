@@ -28,6 +28,8 @@ The judges live under `t.judge.autoevals`. The namespace names the [Braintrust a
 | `t.judge.autoevals.closedQA(criteria)`   | Whether the reply satisfies a free-form yes/no criterion (no expected answer to match) |
 | `t.judge.autoevals.sql(expected)`        | Semantic equivalence of two SQL statements                                             |
 
+Judges receive the latest message text from the session whose turn most recently settled as the input prompt. Approval responses and stream reads preserve that prompt. For multipart messages, including `session.sendFile()`, the prompt contains the text parts.
+
 A failed `closedQA` assertion prints the input and judge explanation:
 
 ```text

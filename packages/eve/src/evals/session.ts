@@ -237,7 +237,15 @@ export class EvalSessionDriver implements EveEvalSession {
       events,
       observe: (event) => this.#observeEvent(sessionId, event),
       record: (observed) => {
-        this.#lastInput = typeof message === "string" ? message : "";
+        if (message !== undefined) {
+          this.#lastInput =
+            typeof message === "string"
+              ? message
+              : message
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text)
+                  .join("\n");
+        }
         return this.#recordObservedTurn(sessionId, observed);
       },
       session: this,
