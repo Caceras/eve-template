@@ -23,10 +23,12 @@ export async function runTuiLinkCommand(
   },
 ) {
   let result: Awaited<ReturnType<typeof runLinkFlow>>;
+  let loginConfirmed = false;
   while (true) {
     try {
       result = await dependencies.runLinkFlow({
         appRoot: input.appRoot,
+        authAlreadyConfirmed: loginConfirmed,
         prompter: input.prompter,
         projectSelection: "create-or-link",
         signal: input.signal,
@@ -35,13 +37,16 @@ export async function runTuiLinkCommand(
     } catch (error) {
       if (!(error instanceof HumanActionRequiredError)) throw error;
       const recovery = await recoverVercelHumanAction(error, dependencies, input);
-      if (recovery === "retry") continue;
-      return {
-        message: "/link dismissed.",
-        cancelled: true as const,
-        preserveFlowDiagnostics: false,
-        effect: { kind: "refresh-identity" as const },
-      };
+      if (recovery !== "retry") {
+        return {
+          message: "/link dismissed.",
+          cancelled: true as const,
+          preserveFlowDiagnostics: false,
+          effect: { kind: "refresh-identity" as const },
+        };
+      }
+      loginConfirmed =
+        error.action.kind === "vercel-login" || error.action.kind === "vercel-forbidden";
     }
   }
   return result.kind === "cancelled"

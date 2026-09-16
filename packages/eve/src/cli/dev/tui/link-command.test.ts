@@ -45,5 +45,6 @@ describe("runTuiLinkCommand", () => {
     });
     expect(deps.runLoginFlow).toHaveBeenCalledOnce();
     expect(runLinkFlow).toHaveBeenCalledTimes(2);
+    expect(runLinkFlow.mock.calls[1]?.[0]).toMatchObject({ authAlreadyConfirmed: true });
   });
 });
