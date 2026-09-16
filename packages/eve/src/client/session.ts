@@ -31,6 +31,12 @@ import type {
 
 const SESSION_SEND_RETRY_COUNT = 3;
 const SESSION_SEND_RETRY_BASE_DELAY_MS = 250;
+const followSession = Symbol("followClientSession");
+
+interface FollowSessionOptions extends StreamOptions {
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly onCaughtUp?: () => void;
+}
 
 /**
  * Internal interface that a {@link ClientSession} uses to access client-level
@@ -196,6 +202,10 @@ export class ClientSession {
     return this.#streamAndAdvance(options);
   }
 
+  [followSession](options: FollowSessionOptions): AsyncIterable<MessageStreamEvent> {
+    return this.#streamAndAdvance({ ...options, keepAlive: true });
+  }
+
   #messageResponse<TOutput>(
     response: Response,
     input: SendTurnPayload,
@@ -205,7 +215,8 @@ export class ClientSession {
     response.body?.cancel().catch(() => {});
     return new MessageResponse<TOutput>({
       cancelTurn: async (turnId) => await this.cancel({ turnId }),
-      createStream: () => this.#createEventStream(initialStreamIndex, input, deliveryId),
+      createStream: (source) =>
+        this.#createEventStream(initialStreamIndex, input, deliveryId, source),
       sessionId: this.#state.sessionId,
     });
   }
@@ -214,19 +225,21 @@ export class ClientSession {
     initialStreamIndex: number,
     input: SendTurnPayload,
     deliveryId?: string,
+    source?: AsyncIterable<MessageStreamEvent>,
   ): AsyncGenerator<MessageStreamEvent> {
     let eventCount = 0;
     let started = deliveryId === undefined;
     let reachedBoundary = false;
     const pendingAuthorizations = new Set<string>();
     try {
-      for await (const event of this.#readStream({
-        headers: input.headers,
-        keepAlive: shouldKeepActiveTurnAlive(input.streamReconnectPolicy),
-        signal: input.signal,
-        startIndex: initialStreamIndex,
-        streamReconnectPolicy: input.streamReconnectPolicy,
-      })) {
+      for await (const event of source ??
+        this.#readStream({
+          headers: input.headers,
+          keepAlive: shouldKeepActiveTurnAlive(input.streamReconnectPolicy),
+          signal: input.signal,
+          startIndex: initialStreamIndex,
+          streamReconnectPolicy: input.streamReconnectPolicy,
+        })) {
         eventCount += 1;
         if (deliveryId !== undefined) {
           const matches = event.meta?.deliveryIds?.includes(deliveryId) === true;
@@ -266,17 +279,25 @@ export class ClientSession {
     }
   }
 
-  async *#streamAndAdvance(options?: StreamOptions): AsyncGenerator<MessageStreamEvent> {
+  async *#streamAndAdvance(
+    options?: FollowSessionOptions & { readonly keepAlive?: boolean },
+  ): AsyncGenerator<MessageStreamEvent> {
     const startIndex = options?.startIndex ?? this.#state.streamIndex;
     let eventCount = 0;
     try {
       for await (const event of this.#readStream({
         follow: options?.follow,
+        headers: options?.headers,
+        keepAlive: options?.keepAlive,
+        onCaughtUp: options?.onCaughtUp,
         signal: options?.signal,
         startIndex,
         streamReconnectPolicy: options?.streamReconnectPolicy,
       })) {
         eventCount += 1;
+        if (startIndex >= 0) {
+          this.#state = { sessionId: this.#state.sessionId, streamIndex: startIndex + eventCount };
+        }
         yield event;
       }
     } finally {
@@ -290,6 +311,7 @@ export class ClientSession {
   }
 
   #readStream(input: {
+    readonly onCaughtUp?: () => void;
     readonly follow?: boolean;
     readonly headers?: Readonly<Record<string, string>>;
     readonly keepAlive?: boolean;
@@ -298,6 +320,7 @@ export class ClientSession {
     readonly streamReconnectPolicy?: StreamOptions["streamReconnectPolicy"];
   }): AsyncIterable<MessageStreamEvent> {
     return followStreamIterable({
+      onCaughtUp: input.onCaughtUp,
       follow: input.follow,
       host: this.#context.host,
       keepAlive: input.keepAlive,
@@ -309,6 +332,14 @@ export class ClientSession {
       streamReconnectPolicy: input.streamReconnectPolicy,
     });
   }
+}
+
+/** @internal Follow continuously while the frontend owns the session. */
+export function followClientSession(
+  session: ClientSession,
+  options: FollowSessionOptions,
+): AsyncIterable<MessageStreamEvent> {
+  return session[followSession](options);
 }
 
 async function postSessionSend(

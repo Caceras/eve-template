@@ -2,6 +2,7 @@ import { shallowRef, computed, onScopeDispose, type ComputedRef } from "vue";
 import type { UserContent } from "ai";
 
 import {
+  attachEveAgentStore,
   detachEveAgentStore,
   EveAgentStore,
   type EveAgentStoreCallbacks,
@@ -127,6 +128,8 @@ export interface UseEveAgentOptions<TData> extends EveAgentStoreCallbacks<TData>
    * @default true
    */
   readonly optimistic?: boolean;
+  /** Prewarm an owned session on mount and after reset. @default false */
+  readonly prewarm?: boolean;
   /**
    * Projects stream events into `TData`.
    *
@@ -177,6 +180,7 @@ export function useEveAgent<TData>(
     initialEvents: options.initialEvents,
     initialSession: options.initialSession,
     optimistic: options.optimistic,
+    prewarm: options.prewarm,
     reducer,
     session: options.session,
   });
@@ -195,6 +199,7 @@ export function useEveAgent<TData>(
     const unsubscribe = store.subscribe(() => {
       snapshot.value = store.snapshot;
     });
+    attachEveAgentStore(store);
     if (options.resume) void store.resume();
 
     onScopeDispose(() => {

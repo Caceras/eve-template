@@ -1,4 +1,6 @@
-import type { SendTurnPayload } from "#client/types.js";
+import type { ActiveTurn } from "#client/eve-agent-store-state.js";
+import type { MessageResponse } from "#client/message-response.js";
+import type { CancelSessionResult, SendTurnPayload } from "#client/types.js";
 import { isCurrentTurnBoundaryEvent, type MessageStreamEvent } from "#protocol/message.js";
 import type { UserContent } from "ai";
 
@@ -76,4 +78,46 @@ export function toTerminalStreamFailureError(event: MessageStreamEvent): Error |
   const error = new Error(event.data.message);
   error.name = event.data.code;
   return error;
+}
+
+export function createActiveTurn(
+  cancel: (turn: ActiveTurn) => Promise<CancelSessionResult>,
+): ActiveTurn {
+  const response = Promise.withResolvers<MessageResponse | undefined>();
+  const completion = Promise.withResolvers<void>();
+  const turn: ActiveTurn = {
+    abortController: new AbortController(),
+    acceptedFollowUps: 0,
+    cancel: () => cancel(turn),
+    completion: completion.promise,
+    followUpDispatches: new Set(),
+    receivedFollowUps: 0,
+    receivedFollowUpEvents: new Set(),
+    followUpSubmissionIds: new Set(),
+    resolveCompletion: completion.resolve,
+    response: response.promise,
+    resolveResponse: response.resolve,
+  };
+  return turn;
+}
+
+export async function followSteeredTurns(
+  turn: ActiveTurn,
+  events: AsyncIterable<MessageStreamEvent>,
+  isActive: () => boolean,
+): Promise<void> {
+  while (turn.followUpDispatches.size > 0) {
+    await Promise.allSettled(turn.followUpDispatches);
+  }
+  if (turn.receivedFollowUps >= turn.acceptedFollowUps) return;
+  for await (const event of events) {
+    if (!isActive()) return;
+    if (turn.receivedFollowUpEvents.delete(event)) turn.receivedFollowUps += 1;
+    if (isCurrentTurnBoundaryEvent(event)) {
+      while (turn.followUpDispatches.size > 0) {
+        await Promise.allSettled(turn.followUpDispatches);
+      }
+      if (turn.receivedFollowUps >= turn.acceptedFollowUps) return;
+    }
+  }
 }

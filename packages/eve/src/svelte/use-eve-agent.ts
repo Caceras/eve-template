@@ -1,7 +1,9 @@
+import { onMount } from "svelte";
 import { createSubscriber } from "svelte/reactivity";
 import type { UserContent } from "ai";
 
 import {
+  attachEveAgentStore,
   detachEveAgentStore,
   EveAgentStore,
   type EveAgentStoreCallbacks,
@@ -128,6 +130,8 @@ export interface UseEveAgentOptions<TData> extends EveAgentStoreCallbacks<TData>
    * @default true
    */
   readonly optimistic?: boolean;
+  /** Prewarm an owned session on mount and after reset. @default false */
+  readonly prewarm?: boolean;
   /**
    * Projects stream events into `TData`. Defaults to {@link defaultMessageReducer},
    * which fixes `TData` to {@link EveMessageData}.
@@ -160,7 +164,6 @@ class SvelteEveAgent<TData> implements UseEveAgentReturn<TData> {
 
       return () => {
         unsubscribe();
-        detachEveAgentStore(store);
       };
     });
   }
@@ -252,6 +255,7 @@ export function useEveAgent<TData>(
     initialEvents: options.initialEvents,
     initialSession: options.initialSession,
     optimistic: options.optimistic,
+    prewarm: options.prewarm,
     reducer,
     session: options.session,
   });
@@ -263,7 +267,12 @@ export function useEveAgent<TData>(
     onSessionChange: options.onSessionChange,
     prepareSend: options.prepareSend,
   });
-  if ("window" in globalThis && options.resume) void store.resume();
+  if ("window" in globalThis)
+    onMount(() => {
+      attachEveAgentStore(store);
+      if (options.resume) void store.resume();
+      return () => detachEveAgentStore(store);
+    });
 
   return new SvelteEveAgent(store);
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
+  attachEveAgentStore,
   detachEveAgentStore,
   EveAgentStore,
   type EveAgentStoreCallbacks,
@@ -110,6 +111,8 @@ export interface UseEveAgentOptions<TData> extends EveAgentStoreCallbacks<TData>
    * @default true
    */
   readonly optimistic?: boolean;
+  /** Prewarm an owned session on mount and after reset. @default false */
+  readonly prewarm?: boolean;
   readonly reducer?: EveAgentReducer<TData>;
   /**
    * Replay the attached durable session after mount and follow its in-flight
@@ -139,7 +142,7 @@ export function useEveAgent<TData>(
  * infer `TData`.
  *
  * Session-shaping options (`host`, `reducer`, `session`, `initialEvents`,
- * `initialSession`, `auth`, `headers`, `optimistic`, `resume`) are
+ * `initialSession`, `auth`, `headers`, `optimistic`, `prewarm`, `resume`) are
  * read once when the store is created; remount to change them. Lifecycle
  * callbacks (`onError`, `onEvent`, `onFinish`, `onSessionChange`, `prepareSend`)
  * refresh on every render.
@@ -167,6 +170,7 @@ export function useEveAgent<TData>(
       initialEvents: options.initialEvents,
       initialSession: options.initialSession,
       optimistic: options.optimistic,
+      prewarm: options.prewarm,
       reducer,
       session: options.session,
     });
@@ -191,7 +195,13 @@ export function useEveAgent<TData>(
     () => store.snapshot,
   );
 
-  useEffect(() => () => detachEveAgentStore(store), [store]);
+  useEffect(() => {
+    const timeout = setTimeout(() => attachEveAgentStore(store), 0);
+    return () => {
+      clearTimeout(timeout);
+      detachEveAgentStore(store);
+    };
+  }, [store]);
   useEffect(() => {
     if (!resumeOnMountRef.current) return;
     let active = true;

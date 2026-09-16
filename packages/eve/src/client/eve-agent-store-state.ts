@@ -51,6 +51,7 @@ export interface EveAgentStoreCallbacks<TData> {
  * Saved events must be an ordered prefix of the same session stream.
  */
 export interface EveAgentStoreInit<TData> {
+  readonly prewarm?: boolean;
   readonly auth?: ClientAuth;
   readonly headers?: HeadersValue;
   readonly host?: string;
@@ -75,6 +76,7 @@ export interface ActiveTurn {
   readonly completion: Promise<void>;
   readonly followUpDispatches: Set<Promise<void>>;
   receivedFollowUps: number;
+  readonly receivedFollowUpEvents: Set<MessageStreamEvent>;
   readonly followUpSubmissionIds: Set<string>;
   readonly resolveCompletion: () => void;
   readonly response: Promise<MessageResponse | undefined>;

@@ -83,6 +83,8 @@ function resolveStreamReconnectPolicy(
  * Internal configuration for following a durable event stream.
  */
 interface FollowStreamInput {
+  /** Called once after consuming the durable tail captured when the connection opens. */
+  readonly onCaughtUp?: () => void;
   readonly host: string;
   /** Keep reconnecting after empty streams until the consumer aborts or stops iteration. */
   readonly keepAlive?: boolean;
@@ -132,6 +134,7 @@ export async function* followStreamIterable(
   let idleReconnects = 0;
   let initialConnection = true;
   let tailIndex: number | undefined;
+  let caughtUp = false;
 
   while (true) {
     let connection: OpenedStream;
@@ -140,7 +143,8 @@ export async function* followStreamIterable(
         ...input,
         retryPolicy,
         startIndex,
-        requestTailIndex: input.follow === false && tailIndex === undefined,
+        requestTailIndex:
+          (input.follow === false || input.onCaughtUp !== undefined) && tailIndex === undefined,
       });
     } catch (error) {
       if (input.signal?.aborted) {
@@ -149,7 +153,7 @@ export async function* followStreamIterable(
       throw error;
     }
 
-    if (input.follow === false && tailIndex === undefined) {
+    if ((input.follow === false || input.onCaughtUp !== undefined) && tailIndex === undefined) {
       tailIndex = connection.tailIndex;
       if (tailIndex === undefined) {
         connection.close();
@@ -160,7 +164,11 @@ export async function* followStreamIterable(
       }
     }
 
-    if (tailIndex !== undefined && startIndex > tailIndex) {
+    if (!caughtUp && tailIndex !== undefined && startIndex > tailIndex) {
+      caughtUp = true;
+      input.onCaughtUp?.();
+    }
+    if (input.follow === false && tailIndex !== undefined && startIndex > tailIndex) {
       connection.close();
       return;
     }
@@ -169,6 +177,7 @@ export async function* followStreamIterable(
     let leaseEnded = false;
     try {
       for await (const event of readNdjsonStream(connection.body, {
+        signal: input.signal,
         controlVersion: connection.controlVersion,
         idleTimeoutMs: input.streamReadIdleTimeoutMs ?? DEFAULT_STREAM_READ_IDLE_TIMEOUT_MS,
         onLeaseEnded: () => {
@@ -182,7 +191,11 @@ export async function* followStreamIterable(
         idleReconnects = 0;
         yield event;
 
-        if (tailIndex !== undefined && startIndex > tailIndex) {
+        if (!caughtUp && tailIndex !== undefined && startIndex > tailIndex) {
+          caughtUp = true;
+          input.onCaughtUp?.();
+        }
+        if (input.follow === false && tailIndex !== undefined && startIndex > tailIndex) {
           return;
         }
       }
@@ -260,6 +273,7 @@ export async function openStreamBody(
   }
 
   for (let attempt = 0; attempt < openRetryPolicy.maxAttempts; attempt += 1) {
+    input.signal?.throwIfAborted();
     const url = createClientUrl(
       input.host,
       createEveSessionStreamRoutePath(input.sessionId),
@@ -267,6 +281,7 @@ export async function openStreamBody(
     );
 
     const headers = await input.resolveHeaders();
+    input.signal?.throwIfAborted();
     const connectionController = new AbortController();
     const signal = input.signal
       ? AbortSignal.any([input.signal, connectionController.signal])

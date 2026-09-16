@@ -86,36 +86,40 @@ export function Chat() {
 
 Most chat UIs only need `data.messages` and `status`. Drop down to `events` when you need the authoritative wire events directly, for example to persist an audit log or build a custom projection.
 
-Call `prewarm()` when a chat page mounts to move durable session startup ahead of the user's first
-message:
+Pass `prewarm: true` to prepare a session when the chat mounts and after each reset:
 
 ```tsx
-import { useEffect } from "react";
 import { useEveAgent } from "eve/react";
 
 export function Chat() {
-  const agent = useEveAgent();
+  const agent = useEveAgent({ prewarm: true });
 
-  useEffect(() => {
-    void agent.prewarm().catch(() => {
-      // The hook reports errors or retries creation if a send is waiting.
-    });
-  }, [agent.prewarm]);
-
-  // Render the conversation and composer.
+  return <button onClick={agent.reset}>New chat</button>;
 }
 ```
 
-Prewarming keeps `status` at `"ready"` while the request is in flight, does not run `prepareSend`,
-and does not open the event stream. The promise resolves when the server accepts creation;
-initialization may still be running. A failed create rejects the promise and, when no send is
-waiting, sets `status` to `"error"` and populates `error`. Concurrent calls share one creation
-request. If the user submits while creation is still
-in flight, `send()` waits for the accepted session handle and sends the message through that
-session. If prewarming fails, the waiting send creates a session with its message instead and
-reports an error only if that send fails. Calling `prewarm()` during a first send waits for its
-session creation and rejects if creation fails. The configured session timeout starts when
-prewarming creates the session.
+Prewarming creates the session, opens its event stream, and waits for the initial
+`session.waiting` event. It leaves the composer at `"ready"` and does not run `prepareSend`.
+If the user submits before initialization finishes, `send()` waits internally before posting the
+message. The explicit `prewarm()` method remains available and resolves when initialization is
+ready; concurrent calls share the same work. The lower-level `client.sessions.create()` still
+resolves on `202 Accepted`.
+
+If creation fails before a session is accepted, a waiting send falls back to creating a session
+with its message. An initialization failure after acceptance is reported through `error` and
+`onError`; call `reset()` to prepare a fresh session. Without a waiting send, a prewarm failure
+sets `status` to `"error"`. The configured session timeout starts at creation.
+
+The hook keeps consuming one session stream across turns and idle periods. Readiness, replies,
+authorization updates, and turns started elsewhere all update the same projection. A turn settling
+does not close the connection. The transport reconnects from its cursor after a disconnect or the
+server's renewable 60-second lease; lease renewal does not start a turn or clear UI state.
+Unmounting or resetting closes the local stream without cancelling the old durable session.
+
+`reset()` reuses the hook instance and clears the conversation. With `prewarm: true`, it immediately
+prepares the next owned session; otherwise, the next send creates it. An explicitly supplied
+`session` remains externally owned and is never replaced by prewarming or reset. Use
+`initialSession` with `resume: true` to restore a saved chat.
 
 `data.messages` are eve-owned `EveMessage[]`. Common text, reasoning, file, and dynamic-tool parts follow the [AI SDK `UIMessage`](https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message) rendering convention, but the types are not interchangeable. eve also exposes authorization and HITL metadata, and a file part's URL can be absent. Adapt those parts before passing messages to an API typed as `UIMessage[]`.
 
@@ -257,7 +261,7 @@ const agent = useEveAgent({
 The hook accepts these lifecycle callbacks:
 
 - `onEvent(event)`: fires for each eve stream event as it arrives.
-- `onError(error)`: fires when a turn fails or prewarming fails with no send waiting.
+- `onError(error)`: fires when a turn or session stream fails, or prewarming fails with no send waiting.
 - `onFinish(snapshot)`: fires with the final `{ data, status, session, ... }` snapshot once a turn settles.
 - `onSessionChange(session)`: fires when the session cursor advances. Persist it to resume across reloads.
 
@@ -336,9 +340,9 @@ then save a final snapshot in `onFinish`.
 
 `initialEvents` must be an ordered prefix of the same session's stream, but its endpoint does not have to line up exactly with where the stream resumes. When the event count matches `initialSession.streamIndex`, catch-up continues from that cursor. A partial or overlapping saved log falls back to index `0`. Every event carries a stable [`meta.id`](/docs/concepts/sessions-runs-and-streaming#the-event-envelope), and the store drops any event whose id it has already applied, so an overlapping replay renders once and `onEvent` only fires for events your UI has not seen.
 
-For multiple chat threads, keep one saved event log and session cursor per thread. `agent`, `host`, `reducer`, `session`, `initialEvents`, `initialSession`, `auth`, `headers`, `optimistic`, and `resume` are read when the hook creates its store, so remount the chat component when switching threads, for example with `key={chat.id}`.
+For multiple chat threads, keep one saved event log and session cursor per thread. `agent`, `host`, `reducer`, `session`, `initialEvents`, `initialSession`, `auth`, `headers`, `optimistic`, `prewarm`, and `resume` are read when the hook creates its store, so remount the chat component when switching threads, for example with `key={chat.id}`.
 
-Pass `resume: true` with `initialSession` to rebuild the projection from the durable stream after mount. While `status` is `"resuming"`, render hydrated `data` but disable message and HITL submission; do not present cancellation or active-turn progress controls. If catch-up finds an in-flight turn, `status` changes to `"streaming"` before the binding follows it to a boundary. A settled tail changes directly to `"ready"` after a bounded catch-up check, without waiting for the live stream idle timeout. If that check finds a newly started turn or pending authorization, eve keeps following it. A terminal session failure changes to `"error"`.
+Pass `resume: true` with `initialSession` to rebuild the projection from the durable stream after mount. While `status` is `"resuming"`, render hydrated `data` but disable message and HITL submission; do not present cancellation or active-turn progress controls. If catch-up finds an in-flight turn, `status` changes to `"streaming"` before the binding follows it to a boundary. The stream reports its initial durable tail so catch-up can finish without closing the connection or waiting for an idle timeout. A settled tail changes directly to `"ready"`; a newer turn or pending authorization remains `"streaming"`. The connection stays open to receive later events. A terminal session failure changes to `"error"`.
 
 ```tsx
 const agent = useEveAgent({
