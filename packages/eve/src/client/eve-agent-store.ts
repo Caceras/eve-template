@@ -302,11 +302,12 @@ export class EveAgentStore<TData> {
       reader.discard();
       const tail = this.#events.at(-1);
       if (tail !== undefined) this.#applyTerminalStreamFailure(tail);
-      if (this.#error === undefined && !isSettledSessionTail(this.#events)) {
+      if (tail !== undefined && this.#error === undefined && !isSettledSessionTail(this.#events)) {
         this.#status = "streaming";
         this.#publish();
         for await (const event of reader) {
           if (!this.#isActiveTurn(turn)) return;
+          if (turn.receivedFollowUpEvents.delete(event)) turn.receivedFollowUps += 1;
           if (isCurrentTurnBoundaryEvent(event) && this.#pendingAuthorizations.size === 0) break;
         }
       }

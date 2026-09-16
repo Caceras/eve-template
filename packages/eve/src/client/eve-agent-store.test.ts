@@ -586,6 +586,84 @@ describe("EveAgentStore stream overlap", () => {
 });
 
 describe("EveAgentStore session resume", () => {
+  it("resumes an unused prewarmed session and sends its first message on the same stream", async () => {
+    const live = controlledStreamResponse();
+    live.response.headers.set("x-eve-stream-tail-index", "-1");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(live.response)
+      .mockResolvedValueOnce(startedResponse());
+    const store = createStore({
+      initialSession: { sessionId: "session_1", streamIndex: 0 },
+      reducer: defaultMessageReducer(),
+    });
+    const resuming = store.resume();
+
+    await vi.waitFor(() => expect(store.snapshot.status).toBe("ready"));
+    await resuming;
+    expect(store.snapshot.events).toEqual([]);
+
+    const sending = store.send({ message: "Hello" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    for (const event of turnEvents()) {
+      live.emit({ ...event, meta: { ...event.meta, deliveryIds: ["delivery_1"] } });
+    }
+    await sending;
+
+    expect(store.snapshot.status).toBe("ready");
+    expect(store.snapshot.data.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(fetchMock.mock.calls[1]![0]).toBe("/eve/v1/session/session_1");
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(1);
+  });
+
+  it.each([true, false])(
+    "settles steering received while following a resumed turn (optimistic=%s)",
+    async (optimistic) => {
+      const events = stampTestEvents([
+        createMessageReceivedEvent({ message: "First", sequence: 0, turnId: "turn_0" }),
+        createTurnStartedEvent({ sequence: 1, turnId: "turn_0" }),
+        createMessageReceivedEvent({ message: "Instead", sequence: 2, turnId: "turn_0" }),
+        createMessageCompletedEvent({
+          finishReason: "stop",
+          message: "Updated reply.",
+          sequence: 3,
+          stepIndex: 0,
+          turnId: "turn_0",
+        }),
+        createSessionWaitingEvent(),
+      ]);
+      const live = controlledStreamResponse();
+      live.response.headers.set("x-eve-stream-tail-index", "1");
+      live.emit(events[0]!);
+      live.emit(events[1]!);
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(live.response)
+        .mockResolvedValueOnce(startedResponse());
+      const store = createStore({
+        initialSession: { sessionId: "session_1", streamIndex: 0 },
+        optimistic,
+        reducer: defaultMessageReducer(),
+      });
+      const onFinish = vi.fn();
+      store.setCallbacks({ onFinish });
+      const resuming = store.resume();
+      await vi.waitFor(() => expect(store.snapshot.status).toBe("streaming"));
+
+      const steering = store.send({ message: "Instead", turnPolicy: "steer" });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      for (const event of events.slice(2)) live.emit(event);
+
+      await vi.waitFor(() => expect(store.snapshot.status).toBe("ready"));
+      await Promise.all([resuming, steering]);
+      expect(store.snapshot.events).toEqual(events);
+      expect(onFinish).toHaveBeenCalledOnce();
+    },
+  );
+
   it("finishes a settled replay without waiting for the probe stream to idle", async () => {
     const events = turnEvents();
     const probe = controlledStreamResponse();
