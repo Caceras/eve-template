@@ -1394,12 +1394,16 @@ describe("workflowEntry integration", () => {
               kind: "session-timeout",
               ownerRunId: anchor.runId,
             });
-            const anchorHooks = await world.hooks.list({ runId: anchor.runId });
-            expect(
-              anchorHooks.data
-                .map((hook) => hook.token)
-                .filter((token) => !token.startsWith("abrt_")),
-            ).toEqual([`${anchor.runId}:anchor`]);
+            // The successor can finish its turn before the old owner resumes
+            // from activation and disposes its temporary handoff hook.
+            await vi.waitFor(async () => {
+              const anchorHooks = await world.hooks.list({ runId: anchor.runId });
+              expect(
+                anchorHooks.data
+                  .map((hook) => hook.token)
+                  .filter((token) => !token.startsWith("abrt_")),
+              ).toEqual([`${anchor.runId}:anchor`]);
+            });
 
             // A third delivery through the stable session id reaches the successor
             // and still streams on the original run.
