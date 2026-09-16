@@ -150,7 +150,7 @@ afterEach(async () => {
 });
 
 describe("useEveAgent", () => {
-  it.each([undefined, true])("prewarms in Strict Mode (prewarm=%s)", async (prewarm) => {
+  it("prewarms in Strict Mode when explicitly enabled", async () => {
     const streams: Array<{ signal: AbortSignal; cancel: ReturnType<typeof vi.fn> }> = [];
     let creates = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_request, init) => {
@@ -170,7 +170,7 @@ describe("useEveAgent", () => {
     });
     let agent: UseEveAgentHelpers<EveMessageData> | undefined;
     function Chat() {
-      agent = useEveAgent({ prewarm });
+      agent = useEveAgent({ prewarm: true });
       return null;
     }
     let root: ReturnType<typeof create> | undefined;
@@ -274,7 +274,7 @@ describe("useEveAgent", () => {
     });
   });
 
-  it("defers creation until send with prewarm disabled and projects streamed events", async () => {
+  it.each([undefined, false])("defers creation until send (prewarm=%s)", async (prewarm) => {
     const events = [
       createMessageReceivedEvent({
         message: "Hello",
@@ -303,7 +303,7 @@ describe("useEveAgent", () => {
 
     function TestComponent() {
       helpers = useEveAgent({
-        prewarm: false,
+        prewarm,
         onEvent(event) {
           lifecycle.push(`event:${event.type}`);
           seenEvents.push(event);

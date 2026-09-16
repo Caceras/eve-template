@@ -109,10 +109,9 @@ See [Human-in-the-loop prompts](./overview#human-in-the-loop-prompts) for reques
 
 ## Cancel, reset, and resume
 
-`useEveAgent` prepares an owned session on mount and after reset by default. Pass
-`prewarm: false` to defer session creation until the first send.
-The binding waits for session readiness before sending and keeps the session stream open across
-turns. See [Prewarming and returned state](./overview#returned-state) for creation, failure, and
+Pass `prewarm: true` to prepare an owned workflow on mount and after reset. It defaults
+to `false`, so the first send creates the session. The binding waits for create acceptance,
+retries while the inbox starts, and keeps the session stream open across turns. See [Prewarming and returned state](./overview#returned-state) for creation, failure, and
 connection behavior.
 
 Call `cancel()` to stop the durable server-side turn while the composable remains attached through settlement. Disposing the component only disconnects its local stream; it does not cancel server execution. Call `reset()` to clear local state and start a new session. Pass `initialSession`, `initialEvents`, and `resume: true` to restore a saved conversation and follow an in-flight turn. During bounded catch-up, `status.value` is `"resuming"`; keep the hydrated conversation visible, disable submission, and wait for `"ready"`, `"error"`, or `"streaming"`. Use `resume()` directly when restoration is controlled imperatively. See [Resumable sessions](./overview#resumable-sessions) for the persistence contract and [Sending and streaming](./overview#sending-and-streaming) for cancellation behavior.

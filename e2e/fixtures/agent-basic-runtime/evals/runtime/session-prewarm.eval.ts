@@ -9,17 +9,14 @@ interface CreateSessionResponse {
 }
 
 export default defineEval({
-  description: "A message-free session initializes before turn zero and accepts its first message.",
+  description: "A prewarmed workflow initializes only when its first message arrives.",
   async test(t) {
     const created = await createSession(t.target);
-    const initialized = await t.target.watchTurn(created.sessionId).result();
-
-    initialized.event("session.started", { count: 1 });
-    initialized.event("session.waiting", { count: 1 });
-    initialized.notEvent("turn.started");
-    initialized.notEvent("message.received");
-    initialized.notEvent("step.started");
-
+    const message = `Alice opened this chat while the session warmed up. Greet her briefly and include reference ${crypto.randomUUID()}.`;
+    const firstTurn = t.target.watchTurn(created.sessionId, {
+      startIndex: 0,
+    });
+    await continueSession(t.target, created.sessionId, message);
     const connection = new AbortController();
     const stream = await t.target.fetch(`/eve/v1/session/${created.sessionId}/stream`, {
       signal: AbortSignal.any([t.signal, connection.signal]),
@@ -27,20 +24,10 @@ export default defineEval({
     if (!stream.ok || stream.body === null) throw new Error("Expected a live session stream.");
     const events = readEvents(stream.body);
     try {
-      const preamble = await readBoundary(events);
-      await t.require(
-        preamble.map((event) => event.meta.id),
-        equals(initialized.events.map((event) => event.meta.id)),
-      );
-      const message = `Alice opened this chat while the session warmed up. Greet her briefly and include reference ${crypto.randomUUID()}.`;
-      const firstTurn = t.target.watchTurn(created.sessionId, {
-        startIndex: initialized.events.length,
-      });
-      await continueSession(t.target, created.sessionId, message);
       const result = await firstTurn.result();
 
       result.expectOk();
-      result.notEvent("session.started");
+      result.event("session.started", { count: 1 });
       result.event("turn.started", { count: 1, data: { turnId: "turn_0" } });
       result.event("message.received", { count: 1, data: { message, turnId: "turn_0" } });
       result.event("step.started", { count: 1, data: { turnId: "turn_0" } });
@@ -73,13 +60,18 @@ async function continueSession(
   sessionId: string,
   message: string,
 ): Promise<void> {
-  const response = await target.fetch(`/eve/v1/session/${encodeURIComponent(sessionId)}`, {
-    body: JSON.stringify({ message }),
-    headers: { "content-type": "application/json" },
-    method: "POST",
-  });
-  if (!response.ok) {
-    throw new Error(`POST continuation failed (${response.status}): ${await response.text()}`);
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await target.fetch(`/eve/v1/session/${encodeURIComponent(sessionId)}`, {
+      body: JSON.stringify({ message }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    if (response.ok) return;
+    const body = (await response.json()) as { code?: string };
+    if (response.status !== 409 || body.code !== "session_not_ready" || attempt >= 3) {
+      throw new Error(`POST continuation failed (${response.status}): ${JSON.stringify(body)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
   }
 }
 

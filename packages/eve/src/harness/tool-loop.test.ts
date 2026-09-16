@@ -868,47 +868,6 @@ function createGatewayModelCallError(input: {
 }
 
 describe("createToolLoopHarness", () => {
-  it("publishes prewarm lifecycle events to instrumentation after durable emission", async () => {
-    const order: string[] = [];
-    const hooks = createInstrumentationHooks([
-      {
-        name: "prewarm-observer",
-        events: {
-          "session.started": () => {
-            order.push("observed:session.started");
-          },
-          "session.waiting": () => {
-            order.push("observed:session.waiting");
-          },
-        },
-      },
-    ]);
-    const runStep = createToolLoopHarness(
-      createTestConfig(
-        "conversation",
-        async (event) => {
-          order.push(`durable:${event.type}`);
-        },
-        {
-          initializeOnly: true,
-          instrumentation: bindHookInstrumentation(hooks),
-        },
-      ),
-    );
-
-    const result = await runStep(createTestSession());
-
-    expect(order).toEqual([
-      "durable:session.started",
-      "observed:session.started",
-      "durable:session.waiting",
-      "observed:session.waiting",
-    ]);
-    expect(getHarnessEmissionState(result.session.state).sessionStarted).toBe(true);
-    expect(ToolLoopAgent).not.toHaveBeenCalled();
-    expect(result.next).toBeNull();
-  });
-
   it("uses one projected history view for step consumers while preserving raw history", async () => {
     setupMockAgent({
       finishReason: "stop",

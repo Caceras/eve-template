@@ -47,21 +47,15 @@ curl -X POST https://<deployment>/eve/v1/session \
 # {"ok":true,"sessionId":"wrun_A","status":"accepted"}
 ```
 
-The workflow runs session-scoped initialization and parks without starting `turn_0`. Because the
-request has no message, it does not invoke `onMessage`; that hook runs when the first message is
-sent to the returned session ID. Task mode and turn-scoped fields such as `clientContext` and
-`outputSchema` require a message on the create request.
+The workflow establishes its inbox and parks before session initialization or `turn_0`.
+No `session.started` or `session.waiting` event is emitted until a message arrives. The first
+message invokes `onMessage`, then runs session-scoped hooks, dynamic definitions, and sandbox
+setup with that message's auth and context. Its `title` sets the prewarmed workflow's title;
+if omitted, eve derives the title from the first message. Later messages do not rename it.
 
-Session-scoped initialization uses the create request's route auth, or the forwarded
-identity accepted by the channel. This includes `session.started` handlers, dynamic
-definitions, and sandbox setup. The first message's `onMessage` result supplies auth
-and context for that turn; it cannot change initialization that already ran or rename
-the existing workflow through `title`.
-
-Resolve identity needed during initialization in the channel's `auth` policy and supply
-the required credentials or headers on the create request. If initialization depends on
-the first message or an auth transformation in `onMessage`, create with a message instead.
-Frontend bindings prewarm by default; use `prewarm: false` for those channels.
+The create request still requires route auth. Session audience and the timeout are selected
+at creation; they do not change when the first message arrives. Task mode and turn-scoped
+fields such as `clientContext` and `outputSchema` require a message on the create request.
 
 Include an initial message to create the session and start its first turn in one request:
 
@@ -74,7 +68,7 @@ curl -X POST https://<deployment>/eve/v1/session \
 
 The `202` response means Workflow accepted the durable run. The route does not wait for command
 inbox or continuation-token ownership. The inbox may still be starting, so an immediate follow-up
-or control request can report that the session is not active. The event-stream client retries the
+can return `409 session_not_ready`; retry that code with bounded backoff. The event-stream client retries the
 brief window before the new run becomes readable.
 
 Authenticated callers that may retry a create request can pass their own `operationId` for
@@ -105,8 +99,9 @@ curl -X POST https://<deployment>/eve/v1/session/wrun_A \
 
 Follow-up messages use `turnPolicy: "steer"` by default. If a turn is active, eve buffers the message and applies it at the next committed workflow boundary, preserving the turn ID. Set `turnPolicy: "queue"` on `eveChannel(...)` when follow-ups should wait for active turns to finish. `inputResponses` answer their addressed requests.
 
-Sending a message to an unknown, terminal, or not-yet-active session ID returns `409` with
+Sending a message to an unknown or terminal session ID returns `409` with
 `{"code":"session_not_active","error":"The session is no longer active.","ok":false}`.
+An existing workflow whose inbox is not yet available returns `409 session_not_ready` instead.
 TypeScript clients expose the stable code as `ClientError.code`. The route never
 creates or follows a replacement session.
 
@@ -248,7 +243,7 @@ export default eveChannel({
 });
 ```
 
-`onMessage` must return an auth result. Return `title` alongside `auth` to set the title when the dispatch starts a run. A successful canonical eve HTTP message always dispatches and therefore always produces or continues a session.
+`onMessage` must return an auth result. Return `title` alongside `auth` to set the title when the dispatch creates a session or sends the first message to a prewarmed session. A successful canonical eve HTTP message always dispatches and therefore always produces or continues a session.
 
 ## Clients
 

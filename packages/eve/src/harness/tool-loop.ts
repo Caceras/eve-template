@@ -93,7 +93,6 @@ import {
   advanceStep,
   emitFailedStep,
   emitRecoverableFailedTurn,
-  emitSessionPreamble,
   emitStepStarted,
   emitStreamContent,
   emitTurnEpilogue,
@@ -556,21 +555,13 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         settledTurn: { isError: true, output: message },
       };
     };
-    const preparePreambleTrace = async (
-      turnId?: string,
-    ): Promise<RuntimeTraceContext | undefined> => {
-      const preamble: {
-        sequence: number;
-        sessionStarted: boolean;
-        traceContext?: RuntimeTraceContext;
-        turnId?: string;
-      } = {
+    const preparePreambleTrace = async (): Promise<RuntimeTraceContext | undefined> => {
+      return await stepInstrumentation?.preparePreamble({
         sequence: emissionState.sequence,
         sessionStarted: emissionState.sessionStarted,
         traceContext: stepInstrumentation?.traceContext,
-      };
-      if (turnId !== undefined) preamble.turnId = turnId;
-      return await stepInstrumentation?.preparePreamble(preamble);
+        turnId: activeTurnId(emissionState),
+      });
     };
 
     if (config.clearOnly === true) {
@@ -854,7 +845,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         }
         let instructionMessages: UserModelMessage[] = [];
         try {
-          const traceContext = await preparePreambleTrace(activeTurnId(emissionState));
+          const traceContext = await preparePreambleTrace();
           emissionState = await emitTurnPreamble(
             emit,
             preambleStepInput ?? {},
@@ -983,41 +974,27 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
 
     let instructionMessages: UserModelMessage[] = [];
     let memoryCommit: ReturnType<typeof drainMemoryCommit> = undefined;
-    if (emit && (hasStepInput(input) || config.initializeOnly === true)) {
+    if (emit && hasStepInput(input)) {
       if (store !== undefined) {
         prepareDynamicInstructionPreamble(
           store,
           projectHistory(pending.session.history, pending.session.state),
         );
-        if (config.initializeOnly !== true) {
-          prepareMemoryPreamble(store, {
-            history: pending.messages,
-            input: [...ephemeralContextMessages, ...preparedTurnInput],
-            state: pending.session.state,
-          });
-        }
+        prepareMemoryPreamble(store, {
+          history: pending.messages,
+          input: [...ephemeralContextMessages, ...preparedTurnInput],
+          state: pending.session.state,
+        });
       }
       try {
-        const traceContext = await preparePreambleTrace(
-          config.initializeOnly === true ? undefined : activeTurnId(emissionState),
+        const traceContext = await preparePreambleTrace();
+        emissionState = await emitTurnPreamble(
+          emit,
+          preambleStepInput ?? {},
+          emissionState,
+          config.runtimeIdentity,
+          traceContext,
         );
-        if (config.initializeOnly === true) {
-          emissionState = await emitSessionPreamble(
-            emit,
-            emissionState,
-            config.runtimeIdentity,
-            traceContext,
-          );
-          await emit(createSessionWaitingEvent());
-        } else {
-          emissionState = await emitTurnPreamble(
-            emit,
-            preambleStepInput ?? {},
-            emissionState,
-            config.runtimeIdentity,
-            traceContext,
-          );
-        }
       } catch (error) {
         instructionMessages = store === undefined ? [] : drainDynamicInstructionUserMessages(store);
         memoryCommit = store === undefined ? undefined : drainMemoryCommit(store);
@@ -1029,7 +1006,6 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
           ]),
           state: memoryCommit?.state ?? pending.session.state,
         };
-        if (config.initializeOnly === true) throw error;
         return failBoundaryEvent(error, {
           sessionStarted: true,
           sequence: emissionState.sequence,
@@ -1040,9 +1016,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       instructionMessages = store === undefined ? [] : drainDynamicInstructionUserMessages(store);
       memoryCommit = store === undefined ? undefined : drainMemoryCommit(store);
 
-      if (config.initializeOnly !== true) {
-        stepInstrumentation?.setTurnId(emissionState.turnId);
-      }
+      stepInstrumentation?.setTurnId(emissionState.turnId);
     }
 
     const committedHistory = memoryCommit?.history ?? pending.session.history;
@@ -1055,7 +1029,6 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       },
       emissionState,
     );
-    if (config.initializeOnly === true) return { next: null, session };
     let messages: HarnessModelMessage[] = validateHarnessModelMessages([
       ...(memoryCommit?.history ?? pending.messages.slice(0, historyLength)),
       ...instructionMessages,

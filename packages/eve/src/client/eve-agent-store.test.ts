@@ -201,29 +201,6 @@ afterEach(() => {
 });
 
 describe("EveAgentStore prewarming", () => {
-  it("rejects a waiting send when initialization fails without submitting to the failed session", async () => {
-    const failed = stampTestEvents([
-      createSessionFailedEvent({
-        code: "SESSION_FAILED",
-        message: "Initialization failed.",
-        sessionId: "session_1",
-      }),
-    ])[0]!;
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(startedResponse())
-      .mockResolvedValueOnce(streamResponse([failed]));
-    const onError = vi.fn();
-    const store = createStore({ reducer: defaultMessageReducer() });
-    store.setCallbacks({ onError });
-    const prewarm = expect(store.prewarm()).rejects.toThrow("Initialization failed.");
-    const send = store.send({ message: "Hello" });
-    await Promise.all([prewarm, send]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(store.snapshot.status).toBe("error");
-    expect(onError).toHaveBeenCalledOnce();
-  });
-
   it("reports a standalone creation failure and allows another prewarm", async () => {
     const error = new Error("create failed");
     const fetchMock = vi
@@ -241,7 +218,7 @@ describe("EveAgentStore prewarming", () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(error);
 
     await store.prewarm();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(store.snapshot.session?.sessionId).toBe("session_1");
     expect(store.snapshot.status).toBe("ready");
     expect(store.snapshot.error).toBeUndefined();
@@ -355,7 +332,7 @@ describe("EveAgentStore prewarming", () => {
     await first;
 
     expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({});
-    expect(store.snapshot.session).toEqual({ sessionId: "session_1", streamIndex: 1 });
+    expect(store.snapshot.session?.sessionId).toBe("session_1");
     expect(store.snapshot.status).toBe("ready");
     expect(onSessionChange).toHaveBeenCalledWith({ sessionId: "session_1", streamIndex: 0 });
     expect(prepareSend).not.toHaveBeenCalled();
@@ -377,7 +354,7 @@ describe("EveAgentStore prewarming", () => {
     expect(store.snapshot.session).toBeUndefined();
   });
 
-  it("waits for readiness and sends successive turns over one open stream", async () => {
+  it("sends before any stream event and keeps one stream across turns", async () => {
     const live = controlledStreamResponse();
     const accepted = Promise.withResolvers<Response>();
     const fetchMock = vi
@@ -386,7 +363,6 @@ describe("EveAgentStore prewarming", () => {
       .mockResolvedValueOnce(live.response)
       .mockImplementation(async () => startedResponse());
     const store = createStore({ reducer: defaultMessageReducer() });
-    const initialized = stampTestEvents([createSessionWaitingEvent()])[0]!;
     const events = turnEvents().map((event) => ({
       ...event,
       meta: { ...event.meta, deliveryIds: ["delivery_1"] },
@@ -395,10 +371,8 @@ describe("EveAgentStore prewarming", () => {
     const prewarm = store.prewarm();
     const firstSend = store.send({ message: "Hello" });
     accepted.resolve(startedResponse());
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1]![1]?.method).toBeUndefined();
-    live.emit(initialized);
     await prewarm;
+    expect(store.snapshot.events).toEqual([]);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     for (const event of events) live.emit(event);
     await firstSend;
@@ -411,7 +385,7 @@ describe("EveAgentStore prewarming", () => {
     await secondSend;
     expect(store.snapshot.status).toBe("ready");
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(1);
-    expect(store.snapshot.session?.streamIndex).toBe(7);
+    expect(store.snapshot.session?.streamIndex).toBe(6);
   });
 });
 

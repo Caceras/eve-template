@@ -1,3 +1,5 @@
+import { deriveSessionTitle } from "#execution/eve-workflow-attributes.js";
+import { setEveAttributes } from "#runtime/attributes/emit.js";
 import { defaultDeliverResult } from "#channel/adapter.js";
 import { contextStorage } from "#context/container.js";
 import {
@@ -11,6 +13,9 @@ import {
 } from "#context/dynamic-tool-lifecycle.js";
 import {
   AuthKey,
+  InitiatorAuthKey,
+  SessionTitleKey,
+  ParentSessionKey,
   CapabilitiesKey,
   ChannelDeliveryKey,
   HandleEventKey,
@@ -97,10 +102,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   return runSessionStep(rawInput);
 }
 
-export async function runSessionStep(
-  input: TurnStepInput,
-  options: { readonly initializeOnly?: boolean } = {},
-): Promise<DurableStepResult> {
+async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> {
   // The delivery as accepted, before authorization callbacks are matched out of it.
   const rawDelivery = input.input?.delivery;
   let delivery = rawDelivery;
@@ -156,6 +158,7 @@ export async function runSessionStep(
   // input has no auth; it was seeded by buildRunContext).
   if (delivery?.auth !== undefined) {
     ctx.set(AuthKey, delivery.auth ?? null);
+    if (!ctx.has(InitiatorAuthKey)) ctx.set(InitiatorAuthKey, delivery.auth ?? null);
   }
   const backgroundTaskDelivery = getBackgroundTaskDelivery(delivery);
   const initialSession = hydrateDurableSession({
@@ -173,6 +176,18 @@ export async function runSessionStep(
     sessionId: initialSession.sessionId,
   });
   const initialEmissionState = getHarnessEmissionState(initialSession.state);
+  if (
+    !initialEmissionState.sessionStarted &&
+    !ctx.has(SessionTitleKey) &&
+    !ctx.has(ParentSessionKey)
+  ) {
+    const message = rawDelivery?.payloads.find((payload) => payload.message !== undefined)?.message;
+    const title = deriveSessionTitle(rawDelivery?.title ?? message);
+    if (title !== undefined) {
+      ctx.set(SessionTitleKey, title);
+      await setEveAttributes({ "$eve.title": title });
+    }
+  }
 
   if (rawDelivery?.payloads.some((payload) => payload.message !== undefined)) {
     const ids = rawDelivery.deliveryMetadata?.map((entry) => entry.deliveryId) ?? [];
@@ -393,7 +408,6 @@ export async function runSessionStep(
         handleEvent,
         historyProjector: history.projector,
         historyView: history.prepare(modelSession),
-        initializeOnly: options.initializeOnly,
         instrumentation,
         mode,
         modelResolutionScope: {

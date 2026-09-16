@@ -218,8 +218,10 @@ function expectSingleTurn(events: readonly MessageStreamEvent[], turnId: string)
 }
 
 describe("workflowEntry integration", () => {
-  it("initializes and parks a session before its first turn", async () => {
+  it("parks before initialization and initializes with the first message identity and title", async () => {
     let initializedSessions = 0;
+    let initializedAuth: unknown;
+    let initializedInitiator: unknown;
     const runtime = await createTestRuntime({
       agent: { name: "workflow-entry-prewarm" },
       modules: [
@@ -231,6 +233,8 @@ describe("workflowEntry integration", () => {
                 async "session.started"(_event, ctx) {
                   await ctx.getSandbox();
                   initializedSessions += 1;
+                  initializedAuth = ctx.session.auth.current;
+                  initializedInitiator = ctx.session.auth.initiator;
                 },
               },
             }),
@@ -246,6 +250,7 @@ describe("workflowEntry integration", () => {
           ownerDeploymentId: "dpl_inline",
           input: {},
           serializedContext: buildSerializedContext({
+            auth: { authenticator: "test", principalId: "mount", principalType: "user" },
             channelKind: "http",
             mode: "conversation",
           }),
@@ -254,28 +259,54 @@ describe("workflowEntry integration", () => {
       const stream = captureTurnEvents(run);
 
       try {
-        const initialized = await stream.nextTurn();
-        expect(initialized.map((event) => event.type)).toEqual([
-          "session.started",
-          "session.waiting",
-        ]);
-        expect(initializedSessions).toBe(1);
-        expect(filterEventsByType(initialized, "turn.started")).toHaveLength(0);
+        await waitForHook(
+          { runId: run.runId },
+          { token: sessionInboxHookToken(sessionCommandHookToken(run.runId)) },
+        );
         await expectHookClaims(run.runId, [sessionCommandHookToken(run.runId)], {
           cancellation: false,
         });
 
+        const sessionRuntime = createWorkflowRuntime({
+          compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
+        });
+        expect(await sessionRuntime.getStreamTailIndex(run.runId)).toBe(-1);
+        expect(initializedSessions).toBe(0);
+        for (const kind of ["clear", "compact", "cancel"] as const) {
+          await resumeHook(sessionInboxHookToken(sessionCommandHookToken(run.runId)), { kind });
+        }
+        const firstAuth = { authenticator: "test", principalId: "alice", principalType: "user" };
         await resumeHook(sessionInboxHookToken(sessionCommandHookToken(run.runId)), {
-          auth: null,
+          auth: firstAuth,
+          title: "Alice’s first chat",
           kind: "send",
           payload: { message: "Say hello to Alice." },
           turnPolicy: "steer",
         });
 
         const firstTurn = await stream.nextTurn();
-        expect(filterEventsByType(firstTurn, "session.started")).toHaveLength(0);
+        expect(filterEventsByType(firstTurn, "session.started")).toHaveLength(1);
+        expect(initializedSessions).toBe(1);
+        expect(initializedAuth).toEqual(firstAuth);
+        expect(initializedInitiator).toEqual(firstAuth);
+        expect((await (await getWorld()).runs.get(run.runId)).attributes?.["$eve.title"]).toBe(
+          "Alice’s first chat",
+        );
         expectSingleTurn(firstTurn, "turn_0");
         expect(firstTurn.at(-1)?.type).toBe("session.waiting");
+        await resumeHook(sessionInboxHookToken(sessionCommandHookToken(run.runId)), {
+          auth: { ...firstAuth, principalId: "bob" },
+          title: "Do not rename",
+          kind: "send",
+          payload: { message: "Bob joins the conversation. Greet him briefly." },
+        });
+        const secondTurn = await stream.nextTurn();
+        expect(filterEventsByType(secondTurn, "session.started")).toHaveLength(0);
+        expectSingleTurn(secondTurn, "turn_1");
+        expect(initializedSessions).toBe(1);
+        expect((await (await getWorld()).runs.get(run.runId)).attributes?.["$eve.title"]).toBe(
+          "Alice’s first chat",
+        );
       } finally {
         stream.dispose();
         await run.cancel();

@@ -11,7 +11,7 @@ export interface SessionEventStreamOptions {
   readonly onError: (error: unknown) => void;
 }
 
-/** One transport, with short-lived readers for readiness and turn completion. */
+/** One transport, with short-lived readers for catch-up and turn completion. */
 export class SessionEventStream {
   readonly #controller = new AbortController();
   readonly #readers = new Set<SessionEventReader>();

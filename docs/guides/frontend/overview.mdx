@@ -86,47 +86,46 @@ export function Chat() {
 
 Most chat UIs only need `data.messages` and `status`. Drop down to `events` when you need the authoritative wire events directly, for example to persist an audit log or build a custom projection.
 
-`useEveAgent()` prepares a session when the chat mounts and after each reset by default:
+Pass `prewarm: true` to start a workflow when the chat mounts and after each reset:
 
 ```tsx
 import { useEveAgent } from "eve/react";
 
 export function Chat() {
-  const agent = useEveAgent();
+  const agent = useEveAgent({ prewarm: true });
 
   return <button onClick={agent.reset}>New chat</button>;
 }
 ```
 
-Pass `prewarm: false` to defer session creation until the first send.
+Prewarming defaults to `false`: the first send creates the session. Enable it when your
+application's auth, headers, and any chat-record binding are ready at mount. Applications
+that prepare those in the submit handler should keep the default.
 
-Prewarming also sends the configured auth and headers before the first send. If your
-application creates a chat record or prepares required credentials in its submit handler,
-complete that setup before mounting the hook, or disable automatic prewarming. Use
-`prewarm: false` for hook instances mounted only to render a read-only view without a
-session. Channels that transform initialization identity in `onMessage` also need to
-[account for the session initialization boundary](../../channels/eve#start-and-continue-a-session).
+Prewarming starts the workflow and establishes its inbox, then parks before session hooks,
+dynamic definitions, or sandbox setup run. The first message passes through the channel's
+`onMessage` hook and supplies the identity and context for initialization and `turn_0`.
 
-Prewarming creates the session, opens its event stream, and waits for the initial
-`session.waiting` event. It leaves the composer at `"ready"` and does not run `prepareSend`.
-If the user submits before initialization finishes, `send()` waits internally before posting the
-message. The explicit `prewarm()` method remains available and resolves when initialization is
-ready; concurrent calls share the same work. The lower-level `client.sessions.create()` still
-resolves on `202 Accepted`.
+The explicit `prewarm()` method resolves on `202 Accepted`, as does `client.sessions.create()`.
+It does not wait for an initialization event; concurrent calls share the same create request.
+The composer stays `"ready"`, meaning it can accept input, and prewarming does not run
+`prepareSend`. A concurrent `send()` waits only for acceptance, then posts the message.
+If the inbox is still starting, the client retries `409 session_not_ready` up to three times
+with delays of 250 ms, 500 ms, and 1 second. Stream events are not a prerequisite for sending.
 
-If creation fails before a session is accepted, a waiting send falls back to creating a session
-with its message. An initialization failure after acceptance is reported through `error` and
-`onError`; call `reset()` to prepare a fresh session. Without a waiting send, a prewarm failure
-sets `status` to `"error"`. The configured session timeout starts at creation.
+A failed create sets `error` and calls `onError` when no send is waiting. A waiting send can
+fall back to creating a session with its message. After creation succeeds, initialization
+failures arrive on the stream during the first turn. The configured session timeout starts
+at creation, so an unused prewarmed session can expire before its first message.
 
-The hook keeps consuming one session stream across turns and idle periods. Readiness, replies,
+The hook keeps consuming one session stream across turns and idle periods. Replies,
 authorization updates, and turns started elsewhere all update the same projection. A turn settling
 does not close the connection. The transport reconnects from its cursor after a disconnect or the
 server's renewable 60-second lease; lease renewal does not start a turn or clear UI state.
 Unmounting or resetting closes the local stream without cancelling the old durable session.
 
-`reset()` reuses the hook instance and clears the conversation. By default, it immediately
-prepares the next owned session; with `prewarm: false`, the next send creates it. An explicitly supplied
+`reset()` reuses the hook instance and clears the conversation. With `prewarm: true`, it
+immediately prepares the next owned session; otherwise, the next send creates it. An explicitly supplied
 `session` remains externally owned and is never replaced by prewarming or reset. Use
 `initialSession` with `resume: true` to restore a saved chat.
 

@@ -4,4 +4,4 @@
 
 Create conversation sessions before their first turn through the eve HTTP channel, TypeScript client, and frontend bindings so applications can move durable session startup off the first-message path.
 
-Frontend bindings prewarm on mount and after reset by default (opt out with `prewarm: false`), wait for initialization before sending, and keep consuming the session stream across turns.
+Frontend bindings support opt-in `prewarm: true`, keep consuming the session stream across turns, and retry a starting inbox without waiting for stream events. Session initialization runs with the first message's identity and context.

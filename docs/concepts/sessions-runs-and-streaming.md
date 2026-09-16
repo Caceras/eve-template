@@ -41,8 +41,8 @@ curl -X POST http://127.0.0.1:2000/eve/v1/session \
   -d '{}'
 ```
 
-eve starts the durable workflow, runs session-scoped initialization, emits `session.started` and
-`session.waiting`, and waits for the first message. The first message sent to the returned
+eve starts the durable workflow, establishes its inbox, and waits for the first message before
+running session-scoped initialization or emitting `session.started`. The first message sent to the returned
 `sessionId` remains `turn_0`. Message-free creation supports conversation mode only and does not
 accept turn-scoped `clientContext`, `outputSchema`, callbacks, or activity observers.
 
@@ -56,8 +56,9 @@ curl -X POST http://127.0.0.1:2000/eve/v1/session \
 
 In both forms, eve responds with `202` and the durable `sessionId` in the JSON body and
 `x-eve-session-id` header as soon as Workflow accepts the run. The command inbox can still be
-starting at that point. An immediate follow-up can return `409 session_not_active`; wait for
-`session.waiting` before sending the next message.
+starting at that point. An immediate follow-up can return `409 session_not_ready`; retry that
+code with bounded backoff. The TypeScript client retries sends up to three times. Do not wait
+for `session.waiting` on a prewarmed session: initialization and its first events require a message.
 
 ## Stream a session
 

@@ -130,11 +130,11 @@ export class ClientSession {
 
   async #send<TOutput = unknown>(
     input: SendTurnPayload<TOutput>,
-    retrySessionNotActive: boolean,
+    retrySessionNotReady: boolean,
   ): Promise<MessageResponse<TOutput>> {
     const initialStreamIndex = this.#state.streamIndex;
     const path = createEveSessionRoutePath(this.#state.sessionId);
-    const response = retrySessionNotActive
+    const response = retrySessionNotReady
       ? await postSessionSend(this.#context, path, input)
       : await postTurn(this.#context, path, input, false);
     const { sessionId: responseSessionId, deliveryId } = await readAcceptedMessage(
@@ -352,7 +352,7 @@ async function postSessionSend(
     try {
       return await postTurn(context, path, input, false);
     } catch (error) {
-      if (!isSessionNotActive(error) || retry >= SESSION_SEND_RETRY_COUNT) throw error;
+      if (!isSessionNotReady(error) || retry >= SESSION_SEND_RETRY_COUNT) throw error;
     }
 
     await sleep(retryDelayMs, input.signal);
@@ -381,10 +381,8 @@ async function postCreateSession(
   return response;
 }
 
-function isSessionNotActive(error: unknown): error is ClientError {
-  return (
-    error instanceof ClientError && error.status === 409 && error.code === "session_not_active"
-  );
+function isSessionNotReady(error: unknown): error is ClientError {
+  return error instanceof ClientError && error.status === 409 && error.code === "session_not_ready";
 }
 
 function shouldKeepActiveTurnAlive(policy: StreamOptions["streamReconnectPolicy"]): boolean {

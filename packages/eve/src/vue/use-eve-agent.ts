@@ -128,7 +128,7 @@ export interface UseEveAgentOptions<TData> extends EveAgentStoreCallbacks<TData>
    * @default true
    */
   readonly optimistic?: boolean;
-  /** Prewarm an owned session on mount and after reset. @default true */
+  /** Prewarm an owned session on mount and after reset. @default false */
   readonly prewarm?: boolean;
   /**
    * Projects stream events into `TData`.

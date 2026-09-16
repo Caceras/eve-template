@@ -70,7 +70,7 @@ export interface EveMessageContext {
 export type EveMessageResult = {
   readonly auth: SessionAuthContext | null;
   readonly context?: readonly string[];
-  /** Sets the title when this message creates a workflow; does not rename existing sessions. */
+  /** Sets the title when creating a workflow or sending its first message after prewarming. */
   readonly title?: string;
 };
 
@@ -147,8 +147,8 @@ export interface EveChannelInput {
   /**
    * Pre-dispatch hook for inbound eve HTTP messages. Runs after route auth and body
    * parsing, before runtime dispatch. Message-free creation skips this hook and
-   * initializes the session with route or accepted forwarded auth. A later message's
-   * result applies to that turn, not to session initialization that already ran.
+   * parks before session initialization. The first message supplies auth and context
+   * for initialization and its first turn.
    */
   readonly onMessage?: (
     ctx: EveMessageContext,

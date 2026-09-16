@@ -77,7 +77,7 @@ export class EveAgentStore<TData> {
   #status: EveAgentStoreStatus = "ready";
 
   constructor(init: EveAgentStoreInit<TData>) {
-    this.#autoPrewarm = init.prewarm ?? true;
+    this.#autoPrewarm = init.prewarm ?? false;
     this.#externalSession = init.session !== undefined;
     this.#client = this.#externalSession
       ? undefined
@@ -150,12 +150,7 @@ export class EveAgentStore<TData> {
         if (this.#status === "error") this.#status = "ready";
         this.#callbacks.onSessionChange?.(created.session.state);
         this.#publish();
-        using reader = this.#ensureStream().subscribe();
-        for await (const event of reader) {
-          if (event.type === "session.waiting") return;
-          if (event.type === "session.failed" || event.type === "session.completed") break;
-        }
-        throw this.#error ?? new Error("Session ended before it was ready.");
+        this.#ensureStream();
       } catch (error) {
         if (
           generation === this.#prewarmGeneration &&
@@ -495,7 +490,7 @@ export class EveAgentStore<TData> {
       onError: (error) => {
         if (generation !== this.#prewarmGeneration) return;
         this.#stream = undefined;
-        if (this.#activeTurn !== undefined || this.#prewarmPromise !== undefined) return;
+        if (this.#activeTurn !== undefined) return;
         this.#error = toError(error);
         this.#status = "error";
         this.#callbacks.onError?.(this.#error);

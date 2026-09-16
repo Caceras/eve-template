@@ -124,7 +124,7 @@ await response.result();
 ```
 
 The create promise resolves when the server accepts the durable workflow. It does not open the
-event stream or wait for the workflow to emit `session.waiting`; an early `session.send()` uses the
+event stream or wait for initialization; an early `session.send()` uses the
 same bounded startup retries as other follow-ups.
 
 To create the session and start its first turn in one request, include the message:

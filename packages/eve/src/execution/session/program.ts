@@ -21,7 +21,6 @@ import { createSessionTimeoutControl } from "#execution/session/timeout-control.
 import { SessionHandoff, sessionAnchorToken } from "#execution/session/handoff.js";
 import { signalSessionAnchorStep } from "#execution/session/handoff-steps.js";
 import type { WorkflowEntryResult } from "#execution/session/entry-input.js";
-import { initializeSessionStep } from "#execution/session/initialize-step.js";
 
 /** The run's own failure never carries internals; the terminal event already logged them. */
 function createSafeOuterWorkflowError(): Error {
@@ -49,8 +48,8 @@ export interface SessionBoot {
   readonly capabilities?: SessionCapabilities;
   readonly deploymentId: string;
   readonly initialInput: DeliverHookPayload | undefined;
-  /** Runs session-level lifecycle initialization, then parks before turn zero. */
-  readonly initializeBeforeFirstTurn: boolean;
+  /** Parks on the inbox before any session-scoped lifecycle work. */
+  readonly awaitFirstMessage: boolean;
   readonly mode: RunMode;
   readonly retention?: AgentWorkflowRetentionDefinition;
   readonly serializedContext: Record<string, unknown>;
@@ -263,7 +262,7 @@ async function runSessionLoop(
           return { kind: "terminal", outcome: { kind: "expired" } };
         case "clear":
         case "compact":
-          return { action: await runTurn({ control: next.kind }), kind: "action" };
+          continue;
         case "turn": {
           const transfer = await handoff.tryTransfer(next, {
             serializedContext: cursor.serializedContext,
@@ -280,16 +279,7 @@ async function runSessionLoop(
     }
   };
   const runInitialAction = async (): Promise<InitialSessionAction> => {
-    if (boot.initializeBeforeFirstTurn) {
-      await cursor.apply(
-        await initializeSessionStep({
-          sessionWritable: boot.sessionWritable,
-          serializedContext: cursor.serializedContext,
-          sessionState: cursor.sessionState,
-        }),
-      );
-      return await awaitPrewarmedAction();
-    }
+    if (boot.awaitFirstMessage) return await awaitPrewarmedAction();
     const action = await runTurn(
       boot.initialInput === undefined ? undefined : { delivery: boot.initialInput },
     );
