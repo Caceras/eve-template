@@ -40,11 +40,8 @@ function context(target, signal = new AbortController().signal) {
     target,
     log() {},
     calledSubagent() {},
-    start: async () => {
-      throw new Error("start was not expected");
-    },
-    newSession: () => {
-      throw new Error("newSession was not expected");
+    session: () => {
+      throw new Error("session was not expected");
     },
   };
 }
@@ -177,8 +174,8 @@ test("close retires every session before restoring the complete source tree", as
     {},
     (target) => {
       const t = context(target);
-      t.start = async () => parent;
-      t.newSession = () => ({ start: async () => verification });
+      let creations = 0;
+      t.session = async () => ({ start: async () => (++creations === 1 ? parent : verification) });
       return t;
     },
   );
@@ -216,7 +213,7 @@ test("one reset failure still retires other sessions and leaves unsafe source un
     },
   });
   const t = context(target);
-  t.start = async () => liveParent;
+  t.session = async () => ({ start: async () => liveParent });
   const populated = await SelfModificationHarness.create(t, root);
   await populated.request("mutate");
   await writeFile(join(root, "keep.txt"), "unsafe mutation");
@@ -385,7 +382,7 @@ test("request falls back to a parent-boundary watch when the initial event is mi
     },
   };
   const t = context(target);
-  t.start = async () => parent;
+  t.session = async () => ({ start: async () => parent });
   const harness = await SelfModificationHarness.create(t, root);
   await harness.request("make a change");
   await harness.close();

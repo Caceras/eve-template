@@ -9,7 +9,8 @@ export default defineEval({
     if (process.env.EVE_E2E_MODEL !== "mock") {
       t.skip("Requires the deterministic model's pending-generation gate.");
     }
-    const live = await t.start("Alice is preparing the 2026 report.");
+    const conversation = await t.session();
+    const live = await conversation.start("Alice is preparing the 2026 report.");
     await live.waitForEvent("step.started");
     const correction = await live.session.start("Alice corrected the report year to 2025.", {
       turnPolicy: "steer",

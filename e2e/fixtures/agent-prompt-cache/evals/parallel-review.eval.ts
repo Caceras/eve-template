@@ -15,8 +15,9 @@ export default ["first", "later"].map((launchTurn) =>
     tags: ["real-model"],
     description: `Real provider cache hits survive five parallel reviews (${launchTurn} turn).`,
     async test(t) {
+      const session = await t.session();
       if (launchTurn === "later") {
-        const planning = await t.send(
+        const planning = await session.send(
           "Eight workshops have twelve places each. How many places is that in total?",
         );
         expectHealthyTurn(planning);
@@ -24,7 +25,7 @@ export default ["first", "later"].map((launchTurn) =>
         planning.notEvent("actions.requested");
       }
 
-      const started = await t.send(reviewPacket());
+      const started = await session.send(reviewPacket());
       const taskIds = expectFiveReviewers(started);
       const turns = await waitForReviews(t, started, taskIds);
       await expectParallelReviews(t, turns);
@@ -56,7 +57,7 @@ function expectFiveReviewers(started: EveEvalTurn) {
 
 async function waitForReviews(t: EveEvalContext, started: EveEvalTurn, taskIds: string[]) {
   const turns = [started];
-  let cursor = t.state?.streamIndex;
+  let cursor = started.session.state.streamIndex;
   for (let attempt = 0; attempt < 10 && !allCompleted(turns, taskIds); attempt += 1) {
     assert(cursor !== undefined, "parent stream cursor is present");
     const live = t.target.watchTurn(started.sessionId, { startIndex: cursor });

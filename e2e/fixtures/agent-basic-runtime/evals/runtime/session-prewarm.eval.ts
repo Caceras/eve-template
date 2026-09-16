@@ -4,10 +4,10 @@ import { equals } from "eve/evals/expect";
 export default defineEval({
   description: "A prewarmed workflow initializes only when its first message arrives.",
   async test(t) {
-    await t.prewarm();
-    const sessionId = t.sessionId;
+    const session = await t.session();
+    const sessionId = session.sessionId;
     const message = `Alice opened this chat while the session warmed up. Greet her briefly and include reference ${crypto.randomUUID()}.`;
-    const live = await t.start(message);
+    const live = await session.start(message);
     const observed = t.target.watchTurn(live.sessionId, { startIndex: 0 });
     const [result, streamed] = await Promise.all([live.result(), observed.result()]);
 

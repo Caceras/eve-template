@@ -17,9 +17,15 @@ reset. The default is `false`. The explicit `prewarm()` method resolves on `202 
 concurrent calls share the same request. Applications must have auth, headers, and any chat-row
 binding ready before opting into automatic prewarming.
 
-Eval drivers expose `t.prewarm(options?)` and `session.prewarm(options?)` on independent
-sessions. These resolve on acceptance, retain the session for subsequent sends and timeout
-cleanup, and use the TypeScript client for transport and retries. Concurrent creation is shared.
+Eval contexts expose `t.session(options?)` to create an accepted session without a turn,
+and `t.send(message, options?)` to create a fresh session with its first message in one
+request. Both are factories: follow-ups use `session.send()` or `turn.session.send()`.
+Session IDs and cursors are always available on returned handles. `t` retains run-level
+assertions and judges, while session operations and conversation state live on the handle.
+This breaks the implicit primary-session API (`t.newSession`, `t.prewarm`, and session
+fields/methods on `t`). Every accepted session participates in reporting and timeout cleanup.
+Turn output and default judges follow the most recently settled turn; the first registered
+session remains the primary ID in report metadata.
 
 ## Runtime boundary
 

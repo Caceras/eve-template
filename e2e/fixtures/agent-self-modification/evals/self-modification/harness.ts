@@ -128,9 +128,9 @@ export class SelfModificationHarness {
 
   async request(
     prompt: string,
-    session: Pick<EveEvalSession, "start"> = this.#t,
+    session?: Pick<EveEvalSession, "start">,
   ): Promise<SelfModificationRun> {
-    const liveParent = await session.start(prompt);
+    const liveParent = await (session ?? (await this.#t.session())).start(prompt);
     this.#turns.add(liveParent);
     let continuation: EveEvalLiveTurn | undefined;
     const called = await liveParent
@@ -168,8 +168,8 @@ export class SelfModificationHarness {
   }
 
   /** Uses a fresh conversation so the model cannot answer from the authoring exchange alone. */
-  verify(prompt: string): Promise<EveEvalTurn> {
-    return this.#runTurn(this.#t.newSession(), prompt);
+  async verify(prompt: string): Promise<EveEvalTurn> {
+    return this.#runTurn(await this.#t.session(), prompt);
   }
 
   async apply(): Promise<void> {

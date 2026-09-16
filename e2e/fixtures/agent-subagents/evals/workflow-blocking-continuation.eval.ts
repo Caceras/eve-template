@@ -16,7 +16,7 @@ export default defineEval({
     const firstTurn = started.message?.includes("SUBAGENT_TOKEN=echo-marker-9F2X")
       ? undefined
       : t.target.watchTurn(started.sessionId, {
-          startIndex: requireStreamIndex(t),
+          startIndex: requireStreamIndex(started.session),
         });
     const completed = firstTurn === undefined ? started : await firstTurn.result();
     completed.expectOk();

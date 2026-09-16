@@ -1,3 +1,5 @@
+import type { ClientSession } from "#client/session.js";
+import type { CreateSessionOptions, SendTurnInput, SendTurnOptions } from "#client/types.js";
 import type { Client } from "#client/client.js";
 import { AssertionCollector } from "#evals/assertions/collector.js";
 import { EvalSessionDriver, type EvalSessionStartedEvent } from "#evals/session.js";
@@ -10,7 +12,7 @@ export class EvalSessionManager {
   readonly #collector: AssertionCollector;
   readonly #onSessionStart: ((event: EvalSessionStartedEvent) => void) | undefined;
   readonly #sessions: EvalSessionDriver[] = [];
-  #primary: EvalSessionDriver | undefined;
+  #lastTurnSession: EvalSessionDriver | undefined;
 
   constructor(input: {
     readonly client: Client;
@@ -24,13 +26,23 @@ export class EvalSessionManager {
     this.#signal = input.signal;
   }
 
-  get primary(): EvalSessionDriver {
-    this.#primary ??= this.#createSession(true);
-    return this.#primary;
+  async session(options: CreateSessionOptions = {}): Promise<EvalSessionDriver> {
+    const { session } = await this.#client.sessions.create({
+      ...options,
+      signal: options.signal ?? this.#signal,
+    });
+    return this.#register(session);
   }
 
-  newSession(): EvalSessionDriver {
-    return this.#createSession(false);
+  async send(message: SendTurnInput["message"], options: SendTurnOptions = {}) {
+    const { session, response } = await this.#client.sessions.create({
+      turnPolicy: "queue",
+      ...options,
+      message,
+      signal: options.signal ?? this.#signal,
+    });
+    const driver = this.#register(session);
+    return await driver.consume(response, message).result();
   }
 
   async attachSession(
@@ -43,7 +55,7 @@ export class EvalSessionManager {
   }
 
   watchTurn(sessionId: string, options?: { readonly startIndex?: number }): EveEvalLiveTurn {
-    return this.#createAttachedSession(sessionId, options).watchTurn(options, sessionId);
+    return this.#createAttachedSession(sessionId, options).watchTurn(options);
   }
 
   snapshots(): readonly EveEvalSessionResult[] {
@@ -51,11 +63,7 @@ export class EvalSessionManager {
   }
 
   lastTurnSession(): EvalSessionDriver | undefined {
-    if (this.#primary?.lastTurn !== undefined) {
-      return this.#primary;
-    }
-
-    return this.#sessions.find((session) => session.lastTurn !== undefined);
+    return this.#lastTurnSession;
   }
 
   hasActivity(): boolean {
@@ -66,33 +74,27 @@ export class EvalSessionManager {
     return await cleanupEvalSessions(this.#sessions, signal);
   }
 
-  #createSession(primary: boolean): EvalSessionDriver {
-    const session = new EvalSessionDriver({
-      client: this.#client,
+  #register(session: ClientSession): EvalSessionDriver {
+    const driver = new EvalSessionDriver({
       collector: this.#collector,
       onSessionStart: this.#onSessionStart,
-      primary,
+      onTurn: (completed) => {
+        this.#lastTurnSession = completed;
+      },
+      primary: this.#sessions.length === 0,
+      session,
       signal: this.#signal,
     });
-    this.#sessions.push(session);
-    return session;
+    this.#sessions.push(driver);
+    return driver;
   }
 
   #createAttachedSession(
     sessionId: string,
     options?: { readonly startIndex?: number },
   ): EvalSessionDriver {
-    const session = new EvalSessionDriver({
-      client: this.#client,
-      collector: this.#collector,
-      onSessionStart: this.#onSessionStart,
-      primary: false,
-      session: this.#client.sessions.attach(sessionId, {
-        streamIndex: options?.startIndex ?? 0,
-      }),
-      signal: this.#signal,
-    });
-    this.#sessions.push(session);
-    return session;
+    return this.#register(
+      this.#client.sessions.attach(sessionId, { streamIndex: options?.startIndex ?? 0 }),
+    );
   }
 }
