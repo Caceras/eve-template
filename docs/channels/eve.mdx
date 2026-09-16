@@ -52,6 +52,17 @@ request has no message, it does not invoke `onMessage`; that hook runs when the 
 sent to the returned session ID. Task mode and turn-scoped fields such as `clientContext` and
 `outputSchema` require a message on the create request.
 
+Session-scoped initialization uses the create request's route auth, or the forwarded
+identity accepted by the channel. This includes `session.started` handlers, dynamic
+definitions, and sandbox setup. The first message's `onMessage` result supplies auth
+and context for that turn; it cannot change initialization that already ran or rename
+the existing workflow through `title`.
+
+Resolve identity needed during initialization in the channel's `auth` policy and supply
+the required credentials or headers on the create request. If initialization depends on
+the first message or an auth transformation in `onMessage`, create with a message instead.
+Frontend bindings prewarm by default; use `prewarm: false` for those channels.
+
 Include an initial message to create the session and start its first turn in one request:
 
 ```bash

@@ -100,6 +100,13 @@ export function Chat() {
 
 Pass `prewarm: false` to defer session creation until the first send.
 
+Prewarming also sends the configured auth and headers before the first send. If your
+application creates a chat record or prepares required credentials in its submit handler,
+complete that setup before mounting the hook, or disable automatic prewarming. Use
+`prewarm: false` for hook instances mounted only to render a read-only view without a
+session. Channels that transform initialization identity in `onMessage` also need to
+[account for the session initialization boundary](../../channels/eve#start-and-continue-a-session).
+
 Prewarming creates the session, opens its event stream, and waits for the initial
 `session.waiting` event. It leaves the composer at `"ready"` and does not run `prepareSend`.
 If the user submits before initialization finishes, `send()` waits internally before posting the

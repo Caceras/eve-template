@@ -14,7 +14,7 @@ import type {
  * Lifecycle state of an eve frontend session store: `ready` (idle),
  * `resuming` (checking an attached session for continuation), `submitted`
  * (turn sent, awaiting the first event), `streaming` (events arriving), and
- * `error` (the turn failed).
+ * `error` (session creation, streaming, resume, or a turn failed).
  */
 export type EveAgentStoreStatus = "error" | "ready" | "resuming" | "streaming" | "submitted";
 
@@ -27,6 +27,7 @@ export type PrepareSend = (input: SendTurnPayload) => SendTurnPayload | Promise<
 /** Immutable projected state of an eve frontend session store. */
 export interface EveAgentStoreSnapshot<TData> {
   readonly data: TData;
+  /** The latest session creation, stream, resume, or turn failure. */
   readonly error: Error | undefined;
   readonly events: readonly MessageStreamEvent[];
   readonly session: ClientSessionState | undefined;
