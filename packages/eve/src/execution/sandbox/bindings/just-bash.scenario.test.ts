@@ -440,7 +440,7 @@ describe("just-bash provider", () => {
     expect(result.stdout.trim().split("\n")).toEqual(["/workspace/skills/weather.md"]);
   });
 
-  it("does not repair an existing session directory with later seed files", async () => {
+  it("rejects existing session state from a different prepared artifact", async () => {
     const appRoot = await createTemporaryCacheDirectory("seed-session");
     const backend = createJustBashProvider();
 
@@ -465,15 +465,12 @@ describe("just-bash provider", () => {
       ],
     });
 
-    const seededHandle = await backend.openSession({
-      existing: initialState,
-      appRoot,
-      sandboxName: "session-seeded-later",
-    });
-    const result = await seededHandle.sandbox.run({
-      command: "find /workspace -maxdepth 3 -type f | sort",
-    });
-
-    expect(result.stdout.trim()).toBe("");
+    await expect(
+      backend.openSession({
+        existing: initialState,
+        appRoot,
+        sandboxName: "session-seeded-later",
+      }),
+    ).rejects.toThrow("session state is incompatible");
   });
 });
