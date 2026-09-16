@@ -102,7 +102,6 @@ describe("buildVercelConnectRequirements", () => {
       oauth_config: { scopes: { bot: ["chat:write"] } },
       settings: {
         event_subscriptions: { bot_events: ["app_mention"] },
-        interactivity: { is_enabled: true },
       },
     } as const;
     const manifest = {
@@ -149,11 +148,10 @@ describe("buildVercelConnectRequirements", () => {
             settings: {
               event_subscriptions: {
                 bot_events: ["app_mention"],
-                request_url: "https://connect.vercel.com/trigger?path=/eve/v1/slack",
+                request_url: "https://connect.vercel.com/trigger?path=%2Feve%2Fv1%2Fslack",
               },
               interactivity: {
-                is_enabled: true,
-                request_url: "https://connect.vercel.com/trigger?path=/eve/v1/slack",
+                request_url: "https://connect.vercel.com/trigger?path=%2Feve%2Fv1%2Fslack",
               },
             },
           },

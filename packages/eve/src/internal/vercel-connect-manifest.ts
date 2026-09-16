@@ -114,7 +114,7 @@ function buildConnectSlackManifest(manifest: JsonObject, triggerPath: string): J
   const settings = objectValue(copy.settings);
   const eventSubscriptions = objectValue(settings.event_subscriptions);
   const interactivity = objectValue(settings.interactivity);
-  const requestUrl = `${VERCEL_CONNECT_TRIGGER_URL}${triggerPath}`;
+  const requestUrl = `${VERCEL_CONNECT_TRIGGER_URL}${encodeURIComponent(triggerPath)}`;
 
   return {
     ...copy,

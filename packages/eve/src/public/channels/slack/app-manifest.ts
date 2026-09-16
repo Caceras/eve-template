@@ -20,12 +20,11 @@ export function defineSlackAppManifest(input: {
             messages_tab_enabled: true,
             messages_tab_read_only_enabled: false,
           },
-          bot_user: { display_name: name, always_online: false },
+          bot_user: { display_name: name },
         },
         oauth_config: { scopes: { bot: ["app_mentions:read", "chat:write"] } },
         settings: {
           event_subscriptions: { bot_events: ["app_mention"] },
-          interactivity: { is_enabled: true },
           org_deploy_enabled: false,
           socket_mode_enabled: false,
           token_rotation_enabled: false,
