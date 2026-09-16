@@ -25,7 +25,7 @@ export function createLoggingSandboxSession(input: {
       log?.(`preparation run: ${formatCommand(options.command)}`);
       const result = await session.run(options);
       if (result.exitCode === PREPARATION_FAILURE_EXIT_CODE) {
-        throw new Error(formatBootstrapRunFailure(options.command, result));
+        throw new Error(formatPreparationRunFailure(options.command, result));
       }
       return result;
     },
@@ -60,7 +60,7 @@ export function createLoggingSandboxSession(input: {
   };
 }
 
-function formatBootstrapRunFailure(
+function formatPreparationRunFailure(
   command: string,
   result: { readonly stderr: string; readonly stdout: string },
 ): string {

@@ -30,7 +30,7 @@ function createProvider() {
 }
 
 async function createTemporaryCacheDirectory(label: string): Promise<string> {
-  // The backend derives its cache directory from
+  // The provider derives its cache directory from
   // `appRoot` via `resolveSandboxCacheDirectory`, so the
   // helper returns a temporary appRoot rather than a cache directory
   // directly.
@@ -41,12 +41,12 @@ async function createPrewarmedHandle(input: {
   readonly appRoot: string;
   readonly sandboxName: string;
 }) {
-  const backend = createProvider();
-  await backend.prepare({
+  const provider = createProvider();
+  await provider.prepare({
     appRoot: input.appRoot,
     seedFiles: [],
   });
-  return await backend.openSession({
+  return await provider.openSession({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
   });
@@ -87,13 +87,13 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const resourcesPath = join(appRoot, "compiled-resources");
     await mkdir(join(resourcesPath, "workspace"), { recursive: true });
     await writeFile(join(resourcesPath, "workspace", "seed.txt"), "immutable seed");
-    const backend = createProvider();
-    await backend.prepare({
+    const provider = createProvider();
+    await provider.prepare({
       resourcesPath,
       appRoot,
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-dockerfile",
     });
@@ -205,14 +205,14 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
 
   it("preserves files across capture and reconnect", async () => {
     const appRoot = await createTemporaryCacheDirectory("file-api");
-    const backend = createProvider();
+    const provider = createProvider();
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [],
     });
 
-    const { handle: firstHandle, state } = await backend.start({
+    const { handle: firstHandle, state } = await provider.start({
       appRoot,
       sandboxName: "session-reconnect",
     });
@@ -227,7 +227,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       version: 2,
     });
 
-    const reconnectedHandle = await backend.openSession({
+    const reconnectedHandle = await provider.openSession({
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
@@ -257,19 +257,19 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
 
   it("reports a fresh build on first prewarm and a reuse on the second", async () => {
     const appRoot = await createTemporaryCacheDirectory("reuse-report");
-    const backend = createProvider();
+    const provider = createProvider();
 
-    const first = await backend.prepare({
+    const first = await provider.prepare({
       appRoot,
       seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
     });
-    const second = await backend.prepare({
+    const second = await provider.prepare({
       appRoot,
       seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
     });
 
     expect(second).toEqual(first);
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-reuse-report",
     });

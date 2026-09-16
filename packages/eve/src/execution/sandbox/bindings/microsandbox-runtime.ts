@@ -679,7 +679,7 @@ function resolveMicrosandboxLabels(
   tags: Readonly<Record<string, string>> | undefined,
 ): Record<string, string> {
   return {
-    "eve.backend": "microsandbox",
+    "eve.provider": "microsandbox",
     ...withDevelopmentSandboxTags(tags),
   };
 }

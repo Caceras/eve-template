@@ -5,7 +5,7 @@ import type { SandboxNetworkPolicy } from "#shared/sandbox-network-policy.js";
 /**
  * Applies a coarse-grained run-time network policy by attaching or
  * detaching the container's networks. Domain-level policies and
- * credential brokering require the firewall on the Vercel backend.
+ * credential brokering require the firewall on the Vercel provider.
  */
 export async function setDockerNetworkPolicy(
   cli: DockerCli,
@@ -15,7 +15,7 @@ export async function setDockerNetworkPolicy(
   if (policy !== "allow-all" && policy !== "deny-all") {
     throw new Error(
       'The local Docker sandbox provider supports only the "allow-all" and "deny-all" network ' +
-        "policies. Domain-level allow-lists and credential brokering require the Vercel backend " +
+        "policies. Domain-level allow-lists and credential brokering require the Vercel provider " +
         "(VercelSandbox) or MicrosandboxSandbox.",
     );
   }

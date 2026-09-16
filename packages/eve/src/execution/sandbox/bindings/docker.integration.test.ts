@@ -636,11 +636,11 @@ describe("Docker provider create", () => {
     ]);
   });
 
-  it("rejects domain-level network policies with guidance toward the Vercel backend", async () => {
+  it("rejects domain-level network policies with guidance toward the Vercel provider", async () => {
     const { handle } = await createRunningSessionHandle({});
 
     await expect(handle.sandbox.setNetworkPolicy?.({ allow: { "*": [] } })).rejects.toThrow(
-      /Vercel backend/,
+      /Vercel provider/,
     );
   });
 });

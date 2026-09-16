@@ -50,7 +50,7 @@ let justBashModulePromise: Promise<JustBashModule> | undefined;
 
 /**
  * Loads `just-bash` from the application's own dependency tree. The
- * package is intentionally not bundled with eve — the backend is
+ * package is intentionally not bundled with eve — the provider is
  * opt-in — so when it is missing eve installs it into the project
  * during `eve dev` (unless `autoInstall: false`) and otherwise fails
  * with an actionable install error.

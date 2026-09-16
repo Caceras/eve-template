@@ -33,12 +33,12 @@ async function createPrewarmedLocalHandle(input: {
   readonly appRoot: string;
   readonly sandboxName: string;
 }) {
-  const backend = createJustBashProvider();
-  await backend.prepare({
+  const provider = createJustBashProvider();
+  await provider.prepare({
     appRoot: input.appRoot,
     seedFiles: [],
   });
-  return await backend.openSession({
+  return await provider.openSession({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
   });
@@ -68,7 +68,7 @@ describe("just-bash sandbox file API", () => {
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(join(sourceRoot, "instructions.md"), "before");
     let factoryCalls = 0;
-    const backend = createJustBashProvider({
+    const provider = createJustBashProvider({
       async filesystem(context) {
         factoryCalls += 1;
         expect(context.resolveProjectPath(".")).toBe(appRoot);
@@ -89,7 +89,7 @@ describe("just-bash sandbox file API", () => {
       },
     });
 
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-custom-filesystem",
     });
@@ -123,20 +123,20 @@ describe("just-bash sandbox file API", () => {
   it("applies the filesystem factory only to live sessions", async () => {
     const appRoot = await createTemporaryCacheDirectory("filesystem-factory-lifecycle");
     let factoryCalls = 0;
-    const backend = createJustBashProvider({
+    const provider = createJustBashProvider({
       async filesystem({ defaultFilesystem }) {
         factoryCalls += 1;
         return defaultFilesystem;
       },
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [{ content: "from template", path: "/workspace/seed.txt" }],
     });
     expect(factoryCalls).toBe(0);
 
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-filesystem-factory",
     });
@@ -273,14 +273,14 @@ describe("just-bash sandbox file API", () => {
 
   it("preserves files across capture and reconnect", async () => {
     const appRoot = await createTemporaryCacheDirectory("file-api");
-    const backend = createJustBashProvider();
+    const provider = createJustBashProvider();
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [],
     });
 
-    const { handle: firstHandle, state } = await backend.start({
+    const { handle: firstHandle, state } = await provider.start({
       appRoot,
       sandboxName: "session-reconnect",
     });
@@ -296,7 +296,7 @@ describe("just-bash sandbox file API", () => {
       readFile(join(state.rootPath, "fs", "workspace", "persisted.txt"), "utf8"),
     ).resolves.toBe("survives reconnect");
 
-    const reconnectedHandle = await backend.openSession({
+    const reconnectedHandle = await provider.openSession({
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
@@ -361,7 +361,7 @@ describe("just-bash sandbox file API", () => {
 describe("just-bash custom commands", () => {
   it("forwards custom commands to live sessions", async () => {
     const appRoot = await createTemporaryCacheDirectory("custom-command");
-    const backend = createJustBashProvider({
+    const provider = createJustBashProvider({
       customCommands: [
         defineCommand("cap", async (args, context) => {
           if (args[0] === "fail") {
@@ -375,7 +375,7 @@ describe("just-bash custom commands", () => {
         }),
       ],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-custom-command",
     });
@@ -395,16 +395,16 @@ describe("just-bash custom commands", () => {
 });
 
 describe("just-bash provider", () => {
-  it("exposes a distinct stable backend name", () => {
-    const backend = createJustBashProvider();
-    expect(backend).toBeDefined();
+  it("exposes a distinct stable provider name", () => {
+    const provider = createJustBashProvider();
+    expect(provider).toBeDefined();
   });
 
   it("creates a fresh session when no template key is requested", async () => {
     const appRoot = await createTemporaryCacheDirectory("fresh-session");
-    const backend = createJustBashProvider();
+    const provider = createJustBashProvider();
 
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot,
       sandboxName: "session-without-template",
     });
@@ -417,9 +417,9 @@ describe("just-bash provider", () => {
 
   it("creates a session from a prewarmed template with seed files", async () => {
     const appRoot = await createTemporaryCacheDirectory("seed-template");
-    const backend = createJustBashProvider();
+    const provider = createJustBashProvider();
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [
         {
@@ -429,7 +429,7 @@ describe("just-bash provider", () => {
       ],
     });
 
-    const seededHandle = await backend.openSession({
+    const seededHandle = await provider.openSession({
       appRoot,
       sandboxName: "session-from-repaired-template",
     });
@@ -442,20 +442,20 @@ describe("just-bash provider", () => {
 
   it("rejects existing session state from a different prepared artifact", async () => {
     const appRoot = await createTemporaryCacheDirectory("seed-session");
-    const backend = createJustBashProvider();
+    const provider = createJustBashProvider();
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [],
     });
 
-    const { handle: initialHandle, state: initialState } = await backend.start({
+    const { handle: initialHandle, state: initialState } = await provider.start({
       appRoot,
       sandboxName: "session-seeded-later",
     });
     await initialHandle.onRuntimeShutdown();
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot,
       seedFiles: [
         {
@@ -466,7 +466,7 @@ describe("just-bash provider", () => {
     });
 
     await expect(
-      backend.openSession({
+      provider.openSession({
         existing: initialState,
         appRoot,
         sandboxName: "session-seeded-later",

@@ -166,7 +166,7 @@ async function createScenarioAppRoot(): Promise<string> {
   );
   await writeFile(
     join(agentRoot, "sandbox", "sandbox.ts"),
-    preparedSandboxSource("echo root-bootstrap"),
+    preparedSandboxSource("echo root-prepare"),
   );
   await writeFile(
     join(subagentRoot, "agent.ts"),
@@ -185,7 +185,7 @@ async function createScenarioAppRoot(): Promise<string> {
   );
   await writeFile(
     join(subagentRoot, "sandbox", "sandbox.ts"),
-    preparedSandboxSource("echo child-bootstrap"),
+    preparedSandboxSource("echo child-prepare"),
   );
 
   return appRoot;

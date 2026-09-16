@@ -35,7 +35,9 @@ export async function materializeSandboxDockerfile(input: {
   try {
     await access(join(contextPath, "Dockerfile"));
     return { contentHash, contextPath, path: join(contextPath, "Dockerfile") };
-  } catch {}
+  } catch (error) {
+    if (!isFileNotFoundError(error)) throw error;
+  }
   const temporaryPath = `${contextPath}.${randomUUID()}.tmp`;
   await Promise.all(
     contents.map(async (file) => {
@@ -70,7 +72,7 @@ export async function resolveSandboxDockerfile(
   try {
     await readFile(path);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    if (isFileNotFoundError(error)) return undefined;
     throw error;
   }
   const contextPath = dirname(path);
@@ -153,6 +155,10 @@ export async function publishDockerImageForMicrosandbox(input: {
     `publish microsandbox image "${target}"`,
   );
   return target;
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 async function hashDirectory(root: string): Promise<string> {

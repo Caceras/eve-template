@@ -116,15 +116,15 @@ async function createTestVercelSession() {
       get: vi.fn().mockResolvedValue(null),
     },
   };
-  const backend = createTestVercelSandbox({
+  const provider = createTestVercelSandbox({
     loadSandboxModule: async () => sandboxModule as never,
   });
 
-  await backend.prepare({
+  await provider.prepare({
     appRoot: "/tmp/test-app-root",
     seedFiles: [],
   });
-  const handle = await backend.openSession({
+  const handle = await provider.openSession({
     appRoot: "/tmp/test-app-root",
     sandboxName: "session-key",
   });
@@ -165,11 +165,11 @@ describe("createVercelSandbox", () => {
         get: vi.fn().mockResolvedValue(null),
       },
     };
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       prepared: { snapshotId: "prepared-snapshot" },
       sandboxName: "session-key",
@@ -196,12 +196,12 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createVercelSandbox({
+    const provider = createVercelSandbox({
       createOptions: { image: "registry.example/eve-python:1.0.0" } as never,
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
@@ -220,12 +220,12 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createVercelSandbox({
+    const provider = createVercelSandbox({
       createOptions: { __experimentalFlag: "enabled" } as never,
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
@@ -238,7 +238,7 @@ describe("createVercelSandbox", () => {
     );
   });
 
-  it("includes Vercel SDK error response bodies in backend errors", async () => {
+  it("includes Vercel SDK error response bodies in provider errors", async () => {
     const sandboxModule = {
       Sandbox: {
         create: vi.fn(),
@@ -255,12 +255,12 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
     await expect(
-      backend.prepare({
+      provider.prepare({
         appRoot: "/tmp/test-app-root",
         seedFiles: [],
       }),
@@ -320,11 +320,11 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [
         {
@@ -342,12 +342,12 @@ describe("createVercelSandbox", () => {
       ],
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -378,15 +378,15 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -416,16 +416,16 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -464,7 +464,7 @@ describe("createVercelSandbox", () => {
      * source. The template sandbox mock mirrors that — if eve's
      * "template already has a snapshot, reuse it" guard fires on a
      * newly-created template, it returns the author's snapshotId
-     * instead of running bootstrap/seed/`sandbox.snapshot()`, so the
+     * instead of running preparation/resource hydration/`sandbox.snapshot()`, so the
      * session would derive directly from the author snapshot and the
      * framework's setup would never run. That's the regression this
      * test pins.
@@ -485,17 +485,17 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       createOptions: { source: { snapshotId: "author-snap", type: "snapshot" } },
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -522,12 +522,12 @@ describe("createVercelSandbox", () => {
         get: vi.fn().mockResolvedValue(null),
       },
     };
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
     await expect(
-      backend.openSession({
+      provider.openSession({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "expired-template-snapshot" },
         sandboxName: "session-key",
@@ -591,15 +591,15 @@ describe("createVercelSandbox", () => {
         get: vi.fn().mockResolvedValue(null),
       },
     };
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadDeleteSandboxModule: async () => ({ Sandbox: { get: stableGet } }) as never,
       loadSandboxModule: async () => sandboxModule as never,
     });
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -632,14 +632,14 @@ describe("createVercelSandbox", () => {
         get: vi.fn().mockResolvedValue(null),
       },
     };
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -669,16 +669,16 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -714,16 +714,16 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -803,15 +803,15 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -847,15 +847,15 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
-    const handle = await backend.openSession({
+    const handle = await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -878,9 +878,9 @@ describe("createVercelSandbox", () => {
     );
   });
 
-  it("exposes a stable backend name", () => {
-    const backend = createTestVercelSandbox();
-    expect(backend).toBeDefined();
+  it("exposes a stable provider name", () => {
+    const provider = createTestVercelSandbox();
+    expect(provider).toBeDefined();
   });
 
   it("prepares the base runtime during sandbox init", async () => {
@@ -896,16 +896,16 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
 
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
     });
@@ -954,11 +954,11 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.prepare({
+    await provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });
@@ -996,11 +996,11 @@ describe("createVercelSandbox", () => {
       },
     };
 
-    const backend = createTestVercelSandbox({
+    const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    const prewarm = backend.prepare({
+    const prewarm = provider.prepare({
       appRoot: "/tmp/test-app-root",
       seedFiles: [],
     });

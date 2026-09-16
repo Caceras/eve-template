@@ -289,8 +289,7 @@ async function ensureTemplateWithUnavailableRetry(
 /**
  * Creates or refreshes one named Vercel sandbox template and returns the
  * resulting snapshot metadata along with whether an existing snapshot
- * was reused. Internal — exposed only to the prewarm pipeline through
- * the backend's `prewarm` method.
+ * was reused. This runs only from the provider's preparation phase.
  */
 async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplateOutcome> {
   const sandboxModule = await input.loadSandboxModule();

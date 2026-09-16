@@ -15,8 +15,8 @@ describe("shutdownActiveSandboxHandles", () => {
   it("shuts down every tracked handle and clears the registry", async () => {
     const first = { onRuntimeShutdown: vi.fn(async () => {}) };
     const second = { onRuntimeShutdown: vi.fn(async () => {}) };
-    trackActiveSandboxHandle({ providerName: "docker", handle: first, sessionKey: "session-1" });
-    trackActiveSandboxHandle({ providerName: "docker", handle: second, sessionKey: "session-2" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: first, sessionId: "session-1" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: second, sessionId: "session-2" });
 
     await shutdownActiveSandboxHandles();
 
@@ -28,8 +28,8 @@ describe("shutdownActiveSandboxHandles", () => {
   it("replaces the tracked handle when the same session is reopened", async () => {
     const stale = { onRuntimeShutdown: vi.fn(async () => {}) };
     const fresh = { onRuntimeShutdown: vi.fn(async () => {}) };
-    trackActiveSandboxHandle({ providerName: "docker", handle: stale, sessionKey: "session-1" });
-    trackActiveSandboxHandle({ providerName: "docker", handle: fresh, sessionKey: "session-1" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: stale, sessionId: "session-1" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: fresh, sessionId: "session-1" });
 
     expect(countActiveSandboxHandles()).toBe(1);
     await shutdownActiveSandboxHandles();
@@ -41,8 +41,8 @@ describe("shutdownActiveSandboxHandles", () => {
   it("tracks the same session key on different providers separately", async () => {
     const docker = { onRuntimeShutdown: vi.fn(async () => {}) };
     const vercel = { onRuntimeShutdown: vi.fn(async () => {}) };
-    trackActiveSandboxHandle({ providerName: "docker", handle: docker, sessionKey: "session-1" });
-    trackActiveSandboxHandle({ providerName: "vercel", handle: vercel, sessionKey: "session-1" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: docker, sessionId: "session-1" });
+    trackActiveSandboxHandle({ providerName: "vercel", handle: vercel, sessionId: "session-1" });
 
     await shutdownActiveSandboxHandles();
 
@@ -57,8 +57,8 @@ describe("shutdownActiveSandboxHandles", () => {
       }),
     };
     const healthy = { onRuntimeShutdown: vi.fn(async () => {}) };
-    trackActiveSandboxHandle({ providerName: "docker", handle: failing, sessionKey: "session-1" });
-    trackActiveSandboxHandle({ providerName: "docker", handle: healthy, sessionKey: "session-2" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: failing, sessionId: "session-1" });
+    trackActiveSandboxHandle({ providerName: "docker", handle: healthy, sessionId: "session-2" });
     const log = vi.fn();
 
     await expect(shutdownActiveSandboxHandles({ log })).resolves.toBeUndefined();

@@ -59,18 +59,18 @@ describe("Docker sandbox deletion", () => {
         throw new Error("stream is not used by this test");
       },
     };
-    const backend = createSandboxProviderHarness(
+    const provider = createSandboxProviderHarness(
       createDockerSandboxProvider(undefined, dockerCli),
       {},
       { preparedArtifact: () => ({ imageReference: "prepared-image" }) },
     );
-    const oldHandle = await backend.openSession({
+    const oldHandle = await provider.openSession({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
     });
     await oldHandle.onSessionDelete();
     containerId = "container-id-2";
-    await backend.openSession({
+    await provider.openSession({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
     });

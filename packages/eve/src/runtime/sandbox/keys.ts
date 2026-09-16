@@ -22,8 +22,7 @@ const RUNTIME_SANDBOX_CONTRACT_VERSION = 9;
  * Input for deriving the stable runtime keys used for one sandbox definition.
  */
 /**
- * Creates the stable reusable template key for one sandbox definition,
- * or `null` when the sandbox should start from a fresh backend runtime.
+ * Creates the stable private artifact-storage key for one sandbox definition.
  *
  * The template key factors in the graph `nodeId` so that two
  * runtime agents (root and subagents) do not collide on the same

@@ -7,9 +7,9 @@ import {
   copyDirectoryAtomically,
   createFileBackedInternalSandboxSession,
   pathExists,
-  resolveLocalBackendSessionRootPath,
-  resolveLocalBackendTemplateRootPath,
-  resolveLocalBackendTemplatesDirectory,
+  resolveLocalProviderSessionRootPath,
+  resolveLocalProviderTemplateRootPath,
+  resolveLocalProviderTemplatesDirectory,
   touchDirectory,
   writeSandboxSeedFiles,
 } from "#execution/sandbox/bindings/local-provider-utils.js";
@@ -181,7 +181,7 @@ export async function pruneJustBashSandboxTemplates(input: {
   readonly recentWindowMs?: number;
   readonly retainCount?: number;
 }): Promise<void> {
-  const templatesDirectory = resolveLocalBackendTemplatesDirectory(
+  const templatesDirectory = resolveLocalProviderTemplatesDirectory(
     input.appRoot,
     JUST_BASH_CACHE_DIRECTORY_NAME,
   );
@@ -243,9 +243,9 @@ function requireJustBashSessionState(state: SandboxPreparedArtifact): JustBashSe
 }
 
 function resolveTemplateRootPath(storagePath: string, key: string): string {
-  return resolveLocalBackendTemplateRootPath(storagePath, JUST_BASH_CACHE_DIRECTORY_NAME, key);
+  return resolveLocalProviderTemplateRootPath(storagePath, JUST_BASH_CACHE_DIRECTORY_NAME, key);
 }
 
 function resolveSessionRootPath(storagePath: string, key: string): string {
-  return resolveLocalBackendSessionRootPath(storagePath, JUST_BASH_CACHE_DIRECTORY_NAME, key);
+  return resolveLocalProviderSessionRootPath(storagePath, JUST_BASH_CACHE_DIRECTORY_NAME, key);
 }

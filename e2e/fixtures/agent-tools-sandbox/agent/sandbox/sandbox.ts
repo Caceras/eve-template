@@ -26,7 +26,7 @@ import { VercelSandbox } from "eve/sandbox/vercel";
  * layer while environment preparation runs on top.
  */
 export const SANDBOX_MARKER_PATH = "/workspace/smoke-marker.txt";
-export const SANDBOX_MARKER_TOKEN = "sandbox-bootstrap-ok-J3Q";
+export const SANDBOX_MARKER_TOKEN = "sandbox-preparation-ok-J3Q";
 
 /**
  * Custom CLI installed during preparation. The base image puts the sandbox

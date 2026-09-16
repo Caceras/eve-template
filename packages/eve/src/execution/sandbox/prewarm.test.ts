@@ -78,7 +78,7 @@ describe("prewarmAppSandboxes", () => {
       vi.stubEnv("VERCEL", "1");
 
       const appRoot = process.cwd();
-      const cause = new Error("backend host check failed");
+      const cause = new Error("provider host check failed");
       const log = vi.fn();
 
       await expect(

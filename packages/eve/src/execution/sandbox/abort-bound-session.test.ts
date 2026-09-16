@@ -92,7 +92,7 @@ describe("bindSandboxAbortSignal", () => {
     expect(new Set(calls.map((call) => call.abortSignal)).size).toBe(calls.length);
   });
 
-  it("does not accumulate backend listeners on the bound signal", async () => {
+  it("does not accumulate provider listeners on the bound signal", async () => {
     const calls: RecordedCall[] = [];
     const recordingSession = createRecordingSession(calls);
     const listenerSession: SandboxSession = {

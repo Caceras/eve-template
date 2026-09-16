@@ -111,7 +111,7 @@ let cachedLinuxDockerAvailability: boolean | undefined;
  * containers, for `defaultSandbox()`'s availability chain. eve's Docker
  * sandbox image is Linux-only, so a Windows-container daemon is not a
  * compatible default even though it answers the Docker CLI. The result is
- * cached for the process lifetime: backend selection must be stable, and
+ * cached for the process lifetime: provider selection must be stable, and
  * the probe costs a subprocess round-trip.
  */
 export function isLinuxDockerDaemonAvailableSync(): boolean {

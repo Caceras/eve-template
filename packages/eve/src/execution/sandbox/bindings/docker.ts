@@ -56,8 +56,7 @@ export {
 } from "#execution/sandbox/bindings/docker-templates.js";
 
 /**
- * Stable backend name. Participates in template/session key derivation
- * and persisted reconnect state.
+ * Stable provider name used for prepared-artifact storage and provider identity.
  */
 export const DOCKER_PROVIDER_NAME = "docker";
 

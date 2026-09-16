@@ -4,8 +4,8 @@
 // the agent tree is compiled/deployed independently of the eval tree.
 
 /** Written by `prepare()` into the reusable environment snapshot. */
-export const BOOTSTRAP_MARKER_PATH = "/workspace/smoke-marker.txt";
-export const BOOTSTRAP_MARKER_TOKEN = "sandbox-bootstrap-ok-J3Q";
+export const PREPARATION_MARKER_PATH = "/workspace/smoke-marker.txt";
+export const PREPARATION_MARKER_TOKEN = "sandbox-preparation-ok-J3Q";
 
 /** Custom CLI installed on the PATH by environment preparation. */
 export const SANDBOX_CLI_NAME = "eve-greet";

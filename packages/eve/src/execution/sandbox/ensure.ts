@@ -136,7 +136,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     trackActiveSandboxHandle({
       handle,
       providerName: provider.providerName,
-      sessionKey: input.sessionId,
+      sessionId: input.sessionId,
     });
     const sandbox = withRuntimeSandboxLifecycle(
       handle.sandbox,
