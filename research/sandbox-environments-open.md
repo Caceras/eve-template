@@ -125,7 +125,7 @@ During deployment handoff, the target provider validates state against its curre
 
 Provider session state contains only values that cannot be cheaply and deterministically recovered, such as an opaque platform ID. It does not duplicate prepared artifacts, options, credentials, clients, callbacks, or derivable hashes. Providers version and validate their state in `resume()`.
 
-There is no post-open `captureMetadata()` and no create/restore context union.
+Provider state is returned only by `start()`; handles do not expose a later state-capture operation or create/restore union.
 
 ### Lifecycle hooks
 
