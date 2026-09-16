@@ -41,11 +41,9 @@ The selector must return the exact `RuntimeSandboxSession` returned by
 
 ## Why one operation
 
-`create()` was misleading because the same call reconnects after a durable
-boundary. `getOrCreate({ name })` mixed a provider implementation detail with a
-framework-level cross-session ownership contract.
+The environment operation represents both first access and reconnection after a durable boundary. Native resource identity remains a provider implementation detail rather than an author-controlled framework sharing contract.
 
-The single operation establishes one core invariant:
+The operation establishes one core invariant:
 
 ```text
 eve session
@@ -374,22 +372,6 @@ export default defineParentSandbox();
 ```
 
 The child uses the parent's exact logical sandbox and lifecycle ownership.
-
-## Core removals
-
-The implementation should remove:
-
-- `environment.create()`;
-- `environment.getOrCreate()`;
-- `SandboxNamedOptions`;
-- authored sandbox names;
-- the `shared` key-derivation branch;
-- provider-owned shared-lifetime guards;
-- shared-configuration tags and conflict checks that exist only for the removed
-  core sharing API.
-
-Provider SDKs may still have native methods named `getOrCreate`; those are
-private implementation details and are not renamed mechanically.
 
 ## Observable invariants
 

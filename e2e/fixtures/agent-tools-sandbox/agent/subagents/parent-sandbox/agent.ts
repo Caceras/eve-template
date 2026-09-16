@@ -4,6 +4,6 @@ import { defineAgent } from "eve";
 import { respond } from "../../lib/mock-responder.js";
 
 export default defineAgent({
-  description: "Runs sandbox commands in the root agent's shared workspace.",
+  description: "Runs sandbox commands in the root agent's inherited workspace.",
   ...e2eSubagentConfig({ mock: respond }),
 });
