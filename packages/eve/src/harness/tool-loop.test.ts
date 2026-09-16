@@ -301,6 +301,7 @@ const analysisTaskAnnouncement =
 function recordBackgroundTask(session: HarnessSession, taskId = "analysis"): HarnessSession {
   return recordSessionTask(session, {
     createdByTurnId: activeTurnId(getHarnessEmissionState(session.state)),
+    dispatchContext: { auth: { current: null, initiator: null } },
     executor: { data: {}, kind: "workflow-tool" },
     metadata: { kind: "report-probe", name: taskId },
     taskId,
@@ -652,6 +653,12 @@ function setupMockAgentSequence(results: readonly Record<string, unknown>[]): vo
       if (onStepEnd) await onStepEnd(result);
       return createMockGenerateResult(result);
     });
+    this.stream = vi.fn().mockImplementation(async (options: { messages: unknown[] }) => {
+      await invokeMockStepStart(settings, options);
+      const mockResult = createMockStreamResult(result);
+      if (onStepEnd) void Promise.resolve().then(() => onStepEnd(result));
+      return mockResult;
+    });
     return this;
   } as MockAgentConstructor);
 }
@@ -969,6 +976,84 @@ describe("createToolLoopHarness", () => {
       { content: "Hi", kind: "user" as const, role: "user" },
       { content: "Hello!", role: "assistant" },
     ]);
+  });
+
+  it("steers an open turn with a new message without repeating the turn preamble", async () => {
+    const toolCall = {
+      input: { query: "weather in ny" },
+      toolCallId: "call-1",
+      toolName: "web_search",
+      type: "tool-call",
+    };
+    const toolResult = { ...toolCall, output: { temperature: "41 F" }, type: "tool-result" };
+    setupMockAgentSequence([
+      {
+        finishReason: "tool-calls",
+        response: {
+          messages: [
+            { content: [toolCall], role: "assistant" },
+            { content: [toolResult], role: "tool" },
+          ],
+        },
+        text: "",
+        toolCalls: [toolCall],
+        toolResults: [toolResult],
+      },
+      {
+        finishReason: "stop",
+        response: { messages: [{ content: "It is 41 F in NY.", role: "assistant" }] },
+        text: "It is 41 F in NY.",
+        toolCalls: [],
+        toolResults: [],
+      },
+    ]);
+    const { emit, events } = createEventCollector();
+    const config = createTestConfig("conversation", emit, {
+      tools: new Map([
+        [
+          "web_search",
+          {
+            description: "Search the web",
+            inputSchema: jsonSchema({ type: "object" }),
+            name: "web_search",
+          },
+        ],
+      ]),
+    });
+    const runStep = createToolLoopHarness(config);
+    const session = createTestSession({
+      agent: {
+        modelReference: { id: "openai/gpt-5.4" },
+        system: "You are a test assistant.",
+        tools: [
+          { description: "Search the web", name: "web_search", inputSchema: { type: "object" } },
+        ],
+      },
+    });
+
+    const first = await runStep(session, { message: "What's the weather in NY?" });
+    expect(typeof first.next).toBe("function");
+    expect(getHarnessEmissionState(first.session.state)).toMatchObject({
+      turnId: "turn_0",
+      stepIndex: 1,
+    });
+
+    const second = await runStep(first.session, { message: "Use Fahrenheit." });
+
+    expect(second.next).toBeNull();
+    expect(events.filter((event) => event.type === "turn.started")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "message.received")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "turn.completed")).toHaveLength(1);
+    expect(second.session.history.at(-2)).toEqual({
+      content: "Use Fahrenheit.",
+      kind: "user",
+      role: "user",
+    });
+    expect(getHarnessEmissionState(second.session.state)).toMatchObject({
+      sequence: 1,
+      stepIndex: 0,
+      turnId: "",
+    });
   });
 
   it("omits user messages with no model-visible content", async () => {
@@ -1927,70 +2012,6 @@ describe("createToolLoopHarness", () => {
     expect(events.at(-1)?.type).toBe("session.waiting");
   });
 
-  it("keeps declared subagent tools when Workflow is unavailable outside the root", async () => {
-    setupMockAgent({
-      finishReason: "stop",
-      response: { messages: [{ content: "Hello!", role: "assistant" }] },
-      text: "Hello!",
-      toolCalls: [],
-      toolResults: [],
-    });
-
-    const config = createTestConfig("conversation", undefined, {
-      workflow: true,
-      tools: new Map([
-        [
-          "delegate",
-          {
-            description: "Delegate to a subagent.",
-            inputSchema: jsonSchema({ type: "object" }),
-            name: "delegate",
-            resultKind: "subagent",
-            workflowId: "workflow//./agent/subagents/researcher//execute",
-          },
-        ],
-      ]),
-    });
-    const runStep = createToolLoopHarness(config);
-
-    await runStep(createTestSession({ rootSessionId: "root-session" }), {
-      message: "Hi",
-    });
-
-    const agentCall = vi.mocked(ToolLoopAgent).mock.calls[0]?.[0];
-    expect(agentCall).toBeDefined();
-    expect(agentCall!.tools).toHaveProperty("delegate");
-    expect(agentCall!.tools).not.toHaveProperty("Workflow");
-  });
-
-  it("omits Workflow from runtime subagent sessions", async () => {
-    setupMockAgent({
-      finishReason: "stop",
-      response: { messages: [{ content: "Hello!", role: "assistant" }] },
-      text: "Hello!",
-      toolCalls: [],
-      toolResults: [],
-    });
-
-    const config = createTestConfig("conversation", undefined, {
-      workflow: true,
-      tools: createDelegationToolMap(),
-    });
-    const runStep = createToolLoopHarness(config);
-
-    await runStep(
-      createTestSession({
-        rootSessionId: "root-session",
-      }),
-      { message: "Hi" },
-    );
-
-    const agentCall = vi.mocked(ToolLoopAgent).mock.calls[0]?.[0];
-    expect(agentCall).toBeDefined();
-    expect(agentCall!.tools).toHaveProperty("delegate");
-    expect(agentCall!.tools).not.toHaveProperty("Workflow");
-  });
-
   it("forwards the agent reasoning effort to the model call", async () => {
     setupMockAgent({
       finishReason: "stop",
@@ -2662,6 +2683,33 @@ describe("createToolLoopHarness", () => {
     const result = await runStep(session, { message: "Hi" });
 
     expect(result.next).toEqual({ done: true, output: { summary: "Done" } });
+  });
+
+  it("parks a scheduled task turn while its launched background task is pending", async () => {
+    const schema = {
+      properties: { summary: { type: "string" } },
+      required: ["summary"],
+      type: "object",
+    } as const;
+    setupMockAgent(finalOutputResult("Starting.", { summary: "Pending" }));
+    const { emit, events } = createEventCollector();
+    const runStep = createToolLoopHarness(createTestConfig("task", emit));
+    const ctx = new ContextContainer();
+    ctx.set(ScheduleIdKey, "scheduled-report");
+    ctx.set(BackgroundToolExecutorKey, {
+      execute: vi.fn(),
+      hasPendingTasks: () => true,
+    });
+
+    const result = await contextStorage.run(ctx, () =>
+      runStep(createTestSession({ outputSchema: schema }), { message: "Run the report" }),
+    );
+
+    expect(result.next).toBeNull();
+    expect(result.settledTurn).toEqual({ output: { summary: "Pending" } });
+    expect(result.session.outputSchema).toBe(schema);
+    expect(events.some((event) => event.type === "result.completed")).toBe(false);
+    expect(events.at(-1)?.type).toBe("session.waiting");
   });
 
   it("fails a task turn as an error when structured output is not produced", async () => {

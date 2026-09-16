@@ -78,7 +78,7 @@ curl -X POST https://<deployment>/eve/v1/session/wrun_A \
   -d '{"inputResponses":[{"requestId":"req_A","optionId":"approve"}]}'
 ```
 
-Follow-up messages use `turnPolicy: "steer"` by default. If a turn is active, eve buffers the message before cooperatively cancelling that turn, then starts the follow-up as a replacement turn with a new turn ID. Set `turnPolicy: "queue"` on `eveChannel(...)` when follow-ups should wait for active turns to finish. `inputResponses` never steer.
+Follow-up messages use `turnPolicy: "steer"` by default. If a turn is active, eve buffers the message and applies it at the next committed workflow boundary, preserving the turn ID. Set `turnPolicy: "queue"` on `eveChannel(...)` when follow-ups should wait for active turns to finish. `inputResponses` answer their addressed requests.
 
 Sending a message to an unknown, terminal, or not-yet-active session ID returns `409` with
 `{"code":"session_not_active","error":"The session is no longer active.","ok":false}`.
@@ -159,42 +159,42 @@ For the full auth model and helper list, see [Auth & route protection](../guides
 
 ## Audience
 
-The eve channel classifies who can observe a session when that session is created:
+The eve channel assigns an observability audience when it creates a session. The
+audience controls whether instrumentation may capture session content:
 
 | Session creator                           | Default audience |
 | ----------------------------------------- | ---------------- |
-| Anonymous caller                          | `public`         |
+| Anonymous caller                          | `unknown`        |
 | `user`, `service`, or `runtime` principal | `private`        |
 | Any other principal type                  | `unknown`        |
 
-Anonymous HTTP surfaces are public because anyone who can reach the surface can read it. Authenticated `user`, `service`, and `runtime` sessions are private because they belong to one identified party. Other authenticated principal types remain `unknown`: trace consumers record metadata but omit content by default in preview and production.
+Anonymous HTTP surfaces are `unknown` by default because reachability does not establish that their content is safe to record. Authenticated `user`, `service`, and `runtime` sessions are private because they belong to one identified party. Other authenticated principal types also remain `unknown`: trace consumers record metadata but omit content by default in preview and production. Set an explicit `audience: "public"` only for intentionally public traffic.
 
-Pass a constant or a function to override the default:
-
-```ts title="agent/channels/eve.ts"
-import { none, vercelOidc } from "eve/channels/auth";
-import { eveChannel } from "eve/channels/eve";
-
-export default eveChannel({
-  auth: [vercelOidc()],
-  audience: "private",
-});
-```
+For a production endpoint whose conversations are all intentionally public,
+set a constant audience:
 
 ```ts title="agent/channels/eve.ts"
 import { vercelOidc } from "eve/channels/auth";
 import { eveChannel } from "eve/channels/eve";
 
 export default eveChannel({
-  auth: [vercelOidc(), none()],
-  audience({ auth, environment }) {
-    if (auth === null) return environment === "development" ? "public" : "unknown";
-    return "private";
-  },
+  auth: [vercelOidc()],
+  audience: "public",
 });
 ```
 
-The function receives the authenticated principal, channel, run mode, and deployment environment. Classification is fixed at session creation; a continuation turn from a different caller does not reclassify the session. When another eve deployment forwards a request without an accepted forwarded trace assertion, the calling deployment's principal is used for classification, so the session remains `private`. A custom [trace policy](../guides/instrumentation-providers#control-inputs-and-outputs) can still admit or deny content independently.
+`audience` controls observability content capture; it does not change who may
+call the endpoint. `auth` still controls access. For a classification that
+depends on channel state or application-specific verified data, use a [custom
+channel audience](./custom#conversation-audience).
+
+You can also pass a function that receives `caller`, channel, run mode, and
+deployment environment. Classification is fixed at session creation, so a later
+turn from a different caller does not reclassify the session.
+
+For a remote agent, a trusted dispatch can forward the original audience and
+its trace-content ceiling. See [Preserving trace
+content](../guides/remote-agents#preserving-trace-content).
 
 ## Customization
 

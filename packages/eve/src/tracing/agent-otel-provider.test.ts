@@ -231,6 +231,7 @@ async function emitAttempt(input: {
           },
         ],
         finishReason: "tool-calls",
+        modelId: "claude-response",
         performance: { responseTimeMs: 10 },
         responseId: "response-1",
         usage: {
@@ -341,7 +342,9 @@ async function publishTurnStarted(input: {
   readonly parentLineage?: InstrumentationParentLineage;
   readonly parentTraceContext?: InstrumentationTraceContext;
   readonly rootSessionId?: string;
+  readonly scheduleId?: string;
   readonly sessionId: string;
+  readonly title?: string;
   readonly traceSeed?: InstrumentationTraceContext;
   readonly turnId: string;
   readonly turnSequence: number;
@@ -355,7 +358,9 @@ async function publishTurnStarted(input: {
     parentLineage: input.parentLineage,
     parentTraceContext: input.parentTraceContext,
     rootSessionId,
+    scheduleId: input.scheduleId,
     sessionId: input.sessionId,
+    title: input.title,
     traceSeed: input.traceSeed,
     type: "session.started",
   });
@@ -735,7 +740,9 @@ describe("createAgentOtelInstrumentation", () => {
       parentLineage,
       parentTraceContext: parent,
       rootSessionId: "root-session",
+      scheduleId: "daily-report",
       sessionId: "child-session",
+      title: "Research the incident",
       traceSeed: seed,
       turnId: "child-turn",
       turnSequence: 0,
@@ -761,13 +768,85 @@ describe("createAgentOtelInstrumentation", () => {
       "agent.principal.current.type": "user",
       "agent.principal.initiator.type": "none",
       "agent.run.id": "child-session",
+      "agent.run.type": "subagent",
+      "agent.trace.content.input": true,
+      "agent.trace.content.output": true,
       "gen_ai.conversation.id": "root-session",
       "gen_ai.operation.name": "invoke_agent",
     });
+    expect(invocation.attributes).not.toHaveProperty("agent.channel.kind");
+    expect(invocation.attributes).not.toHaveProperty("agent.schedule.id");
+    expect(invocation.attributes).not.toHaveProperty("agent.session.origin");
+    expect(invocation.attributes).not.toHaveProperty("agent.session.title");
     expect(invocation.attributes).not.toHaveProperty("agent.principal.initiator.id");
     expect(invocation.attributes).not.toHaveProperty("agent.root_run.id");
     expect(invocation.attributes).not.toHaveProperty("agent.session.id");
     expect(invocation.attributes).not.toHaveProperty("vercel.session_id");
+  });
+
+  it("samples and exports preamble-prepared activation metadata consistently", async () => {
+    const store = new InMemoryAgentTraceStateStore();
+    const samplesTrace = vi.fn(() => true);
+    const runtime = createRuntime(
+      store,
+      () => ({ emit: true, recordInputs: true, recordOutputs: true }),
+      [],
+      samplesTrace,
+    );
+    const setSession = vi.spyOn(store, "setSession");
+    const sessionId = "session-early";
+    await runtime.prepareSessionTrace({
+      agentName: "weather",
+      channelAudience: "public",
+      channelKind: "http",
+      idempotencyKey: sessionIdempotencyKey(sessionId),
+      rootSessionId: sessionId,
+      scheduleId: "daily-report",
+      sessionId,
+      title: "Prepared before sampling",
+      type: "session.started",
+    });
+    await runtime.prepareTurnTrace({
+      idempotencyKey: turnIdempotencyKey(sessionId, "turn-1"),
+      rootSessionId: sessionId,
+      sequence: 0,
+      sessionId,
+      turnId: "turn-1",
+      type: "turn.started",
+    });
+
+    expect(samplesTrace).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          "agent.channel.kind": "http",
+          "agent.schedule.id": "daily-report",
+          "agent.session.origin": "schedule",
+          "agent.session.title": "Prepared before sampling",
+        }),
+      }),
+    );
+
+    await publishTurnStarted({
+      hooks: runtime.hooks,
+      scheduleId: "daily-report",
+      sessionId,
+      title: "Prepared before sampling",
+      turnId: "turn-1",
+      turnSequence: 0,
+    });
+    await completeTurn(runtime.hooks, sessionId, "turn-1");
+    await runtime.provider.forceFlush();
+
+    expect(
+      byName(runtime.exporter.getFinishedSpans(), "invoke_agent weather")[0]?.attributes,
+    ).toMatchObject({
+      "agent.channel.kind": "http",
+      "agent.schedule.id": "daily-report",
+      "agent.session.origin": "schedule",
+      "agent.session.title": "Prepared before sampling",
+    });
+    expect(setSession).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to fresh ids when no trace seed is present", async () => {
@@ -1192,8 +1271,11 @@ describe("createAgentOtelInstrumentation", () => {
     ).toBe(true);
     expect(action.parentSpanContext?.spanId).toBe(step.spanContext().spanId);
     expect(tool.parentSpanContext?.spanId).toBe(action.spanContext().spanId);
-    for (const span of [turn, step, model, action, tool]) {
+    expect(turn.attributes["agent.channel.audience"]).toBe("public");
+    for (const span of [step, model, action, tool]) {
       expect(span.attributes).not.toHaveProperty("agent.channel.audience");
+    }
+    for (const span of [turn, step, model, action, tool]) {
       expect(span.attributes).toMatchObject({
         "gen_ai.conversation.id": "session-1",
       });
@@ -1231,7 +1313,8 @@ describe("createAgentOtelInstrumentation", () => {
     });
     expect(model.attributes).toMatchObject({
       "gen_ai.response.id": "response-1",
-      "gen_ai.usage.cache_creation.input_tokens": 2,
+      "gen_ai.response.model": "claude-response",
+      "gen_ai.usage.cache_write.input_tokens": 2,
       "gen_ai.usage.cache_read.input_tokens": 4,
       "gen_ai.usage.input_tokens": 10,
       "gen_ai.usage.output_tokens": 5,
@@ -1243,12 +1326,12 @@ describe("createAgentOtelInstrumentation", () => {
     });
     expect(tool.kind).toBe(SpanKind.INTERNAL);
     expect(tool.attributes).toMatchObject({
+      "gen_ai.agent.name": "weather",
       "gen_ai.operation.name": "execute_tool",
       "gen_ai.tool.call.id": "tool-1",
       "gen_ai.tool.name": "weather",
       "gen_ai.tool.type": "function",
     });
-    expect(tool.attributes).not.toHaveProperty("gen_ai.agent.name");
   });
 
   it("projects production workflow actions and classifies only GenAI composition", async () => {

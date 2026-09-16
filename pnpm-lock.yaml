@@ -110,6 +110,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@vercel/connect':
+        specifier: 'catalog:'
+        version: 1.0.0(@ai-sdk/mcp@2.0.45(zod@4.5.4))(@auth/core@0.41.2)(@chat-adapter/slack@4.34.0(ai@7.0.93(zod@4.5.4))(bufferutil@4.1.0)(supports-color@10.2.2)(zod@4.5.4))(ai@7.0.93(zod@4.5.4))(eve@packages+eve)
       gray-matter:
         specifier: 4.0.3
         version: 4.0.3
@@ -580,6 +583,9 @@ importers:
         specifier: 2.4.0
         version: 2.4.0
     devDependencies:
+      eve:
+        specifier: workspace:*
+        version: link:../../packages/eve
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -875,6 +881,34 @@ importers:
       eve:
         specifier: workspace:*
         version: link:../../../packages/eve
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  e2e/fixtures/agent-self-modification:
+    dependencies:
+      '@eve-e2e/config':
+        specifier: workspace:*
+        version: link:../e2e-config
+      '@vercel/connect':
+        specifier: 'catalog:'
+        version: 1.0.0(@ai-sdk/mcp@2.0.45(zod@4.5.4))(@auth/core@0.41.2)(@chat-adapter/slack@4.34.0(ai@7.0.93(zod@4.5.4))(bufferutil@4.1.0)(supports-color@10.2.2)(zod@4.5.4))(ai@7.0.93(zod@4.5.4))(eve@packages+eve)
+      '@workflow/world-postgres':
+        specifier: 'catalog:'
+        version: 5.0.0-beta.42(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(@upstash/redis@1.38.4)(sql.js@1.14.1)(supports-color@10.2.2)(typescript@7.0.2)
+      eve:
+        specifier: workspace:*
+        version: link:../../../packages/eve
+      just-bash:
+        specifier: 3.1.0
+        version: 3.1.0(supports-color@10.2.2)
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -1569,10 +1603,11 @@ importers:
         version: 4.1.10(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/eve-self-modification:
-    devDependencies:
+    dependencies:
       eve:
         specifier: workspace:*
         version: link:../eve
+    devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

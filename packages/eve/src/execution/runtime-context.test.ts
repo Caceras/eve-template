@@ -3,6 +3,7 @@ import { ContextContainer, contextStorage, loadContext } from "#context/containe
 import {
   AuthKey,
   ChannelInstrumentationKey,
+  ContinuationHookTokensKey,
   ContinuationTokenKey,
   ParentTraceContextKey,
   type Session,
@@ -11,6 +12,7 @@ import {
   SessionIdKey,
   SessionKey,
   ScheduleIdKey,
+  SessionTitleKey,
 } from "#context/keys.js";
 import { setChannelContext } from "#execution/channel-context.js";
 import { buildRunContext } from "#execution/runtime-context.js";
@@ -165,6 +167,7 @@ describe("buildRunContext", () => {
     });
 
     expect(ctx.require(AuthKey)).toEqual(testAuth);
+    expect(ctx.require(ContinuationHookTokensKey)).toEqual(["t"]);
     expect(ctx.get(SessionIdKey)).toBeUndefined();
   });
 
@@ -203,6 +206,36 @@ describe("buildRunContext", () => {
     expect(ctx.require(ScheduleIdKey)).toBe("dynamic-tasks");
   });
 
+  it("stores a title only for top-level sessions", () => {
+    const root = buildRunContext({
+      bundle: createMinimalBundle(),
+      run: {
+        auth: null,
+        adapter: { kind: "http" },
+        input: { message: "Investigate the incident" },
+        mode: "conversation",
+      },
+    });
+    const child = buildRunContext({
+      bundle: createMinimalBundle(),
+      run: {
+        auth: null,
+        adapter: { kind: "subagent" },
+        input: { message: "Delegated prompt" },
+        mode: "task",
+        parent: {
+          callId: "call-1",
+          rootSessionId: "root-session",
+          sessionId: "parent-session",
+          turn: { id: "turn-1", sequence: 0 },
+        },
+      },
+    });
+
+    expect(root.get(SessionTitleKey)).toBe("Investigate the incident");
+    expect(child.get(SessionTitleKey)).toBeUndefined();
+  });
+
   it("does not invent a continuation for an ID-only run", () => {
     const ctx = buildRunContext({
       bundle: createMinimalBundle(),
@@ -215,6 +248,7 @@ describe("buildRunContext", () => {
     });
 
     expect(ctx.get(ContinuationTokenKey)).toBeUndefined();
+    expect(ctx.get(ContinuationHookTokensKey)).toBeUndefined();
   });
 
   it("does not throw when channel has no onContext", () => {

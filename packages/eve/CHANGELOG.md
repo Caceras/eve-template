@@ -1,5 +1,46 @@
 # eve
 
+## 0.56.0
+
+### Minor Changes
+
+- 8bc931f: Add the `workflow` factory from `eve/tools/workflow` for running model-supplied JavaScript through durable `ctx.agent` calls. Remove the experimental uppercase `Workflow` tool and `experimental_workflow`; migrate its tool file to the new lowercase factory.
+- 6ce61cd: Remove aggregate registry packages and their component-selection flow. Install Linear integrations separately with `eve add channel/linear` and `eve add connection/linear`.
+
+### Patch Changes
+
+- 57d6be5: Add queryable metadata to activation spans, including run type, title when input capture permits, provenance, audience, schedule, and directional trace-content policy.
+- a63fb18: Keep background subagents bound to the authentication context of the turn that created their task, even when another caller starts a later turn first.
+- 51998ab: Automatically ignore the self-modification integration's known optional compression packages instead of prompting for its recommended pnpm build policy.
+- 56cde32: Include conversations classified as private in local `eve dev` traces, including sessions authenticated with the developer's Vercel OIDC token.
+- 7ea3b7a: Classify anonymous eve channel sessions as `unknown` by default, so their content is not recorded in preview or production traces unless you mark the audience public explicitly. Also add `credentialOwner` for raw getToken-only auth and `caller` for audience callbacks while preserving existing `principalType` APIs, and fix token cache keys so user identifiers containing separators or percent sequences cannot collide.
+- 23e2e7c: Allow submitting the initial TUI message while eve is still building the agent. The message is queued and sent automatically as soon as the agent is ready.
+- bca1b4a: Self-modification registry setup now asks whether to enable deployed draft pull requests or keep source editing local before collecting deployment configuration.
+- a7f2387: Improve development TUI Markdown with clearer headings, block spacing, clickable links, responsive bordered tables, and code panels. Set `EVE_TUI_RENDER_MARKDOWN=0` to show assistant and subagent responses without Markdown parsing or styling.
+
+## 0.55.0
+
+### Minor Changes
+
+- 0e0f3cc: - Adds `audience(input)` to `defineChannel` and a durable conversation context for trace policies.
+  - `eveChannel` now defaults anonymous callers to public and authenticated callers to private. Trace content is public-or-development by default.
+  - `metadata().audience` is deprecated. Channel epoch 19 extensions keep working through a warned fallback; move classification to `audience(input)`.
+
+### Patch Changes
+
+- c500167: Pass `defaultDeliver()` to custom Slack input handlers so they can delegate selected requests to eve's standard thread or private DM delivery.
+- 520f498: Keep local subagent workflow visibility metadata aligned with the inherited trace decision so Agent Runs does not hide content that was exported for the child.
+- d63d6b7: Attribute local and remote background agent tool activity to its task, including when continuing or steering an existing agent. Each task keeps one progress item, and new work no longer reports against the previous task.
+- bf1175d: Ignore generated module and declaration source maps when discovering skills, so they are not reported as unrecognized skill files.
+- 15c7a2e: Allow `eve init` to add an agent to an existing package without requiring a literal `.` target. You can now initialize the current package or pass the path to an existing package directly.
+- 7a63a68: Keep completed foreground turns in native terminal scrollback while a background subagent continues streaming, rather than hiding them behind the live viewport.
+- bef74fe: Add `protocolVersionDiscovery` to MCP client connections. Set it to `false` to use the initialization handshake for servers that reject modern discovery, while keeping discovery enabled by default.
+- dafa558: Scheduled runs that start background work now stay open and silent until the result is available, then deliver the final response once.
+- 7ad2740: Allow the self-modification agent arguments to set the reasoning effort used by its subagent.
+- 0f79075: Make `withEve()` discover project-level `agents/` workspace members, mounting each named agent through a Next.js app without repeating the agent map in `next.config.ts`. Workspace peers declared with `defineWorkspaceAgent()` route through the named Next.js mount automatically.
+- 09425a0: Move the self-modification registry item to `eve/self-modification`, remove its experimental label and separate production address, and run its production setup flow when added directly.
+- 638aed5: Background task activity now uses a tool's per-call label when one is provided, while retaining the tool or subagent name for execution identity.
+
 ## 0.54.5
 
 ### Patch Changes

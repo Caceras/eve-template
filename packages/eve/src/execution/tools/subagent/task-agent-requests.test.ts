@@ -48,7 +48,7 @@ describe("workflow-owned agent requests", () => {
       replyTo: "reply",
       request: { kind: "agent-settled" as const, result },
     };
-    const context = { parentWritable: {} as never, serializedContext, sessionState };
+    const context = { sessionWritable: {} as never, serializedContext, sessionState };
     const settled = await applyTaskAgentRequest(delivery, context);
 
     expect(settleTaskAgentInvocationStep).toHaveBeenCalledWith({
@@ -65,7 +65,17 @@ describe("workflow-owned agent requests", () => {
   });
 
   it("retains existing context when replaying a dispatch result without tracing state", async () => {
-    const serializedContext = { "eve.test": "preserved" };
+    const receiver = {
+      attributes: {},
+      authenticator: "test-idp",
+      principalId: "receiver",
+      principalType: "user",
+    };
+    const serializedContext = {
+      "eve.auth": receiver,
+      "eve.initiatorAuth": receiver,
+      "eve.test": "preserved",
+    };
     const event = { type: "subagent.called" } as never;
     vi.mocked(dispatchTaskAgentInvocationStep).mockResolvedValue({
       agentId: "child",
@@ -85,12 +95,12 @@ describe("workflow-owned agent requests", () => {
           kind: "agent-invoke",
         },
       },
-      { parentWritable: {} as never, serializedContext, sessionState },
+      { sessionWritable: {} as never, serializedContext, sessionState },
     );
 
     expect(emitTaskSubagentCalledStep).toHaveBeenCalledWith({
       event,
-      parentWritable: {},
+      sessionWritable: {},
       serializedContext,
     });
     expect(applied.serializedContext).toBe(serializedContext);

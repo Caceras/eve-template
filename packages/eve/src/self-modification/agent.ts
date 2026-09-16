@@ -1,5 +1,10 @@
 import type { DynamicResolveContext } from "#dynamic/definition.js";
-import { defineAgent, defineDynamic, type AgentStaticModelDefinition } from "#public/index.js";
+import {
+  defineAgent,
+  defineDynamic,
+  type AgentReasoningDefinition,
+  type AgentStaticModelDefinition,
+} from "#public/index.js";
 
 import { resolveSelfModificationConfig, type SelfModificationConfig } from "./config.js";
 import { hasGitHubCredential } from "./credentials.js";
@@ -18,6 +23,10 @@ export interface SelfModificationAgentOptions {
    * @default "anthropic/claude-sonnet-5"
    */
   readonly model?: AgentStaticModelDefinition;
+  /**
+   * Reasoning effort used by the self-modification subagent.
+   */
+  readonly reasoning?: AgentReasoningDefinition;
 }
 
 function renderDescription(sections: readonly string[]): string {
@@ -41,6 +50,10 @@ const followUpDelegation =
   "Resolve short follow-ups such as “yes” or “do it” against the preceding conversation. " +
   "If whether the requested change should persist is genuinely ambiguous, ask one concise clarifying question.";
 
+const repairDelegation =
+  "If a tool or capability created or changed by this subagent later fails or behaves incorrectly, explain the observed problem and offer to delegate a repair. " +
+  "Do not start the repair until the user confirms. Treat that confirmation as a source-modification request and delegate it immediately, including the exact identifier, failing behavior, expected behavior, and existing constraints.";
+
 const localIntegrationDelegation =
   "Delegate questions about which integrations, channels, connections, or capabilities are available to add: the subagent searches the eve registry and reports exact item addresses instead of guessing them.";
 
@@ -58,6 +71,7 @@ const deployedEffectiveEdits =
 /** Defines the environment-aware self-modification dynamic subagent. */
 export function defineSelfModificationAgent(options: SelfModificationAgentOptions = {}) {
   const model = options.model ?? DEFAULT_SELF_MODIFICATION_MODEL;
+  const reasoning = options.reasoning;
   const config = resolveSelfModificationConfig(options.config);
 
   const resolve = async (_event: unknown, ctx: DynamicResolveContext) => {
@@ -70,9 +84,10 @@ export function defineSelfModificationAgent(options: SelfModificationAgentOption
       mode === "local" ? localIntegrationDelegation : deployedIntegrationDelegation,
       mode === "local" ? localTraceDelegation : "",
       followUpDelegation,
+      repairDelegation,
       mode === "local" ? localEffectiveEdits : deployedEffectiveEdits,
     ]);
-    if (mode === "local") return defineAgent({ description, model });
+    if (mode === "local") return defineAgent({ description, model, reasoning });
     if (mode !== "deployed" || config.deployed === undefined) return null;
     if (config.deployed.credentials.kind === "pat" && !hasGitHubCredential()) return null;
     try {
@@ -87,7 +102,7 @@ export function defineSelfModificationAgent(options: SelfModificationAgentOption
     } catch {
       return null;
     }
-    return defineAgent({ description, model });
+    return defineAgent({ description, model, reasoning });
   };
 
   return defineDynamic({
