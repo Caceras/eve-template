@@ -9,7 +9,10 @@ import {
   microsandboxOptionsForHash,
   resolveMicrosandboxOptions,
 } from "#execution/sandbox/bindings/microsandbox-options.js";
-import { createStableHash } from "#execution/sandbox/bindings/microsandbox-runtime.js";
+import {
+  createProviderName,
+  createStableHash,
+} from "#execution/sandbox/bindings/microsandbox-runtime.js";
 import { materializeSandboxDockerfile } from "#execution/sandbox/dockerfile.js";
 import { createSandboxProviderIdentity } from "#execution/sandbox/provider-identity.js";
 import type {
@@ -26,12 +29,14 @@ export { pruneMicrosandboxTemplates } from "#execution/sandbox/bindings/microsan
 
 export const MICROSANDBOX_PROVIDER_NAME = "microsandbox";
 
+export type MicrosandboxProviderSessionState = MicrosandboxSessionMetadata;
+
 export function createMicrosandboxSandboxProvider(
   authoredOptions: MicrosandboxSandboxCreateOptions | undefined = undefined,
 ): SandboxProviderImplementation<
   MicrosandboxSandboxRuntimeOptions,
   MicrosandboxPreparedArtifact,
-  MicrosandboxSessionMetadata
+  MicrosandboxProviderSessionState
 > {
   const createOptions = authoredOptions ?? {};
   const options = resolveMicrosandboxOptions(createOptions);
@@ -70,7 +75,11 @@ export function createMicrosandboxSandboxProvider(
     async resume(context, runtimeOptions, artifactValue, stateValue) {
       const artifact = requireArtifact(artifactValue);
       const state = requireState(stateValue);
-      if (state.optionsHash !== optionsHash || artifact.optionsHash !== optionsHash) {
+      if (
+        state.optionsHash !== optionsHash ||
+        artifact.optionsHash !== optionsHash ||
+        state.sandboxName !== microsandboxSessionName(context.session.id, artifact, optionsHash)
+      ) {
         throw new Error("microsandbox session state is incompatible with this environment.");
       }
       const result = await createMicrosandboxHandle({
@@ -86,8 +95,9 @@ export function createMicrosandboxSandboxProvider(
       return result.handle;
     },
     async start(context, runtimeOptions, artifactValue) {
-      return await createMicrosandboxHandle({
-        artifact: requireArtifact(artifactValue),
+      const artifact = requireArtifact(artifactValue);
+      const result = await createMicrosandboxHandle({
+        artifact,
         context,
         onSession: runtimeOptions?.onSession,
         options,
@@ -95,8 +105,21 @@ export function createMicrosandboxSandboxProvider(
         providerName: MICROSANDBOX_PROVIDER_NAME,
         runtimeOptions,
       });
+      return result;
     },
   };
+}
+
+function microsandboxSessionName(
+  sessionId: string,
+  artifact: MicrosandboxPreparedArtifact,
+  optionsHash: string,
+): string {
+  const identity = createStableHash(`${sessionId}:${artifact.snapshotName}:${optionsHash}`).slice(
+    0,
+    32,
+  );
+  return createProviderName("eve-sbx-ses", identity);
 }
 
 function requireArtifact(artifact: SandboxPreparedArtifact): MicrosandboxPreparedArtifact {
@@ -116,7 +139,7 @@ function requireArtifact(artifact: SandboxPreparedArtifact): MicrosandboxPrepare
   };
 }
 
-function requireState(state: unknown): MicrosandboxSessionMetadata {
+function requireState(state: unknown): MicrosandboxProviderSessionState {
   if (
     !isSandboxPreparedArtifactRecord(state) ||
     state.version !== 2 ||

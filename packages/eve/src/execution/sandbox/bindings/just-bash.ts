@@ -107,7 +107,7 @@ export function createJustBashSandboxProvider(
     async resume(context, _openOptions, artifactValue, stateValue) {
       const artifact = requirePreparedJustBashArtifact(artifactValue);
       const state = requireJustBashSessionState(stateValue);
-      const expectedRootPath = sessionRootPath(context);
+      const expectedRootPath = sessionRootPath(context, artifact);
       if (state.rootPath !== expectedRootPath) {
         throw new Error("just-bash session state is incompatible with this environment.");
       }
@@ -116,7 +116,7 @@ export function createJustBashSandboxProvider(
     },
     async start(context, _openOptions, artifactValue) {
       const artifact = requirePreparedJustBashArtifact(artifactValue);
-      const rootPath = sessionRootPath(context);
+      const rootPath = sessionRootPath(context, artifact);
       await ensureSessionRoot(artifact, rootPath);
       return {
         handle: await openHandle(context, rootPath, options),
@@ -126,10 +126,16 @@ export function createJustBashSandboxProvider(
   };
 }
 
-function sessionRootPath(context: SandboxProviderSessionContext): string {
+function sessionRootPath(
+  context: SandboxProviderSessionContext,
+  artifact: JustBashPreparedArtifact,
+): string {
   return resolveSessionRootPath(
     context.storagePath,
-    createSandboxProviderIdentity({ sessionId: context.session.id, version: 1 }).slice(0, 24),
+    createSandboxProviderIdentity({ artifact, sessionId: context.session.id, version: 1 }).slice(
+      0,
+      24,
+    ),
   );
 }
 

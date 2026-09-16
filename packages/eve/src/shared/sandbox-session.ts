@@ -83,9 +83,8 @@ export interface SandboxRemovePathOptions {
  * The eight I/O methods (`run`, `spawn`, `readFile`, `readBinaryFile`,
  * `readTextFile`, `writeFile`, `writeBinaryFile`, `writeTextFile`) are
  * pulled directly from the AI SDK {@link AiSdkSandbox} type, so authored
- * code that targets either surface uses identical signatures. `id` and
- * `resolvePath` are eve-specific extensions that the runtime relies on
- * for caching and `/workspace` path anchoring.
+ * code that targets either surface uses identical signatures. `resolvePath`
+ * is an eve-specific extension for `/workspace` path anchoring.
  *
  * Relative paths resolve from `/workspace`, the live working directory
  * for every provider. Absolute paths pass through unchanged.
@@ -121,8 +120,7 @@ export interface SandboxSession extends Pick<
    * When the policy is known at session start, prefer configuring it up
    * front in the provider environment or the selector before running untrusted code. The
    * Docker provider honors only `"allow-all"` and `"deny-all"`;
-   * the just-bash provider rejects this call entirely (its network policy
-   * is fixed at sandbox creation and it runs no binaries to govern).
+   * the just-bash provider omits this method (it runs no binaries to govern).
    */
   setNetworkPolicy?(policy: SandboxNetworkPolicy): Promise<void>;
   /**

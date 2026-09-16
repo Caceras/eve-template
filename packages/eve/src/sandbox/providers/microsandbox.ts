@@ -1,6 +1,8 @@
-import { createMicrosandboxSandboxProvider } from "#execution/sandbox/bindings/local.js";
+import {
+  createMicrosandboxSandboxProvider,
+  type MicrosandboxProviderSessionState,
+} from "#execution/sandbox/bindings/microsandbox.js";
 import type { MicrosandboxPreparedArtifact } from "#execution/sandbox/bindings/microsandbox-lifecycle.js";
-import type { MicrosandboxSessionMetadata } from "#execution/sandbox/bindings/microsandbox-metadata.js";
 import type {
   MicrosandboxSandboxCreateOptions,
   MicrosandboxSandboxRuntimeOptions,
@@ -16,7 +18,7 @@ const provider = defineSandboxProvider<
   MicrosandboxEnvironmentOptions,
   MicrosandboxSandboxRuntimeOptions,
   MicrosandboxPreparedArtifact,
-  MicrosandboxSessionMetadata
+  MicrosandboxProviderSessionState
 >({
   name: "microsandbox",
   environment: (options) => createMicrosandboxSandboxProvider(options),
