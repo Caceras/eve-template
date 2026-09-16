@@ -7,6 +7,7 @@ import type { ClientSession } from "#client/session.js";
 import type {
   CancelSessionResult,
   ClientSessionState,
+  CreateSessionOptions,
   SendTurnInput,
   SendTurnOptions,
   SendTurnPayload,
@@ -21,7 +22,6 @@ import { summarizeTurnEvents } from "#client/session-utils.js";
 import { extractCompletedResult } from "#client/output-schema.js";
 import type { InputRequest, InputResponse } from "#shared/input.js";
 import { deriveRunFacts } from "#evals/runner/derive-run-facts.js";
-import { cleanupEvalSessions } from "#evals/session-cleanup.js";
 import { formatEvalTranscript, inferMediaType } from "#evals/session-content.js";
 import { AssertionCollector } from "#evals/assertions/collector.js";
 import { createOutputAssertions, createScopedAssertions } from "#evals/assertions/scoped.js";
@@ -75,6 +75,7 @@ export interface EvalSessionStartedEvent {
 export class EvalSessionDriver implements EveEvalSession {
   readonly #client: Client;
   #session: ClientSession | undefined;
+  #creatingSession: Promise<{ readonly session: ClientSession }> | undefined;
   readonly #signal: AbortSignal | undefined;
   readonly #collector: AssertionCollector;
   readonly #events: MessageStreamEvent[] = [];
@@ -135,6 +136,32 @@ export class EvalSessionDriver implements EveEvalSession {
 
   get state(): ClientSessionState | undefined {
     return this.#session?.state;
+  }
+
+  async prewarm(options: CreateSessionOptions = {}): Promise<void> {
+    if (this.#creatingSession !== undefined) {
+      await this.#creatingSession;
+      return;
+    }
+    if (this.#session !== undefined) return;
+    await this.#createSession(() =>
+      this.#client.sessions.create({ ...options, signal: options.signal ?? this.#signal }),
+    );
+  }
+
+  async #createSession<T extends { readonly session: ClientSession }>(
+    create: () => Promise<T>,
+  ): Promise<T> {
+    const pending = create().then((created) => {
+      this.#session = created.session;
+      return created;
+    });
+    this.#creatingSession = pending;
+    try {
+      return await pending;
+    } finally {
+      this.#creatingSession = undefined;
+    }
   }
 
   async cancel(): Promise<CancelSessionResult> {
@@ -218,17 +245,17 @@ export class EvalSessionDriver implements EveEvalSession {
   }
 
   async #start(input: SendTurnPayload): Promise<EveEvalLiveTurn> {
+    if (this.#creatingSession !== undefined) await this.#creatingSession;
     const turnInput = attachSignal(input, this.#signal);
     let response;
     if (this.#session === undefined) {
       if (turnInput.message === undefined) {
         throw new Error("Eval session has not started.");
       }
-      const created = await this.#client.sessions.create({
-        ...turnInput,
-        message: turnInput.message,
-      });
-      this.#session = created.session;
+      const message = turnInput.message;
+      const created = await this.#createSession(() =>
+        this.#client.sessions.create({ ...turnInput, message }),
+      );
       response = created.response;
     } else {
       const { inputResponses, message, ...options } = turnInput;
@@ -563,99 +590,6 @@ class EvalTurn implements EveEvalTurn {
       output: outputOf(this),
       status: this.status,
     } as const;
-  }
-}
-
-export class EvalSessionManager {
-  readonly #client: Client;
-  readonly #signal: AbortSignal | undefined;
-  readonly #collector: AssertionCollector;
-  readonly #onSessionStart: ((event: EvalSessionStartedEvent) => void) | undefined;
-  readonly #sessions: EvalSessionDriver[] = [];
-  #primary: EvalSessionDriver | undefined;
-
-  constructor(input: {
-    readonly client: Client;
-    readonly collector?: AssertionCollector;
-    readonly onSessionStart?: (event: EvalSessionStartedEvent) => void;
-    readonly signal?: AbortSignal;
-  }) {
-    this.#client = input.client;
-    this.#collector = input.collector ?? new AssertionCollector();
-    this.#onSessionStart = input.onSessionStart;
-    this.#signal = input.signal;
-  }
-
-  get primary(): EvalSessionDriver {
-    this.#primary ??= this.#createSession(true);
-    return this.#primary;
-  }
-
-  newSession(): EvalSessionDriver {
-    return this.#createSession(false);
-  }
-
-  async attachSession(
-    sessionId: string,
-    options?: { readonly startIndex?: number },
-  ): Promise<EvalSessionDriver> {
-    const session = this.#createAttachedSession(sessionId, options);
-    await session.readTurn(options);
-    return session;
-  }
-
-  watchTurn(sessionId: string, options?: { readonly startIndex?: number }): EveEvalLiveTurn {
-    return this.#createAttachedSession(sessionId, options).watchTurn(options, sessionId);
-  }
-
-  snapshots(): readonly EveEvalSessionResult[] {
-    return this.#sessions.map((session) => session.snapshot());
-  }
-
-  lastTurnSession(): EvalSessionDriver | undefined {
-    if (this.#primary?.lastTurn !== undefined) {
-      return this.#primary;
-    }
-
-    return this.#sessions.find((session) => session.lastTurn !== undefined);
-  }
-
-  hasActivity(): boolean {
-    return this.#sessions.length > 0;
-  }
-  /** @internal */
-  async cleanup(signal: AbortSignal): Promise<readonly PromiseSettledResult<void>[]> {
-    return await cleanupEvalSessions(this.#sessions, signal);
-  }
-
-  #createSession(primary: boolean): EvalSessionDriver {
-    const session = new EvalSessionDriver({
-      client: this.#client,
-      collector: this.#collector,
-      onSessionStart: this.#onSessionStart,
-      primary,
-      signal: this.#signal,
-    });
-    this.#sessions.push(session);
-    return session;
-  }
-
-  #createAttachedSession(
-    sessionId: string,
-    options?: { readonly startIndex?: number },
-  ): EvalSessionDriver {
-    const session = new EvalSessionDriver({
-      client: this.#client,
-      collector: this.#collector,
-      onSessionStart: this.#onSessionStart,
-      primary: false,
-      session: this.#client.sessions.attach(sessionId, {
-        streamIndex: options?.startIndex ?? 0,
-      }),
-      signal: this.#signal,
-    });
-    this.#sessions.push(session);
-    return session;
   }
 }
 

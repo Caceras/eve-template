@@ -9,6 +9,7 @@ import type {
 import type {
   CancelSessionResult,
   ClientSessionState,
+  CreateSessionOptions,
   SendTurnInput,
   SendTurnOptions,
 } from "#client/types.js";
@@ -300,8 +301,13 @@ export interface EveEvalSessionDriver {
   readonly pendingInputRequests: readonly InputRequest[];
   /** Serializable cursor for resuming this session. */
   readonly state: ClientSessionState | undefined;
-  /** eve session id after the first successful send. */
+  /** eve session id after prewarming or the first successful send. */
   readonly sessionId: string | undefined;
+  /**
+   * Create this session without starting a turn. Resolves on acceptance, without
+   * consuming events. Concurrent calls share creation; later sends reuse the session.
+   */
+  prewarm(options?: CreateSessionOptions): Promise<void>;
   /** Request cooperative cancellation of this session's active turn. */
   cancel(): Promise<CancelSessionResult>;
   /** Require exactly one pending input request matching `filter`, or abort dependent control flow. */

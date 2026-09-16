@@ -42,6 +42,151 @@ function createTestEval(test: (t: EveEvalContext) => unknown, id = "test-eval"):
 }
 
 describe("executeTask", () => {
+  it("prewarms primary and independent sessions without consuming a turn", async () => {
+    const server = createScriptedServer(
+      ["session_1", "session_2"].map((sessionId) => ({
+        sessionId,
+        events: [
+          turnStarted("turn_0", TRACE_A),
+          messageCompleted("Hello", "turn_0"),
+          sessionWaiting(),
+        ],
+      })),
+    );
+    let creations = 0;
+    let evalSignal: AbortSignal;
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (request, init) => {
+      if (new URL(String(request)).pathname === "/eve/v1/session") {
+        expect(JSON.parse(String(init?.body))).toEqual({});
+        expect(init?.signal).toBe(evalSignal);
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer eval-token");
+        expect(new Headers(init?.headers).get("x-prewarm")).toBe("yes");
+        return Response.json({ sessionId: `session_${++creations}` }, { status: 202 });
+      }
+      return await server.fetch(request, init);
+    });
+    const onSessionStart = vi.fn();
+    const { result, error } = await executeTask({
+      client: new Client({ host: target.url, auth: { bearer: "eval-token" } }),
+      target,
+      onSessionStart,
+      evaluation: createTestEval(async (t) => {
+        evalSignal = t.signal;
+        const other = t.newSession();
+        for (const session of [t, other]) {
+          await session.prewarm({ headers: { "x-prewarm": "yes" } });
+          expect(session.state).toEqual({ sessionId: `session_${creations}`, streamIndex: 0 });
+          expect(session.events).toEqual([]);
+        }
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(onSessionStart).not.toHaveBeenCalled();
+        const first = await t.send("Hello Alice");
+        const second = await other.send("Hello Bob");
+        expect(first.sessionId).toBe("session_1");
+        expect(second.sessionId).toBe("session_2");
+        await t.prewarm();
+        await other.prewarm();
+      }),
+    });
+    expect(error).toBeUndefined();
+    expect(creations).toBe(2);
+    expect(server.posts.map((post) => new URL(post.url).pathname)).toEqual([
+      "/eve/v1/session/session_1",
+      "/eve/v1/session/session_2",
+    ]);
+    expect(result.sessions).toMatchObject([
+      { primary: false, sessionId: "session_2" },
+      { primary: true, sessionId: "session_1" },
+    ]);
+    expect(onSessionStart).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["prewarm", "send"] as const)(
+    "shares session creation when %s starts first",
+    async (firstOperation) => {
+      const accepted = Promise.withResolvers<void>();
+      const server = createScriptedServer([
+        { sessionId: "session_1", events: [turnStarted("turn_0"), sessionWaiting()] },
+      ]);
+      let creations = 0;
+      const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (request, init) => {
+        if (new URL(String(request)).pathname === "/eve/v1/session") {
+          creations += 1;
+          await accepted.promise;
+          if (firstOperation === "prewarm") {
+            return Response.json({ sessionId: "session_1" }, { status: 202 });
+          }
+        }
+        return await server.fetch(request, init);
+      });
+      const outcome = await executeTask({
+        client: new Client({ host: target.url }),
+        target,
+        evaluation: createTestEval(async (t) => {
+          const first = firstOperation === "prewarm" ? t.prewarm() : t.send("Hello Alice");
+          const second = firstOperation === "prewarm" ? t.send("Hello Alice") : t.prewarm();
+          const joined = t.prewarm();
+          await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+          expect(t.sessionId).toBeUndefined();
+          accepted.resolve();
+          await Promise.all([first, second, joined]);
+          expect(t.sessionId).toBe("session_1");
+        }),
+      });
+      expect(outcome.error).toBeUndefined();
+      expect(creations).toBe(1);
+      expect(server.posts).toHaveLength(1);
+    },
+  );
+
+  it("propagates a failed prewarm to waiting sends and permits retry", async () => {
+    const failed = Promise.withResolvers<Response>();
+    const error = new Error("Create failed");
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => failed.promise)
+      .mockResolvedValue(Response.json({ sessionId: "session_retry" }, { status: 202 }));
+    const outcome = await executeTask({
+      client: new Client({ host: target.url }),
+      target,
+      evaluation: createTestEval(async (t) => {
+        const prewarm = expect(t.prewarm()).rejects.toBe(error);
+        const send = expect(t.send("Hello Alice")).rejects.toBe(error);
+        const joined = expect(t.prewarm()).rejects.toBe(error);
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+        failed.reject(error);
+        await Promise.all([prewarm, send, joined]);
+        expect(t.state).toBeUndefined();
+        await t.prewarm();
+        expect(t.sessionId).toBe("session_retry");
+      }),
+    });
+    expect(outcome.error).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("cleans up a prewarmed session when the eval times out before sending", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ sessionId: "idle-session" }, { status: 202 }),
+    );
+    const reset = vi.spyOn(ClientSession.prototype, "reset").mockResolvedValue({
+      previousSessionId: "idle-session",
+      status: "reset",
+    });
+    const outcome = await executeTask({
+      client: new Client({ host: target.url }),
+      target,
+      evaluation: createTestEval(async (t) => {
+        await t.prewarm();
+        await new Promise<void>(() => {});
+      }),
+      timeoutMs: 50,
+    });
+    expect(outcome.error).toMatch(/timed out|timeout/i);
+    expect(reset).toHaveBeenCalledOnce();
+    expect((reset.mock.contexts[0] as ClientSession).state.sessionId).toBe("idle-session");
+  });
+
   it("settles when an eval ignores its timeout signal", async () => {
     const outcome = await executeTask({
       client: new Client({ host: target.url }),

@@ -1,4 +1,4 @@
-import { EvalSessionManager } from "#evals/session.js";
+import { EvalSessionManager } from "#evals/session-manager.js";
 import { AssertionCollector } from "#evals/assertions/collector.js";
 import { createScopedAssertions } from "#evals/assertions/scoped.js";
 import { buildJudgeContext } from "#evals/judge.js";
@@ -57,6 +57,7 @@ export function createEvalContext(deps: {
       return primary().sessionId;
     },
     cancel: () => primary().cancel(),
+    prewarm: (options) => primary().prewarm(options),
     requireInputRequest: (filter) => primary().requireInputRequest(filter),
     respond: (responses, options) => primary().respond(responses, options),
     startRespond: (responses, options) => primary().startRespond(responses, options),

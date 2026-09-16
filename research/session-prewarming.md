@@ -17,6 +17,10 @@ reset. The default is `false`. The explicit `prewarm()` method resolves on `202 
 concurrent calls share the same request. Applications must have auth, headers, and any chat-row
 binding ready before opting into automatic prewarming.
 
+Eval drivers expose `t.prewarm(options?)` and `session.prewarm(options?)` on independent
+sessions. These resolve on acceptance, retain the session for subsequent sends and timeout
+cleanup, and use the TypeScript client for transport and retries. Concurrent creation is shared.
+
 ## Runtime boundary
 
 Prewarming starts Workflow, creates the initial durable snapshot, and claims the existing inbox.
