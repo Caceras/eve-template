@@ -8,7 +8,7 @@ const provider = defineSandboxProvider({
     async prepare() {
       return { artifact: {}, reused: true };
     },
-    async getOrCreate() {
+    async open() {
       throw new Error("unused");
     },
   }),
@@ -19,7 +19,7 @@ describe("sandbox definitions", () => {
     const environment = provider.environment();
     expect(
       Reflect.get(
-        defineSandbox(() => environment.create()),
+        defineSandbox(() => environment.open()),
         Symbol.for("eve.sandbox-selector"),
       ),
     ).toBe(true);

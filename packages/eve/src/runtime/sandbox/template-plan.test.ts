@@ -12,7 +12,7 @@ function definition(environment: SandboxEnvironment): ResolvedSandboxDefinition 
     kind: "independent",
     logicalPath: "sandbox/sandbox.ts",
     revisionHash: "sandbox-revision",
-    selector: defineSandbox(() => environment.create()),
+    selector: defineSandbox(() => environment.open()),
     sourceId: "sandbox/sandbox.ts",
     sourceKind: "module",
   };

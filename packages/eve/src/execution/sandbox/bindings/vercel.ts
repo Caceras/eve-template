@@ -105,7 +105,7 @@ export function createVercelSandbox(
   const createSandbox = input.createSandbox ?? createVercelEveImageSandbox;
 
   return {
-    async getOrCreate(context, source) {
+    async open(context, source) {
       const { mounts, ...runtimeOptions } = context.options;
       const sessionCreateOptions = { ...createOptions, ...runtimeOptions };
       // Resolve tags up-front so tag-count validation fails fast before
@@ -123,7 +123,7 @@ export function createVercelSandbox(
         createSandbox,
         resolveSessionCreateOptions: mounts === undefined ? undefined : async () => ({ mounts }),
         sandboxModule,
-        sessionKey: context.session.name,
+        sessionKey: context.instance.name,
         snapshotId,
         tags,
       };
@@ -138,7 +138,7 @@ export function createVercelSandbox(
           });
         }
         throw new Error(
-          `Failed to create sandbox session "${context.session.name}": ${errorMessage(error)}`,
+          `Failed to create sandbox session "${context.instance.name}": ${errorMessage(error)}`,
           { cause: error },
         );
       }
@@ -157,7 +157,7 @@ export function createVercelSandbox(
         }
       } catch (error) {
         throw new Error(
-          `Failed to initialize sandbox session "${context.session.name}": ${errorMessage(error)}`,
+          `Failed to initialize sandbox session "${context.instance.name}": ${errorMessage(error)}`,
           { cause: error },
         );
       }
@@ -166,7 +166,7 @@ export function createVercelSandbox(
         createOptions: sessionCreateOptions,
         loadDeleteSandboxModule,
         sandbox: session.sandbox,
-        sessionKey: context.session.name,
+        sessionKey: context.instance.name,
       });
     },
     async prepare(context) {
@@ -391,12 +391,6 @@ async function ensureSession(input: EnsureSessionInput): Promise<VercelSandboxSe
   });
 
   if (existing !== null) {
-    const expectedConfig = input.tags?.sandboxConfig;
-    if (expectedConfig !== undefined && existing.tags?.sandboxConfig !== expectedConfig) {
-      throw new Error(
-        `Named sandbox "${sandboxName}" was requested with conflicting configuration.`,
-      );
-    }
     await ensureVercelSandboxTags(existing, input.tags);
     return { created: false, sandbox: existing };
   }

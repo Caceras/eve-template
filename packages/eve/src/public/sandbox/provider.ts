@@ -5,7 +5,7 @@ export {
   type NoSandboxProviderMetadata,
   type SandboxPreparedArtifact,
   type SandboxProvider,
-  type SandboxProviderCreateContext,
+  type SandboxProviderOpenContext,
   type SandboxProviderDefinition,
   type SandboxProviderEnvironmentArguments,
   type SandboxProviderEnvironmentOptions,
@@ -19,6 +19,6 @@ export {
   type SandboxProviderResources,
   type SandboxProviderResourceSource,
   type SandboxProviderResourceTree,
-  type SandboxProviderSession,
+  type SandboxProviderInstance,
   type SandboxProviderTargetFile,
 } from "#shared/sandbox-provider.js";

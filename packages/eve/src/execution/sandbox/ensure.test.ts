@@ -12,16 +12,11 @@ import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 
-function fixture(
-  shared = false,
-  setup?: () => void,
-  returnCopy = false,
-  sharedNameFromPrincipal = false,
-) {
+function fixture(setup?: () => void, returnCopy = false) {
   const deleteSandbox = vi.fn(async () => {});
   const stopSandbox = vi.fn(async () => {});
   const create = vi.fn(async (context) => {
-    const sandbox = mockSandbox({ id: context.session.name });
+    const sandbox = mockSandbox({ id: context.instance.name });
     return {
       captureMetadata: async () => ({}),
       delete: deleteSandbox,
@@ -33,19 +28,13 @@ function fixture(
   const provider = defineSandboxProvider({
     name: "test",
     environment: () => ({
-      getOrCreate: create,
+      open: create,
       prepare: async () => ({ artifact: {}, reused: true }),
     }),
   });
   const environment = provider.environment();
-  const selector = defineSandbox(async ({ session }) => {
-    const sandbox = shared
-      ? await environment.getOrCreate({
-          name: sharedNameFromPrincipal
-            ? `principal-${session.auth.current?.principalId ?? "anonymous"}`
-            : "team-acme",
-        })
-      : await environment.create();
+  const selector = defineSandbox(async () => {
+    const sandbox = await environment.open();
     setup?.();
     return returnCopy ? { ...sandbox } : sandbox;
   });
@@ -132,18 +121,8 @@ describe("ensureSandboxAccess", () => {
     expect(value.create.mock.calls[0]?.[0].options).toEqual({});
   });
 
-  it("uses an authored shared name and protects its provider-owned lifetime", async () => {
-    const value = fixture(true);
-    const { access } = await open(value.registry);
-    expect(value.create.mock.calls[0]?.[0].session.name).toContain("team-acme");
-    await expect(access.delete?.()).rejects.toThrow("provider-owned lifetime");
-    await expect(access.stop()).rejects.toThrow("cannot be stopped");
-    expect(value.deleteSandbox).not.toHaveBeenCalled();
-    expect(value.stopSandbox).not.toHaveBeenCalled();
-  });
-
   it("rejects a fabricated sandbox even when its id matches", async () => {
-    const value = fixture(false, undefined, true);
+    const value = fixture(undefined, true);
     await expect(open(value.registry)).rejects.toThrow("must return the sandbox it creates");
   });
 
@@ -171,7 +150,7 @@ describe("ensureSandboxAccess", () => {
 
   it("retries session setup after a selector failure", async () => {
     let attempts = 0;
-    const value = fixture(false, () => {
+    const value = fixture(() => {
       attempts += 1;
       if (attempts === 1) throw new Error("setup failed");
     });
@@ -208,19 +187,5 @@ describe("ensureSandboxAccess", () => {
     await access.get();
     expect(value.deleteSandbox).toHaveBeenCalledOnce();
     expect(value.create).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not reattach persisted shared sandbox metadata when the derived name changes", async () => {
-    const value = fixture(true, undefined, false, true);
-    const first = await open(value.registry, "durable-session", null, "principal-a");
-    const state = await first.access.captureState();
-    const firstCreate = value.create.mock.calls[0]?.[0];
-    value.create.mockClear();
-
-    await open(value.registry, "durable-session", state, "principal-b");
-
-    const secondCreate = value.create.mock.calls[0]?.[0];
-    expect(secondCreate?.session.name).not.toBe(firstCreate?.session.name);
-    expect(secondCreate?.session.kind).toBe("create");
   });
 });

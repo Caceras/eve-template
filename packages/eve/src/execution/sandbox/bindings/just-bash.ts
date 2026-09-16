@@ -123,12 +123,12 @@ export function createJustBashSandboxProvider(
 
       return { artifact: { templateRootPath }, reused: false };
     },
-    async getOrCreate(context, source) {
+    async open(context, source) {
       const cacheDirectory = resolveSandboxCacheDirectory(context.appRoot);
       const sessionRootPath =
-        context.session.kind === "restore"
-          ? context.session.metadata.rootPath
-          : resolveSessionRootPath(cacheDirectory, context.session.name);
+        context.instance.kind === "restore"
+          ? context.instance.metadata.rootPath
+          : resolveSessionRootPath(cacheDirectory, context.instance.name);
 
       if (!(await pathExists(sessionRootPath))) {
         if (source.kind === "base") {
@@ -153,7 +153,7 @@ export function createJustBashSandboxProvider(
         customCommands,
         filesystem,
         rootPath: sessionRootPath,
-        sessionKey: context.session.name,
+        sessionKey: context.instance.name,
       });
 
       return createJustBashHandle(sandbox);

@@ -49,7 +49,7 @@ export function createMicrosandboxSandboxProvider(
         });
       }
     },
-    async getOrCreate(context, source) {
+    async open(context, source) {
       return await createMicrosandboxHandle({
         context,
         source,

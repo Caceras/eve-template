@@ -32,7 +32,7 @@ export function defineSelfModificationSandbox(
         ? JustBashSandbox.environment({ filesystem: createSelfModificationFilesystem })
         : JustBashSandbox.environment();
     return bindSandboxEnvironment(
-      defineSandbox(() => environment.create()),
+      defineSandbox(() => environment.open()),
       environment,
     );
   }
@@ -40,7 +40,7 @@ export function defineSelfModificationSandbox(
   const environment = selectDeployedSelfModificationEnvironment(SANDBOX_PROVIDER_PROBES);
   return bindSandboxEnvironment(
     defineSandbox(async ({ session }) => {
-      const sandbox = await environment.create({
+      const sandbox = await environment.open({
         networkPolicy: SELF_MODIFICATION_BASELINE_NETWORK_POLICY,
       });
       if (config.deployed === undefined) return sandbox;

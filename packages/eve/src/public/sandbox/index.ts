@@ -1,7 +1,7 @@
 export {
   defineParentSandbox,
   defineSandbox,
-  type SandboxCreateArguments,
+  type SandboxOpenArguments,
   type SandboxEnvironment,
   type SandboxPrepare,
   type SandboxSelector,

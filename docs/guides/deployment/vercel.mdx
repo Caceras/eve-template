@@ -36,7 +36,7 @@ import { defineSandbox } from "eve/sandbox";
 import { VercelSandbox } from "eve/sandbox/vercel";
 
 export const environment = VercelSandbox.environment();
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 ```
 
 See [Sandbox](../../sandbox) for preparation, resource limits, network policy, and lifecycle.

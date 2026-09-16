@@ -203,10 +203,10 @@ export function createDockerSandboxProvider(
 
       return { artifact: { imageReference }, reused: false };
     },
-    async getOrCreate(context, source) {
+    async open(context, source) {
       await ensureDaemon();
       const networkPolicy = context.options.networkPolicy ?? "allow-all";
-      const containerName = context.session.name;
+      const containerName = context.instance.name;
 
       const inspect = await cli.run([
         "container",
@@ -275,7 +275,7 @@ export function createDockerSandboxProvider(
 
       const containerIdentity = await resolveDockerHandleIdentity(cli, containerName);
       const session = buildSandboxSession(
-        createDockerInternalSession({ cli, containerIdentity, id: context.session.name }),
+        createDockerInternalSession({ cli, containerIdentity, id: context.instance.name }),
         (policy) => setDockerNetworkPolicy(cli, containerIdentity, policy),
       );
 

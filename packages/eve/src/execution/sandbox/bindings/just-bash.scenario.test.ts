@@ -43,7 +43,7 @@ async function createPrewarmedLocalHandle(input: {
     seedFiles: [],
     templateName: input.templateName,
   });
-  return await backend.getOrCreate({
+  return await backend.open({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
     templateName: input.templateName,
@@ -95,7 +95,7 @@ describe("just-bash sandbox file API", () => {
       },
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-custom-filesystem",
       templateName: null,
@@ -144,7 +144,7 @@ describe("just-bash sandbox file API", () => {
     });
     expect(factoryCalls).toBe(0);
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-filesystem-factory",
       templateName: "tpl-filesystem-factory",
@@ -298,7 +298,7 @@ describe("just-bash sandbox file API", () => {
       templateName: "tpl-reconnect",
     });
 
-    const firstHandle = await backend.getOrCreate({
+    const firstHandle = await backend.open({
       appRoot,
       sandboxName: "session-reconnect",
       templateName: "tpl-reconnect",
@@ -339,7 +339,7 @@ describe("just-bash sandbox file API", () => {
       ),
     ).resolves.toBe("survives reconnect");
 
-    const reconnectedHandle = await backend.getOrCreate({
+    const reconnectedHandle = await backend.open({
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
@@ -422,7 +422,7 @@ describe("just-bash custom commands", () => {
         }),
       ],
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-custom-command",
       templateName: null,
@@ -452,7 +452,7 @@ describe("just-bash provider", () => {
     const appRoot = await createTemporaryCacheDirectory("fresh-session");
     const backend = createJustBashProvider();
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-without-template",
       templateName: null,
@@ -589,7 +589,7 @@ describe("just-bash provider", () => {
       templateName: "template-seeded-later",
     });
 
-    const seededHandle = await backend.getOrCreate({
+    const seededHandle = await backend.open({
       appRoot,
       sandboxName: "session-from-repaired-template",
       templateName: "template-seeded-later",
@@ -620,7 +620,7 @@ describe("just-bash provider", () => {
       templateName: "template-seed-before-bootstrap",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-seed-before-bootstrap",
       templateName: "template-seed-before-bootstrap",
@@ -643,7 +643,7 @@ describe("just-bash provider", () => {
       templateName: "template-seeded-later-session",
     });
 
-    const initialHandle = await backend.getOrCreate({
+    const initialHandle = await backend.open({
       appRoot,
       sandboxName: "session-seeded-later",
       templateName: "template-seeded-later-session",
@@ -664,7 +664,7 @@ describe("just-bash provider", () => {
       templateName: "template-seeded-later-session-next",
     });
 
-    const seededHandle = await backend.getOrCreate({
+    const seededHandle = await backend.open({
       existing: initialState,
       appRoot,
       sandboxName: "session-seeded-later",

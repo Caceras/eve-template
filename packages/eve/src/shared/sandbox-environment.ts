@@ -23,11 +23,7 @@ export type SandboxSelector = (
   context: SandboxSelectorContext,
 ) => Promise<RuntimeSandboxSession> | RuntimeSandboxSession;
 
-export type SandboxNamedOptions<Options> = Options extends undefined
-  ? { readonly name: string }
-  : Options & { readonly name: string };
-
-export type SandboxCreateArguments<Options> = Options extends undefined
+export type SandboxOpenArguments<Options> = Options extends undefined
   ? []
   : Record<never, never> extends Options
     ? [options?: Options]
@@ -44,8 +40,7 @@ export interface SandboxEnvironmentIdentity {
 export interface SandboxEnvironment<
   Options extends object | undefined = object,
 > extends SandboxEnvironmentIdentity {
-  create(...args: SandboxCreateArguments<Options>): Promise<RuntimeSandboxSession>;
-  getOrCreate(options: SandboxNamedOptions<Options>): Promise<RuntimeSandboxSession>;
+  open(...args: SandboxOpenArguments<Options>): Promise<RuntimeSandboxSession>;
 }
 
 interface ConstructorRuntime {
@@ -53,10 +48,8 @@ interface ConstructorRuntime {
     readonly configurationHash: string;
     readonly environment: object;
     readonly environmentConfigurationHash: string;
-    readonly name?: string;
-    readonly options: object | undefined;
+    readonly options: object;
     readonly provider: SandboxProviderRuntime;
-    readonly shared: boolean;
   }): Promise<RuntimeSandboxSession>;
 }
 
@@ -73,50 +66,35 @@ export function createSandboxEnvironment<Options extends object | undefined = ob
 }): SandboxEnvironment<Options> {
   let environment: SandboxEnvironment<Options>;
 
-  async function open(options: object, name: string | undefined, shared: boolean) {
-    const context = contextStorage.getStore();
-    const runtime = context === undefined ? undefined : runtimes.get(context);
-    if (runtime === undefined) {
-      throw new Error("Sandbox environments can only create sandboxes inside defineSandbox().");
-    }
-    return await runtime.open({
-      configurationHash: hashConstructorOptions({
-        environment: input.configuration,
-        sandbox: options,
-      }),
-      environment,
-      environmentConfigurationHash: environment[CONFIGURATION_HASH],
-      name,
-      options,
-      provider: input.runtime,
-      shared,
-    });
-  }
-
   environment = {
     [CONFIGURATION_HASH]: hashConstructorOptions({ environment: input.configuration, sandbox: {} }),
     [ENVIRONMENT]: true,
     [PROVIDER_RUNTIME]: input.runtime,
     kind: input.kind ?? "default",
     provider: input.runtime.providerName,
-    async create(...args: SandboxCreateArguments<Options>) {
-      return await open(readCreateOptions(args), undefined, false);
-    },
-    async getOrCreate(namedOptions: SandboxNamedOptions<Options>) {
-      const name = Reflect.get(namedOptions, "name");
-      if (typeof name !== "string" || name.trim().length === 0) {
-        throw new Error("Sandbox environment names must be non-empty.");
+    async open(...args: SandboxOpenArguments<Options>) {
+      const options = readOpenOptions(args);
+      const context = contextStorage.getStore();
+      const runtime = context === undefined ? undefined : runtimes.get(context);
+      if (runtime === undefined) {
+        throw new Error("Sandbox environments can only open sandboxes inside defineSandbox().");
       }
-      const options = Object.fromEntries(
-        Object.entries(namedOptions).filter(([key]) => key !== "name"),
-      );
-      return await open(options, name, true);
+      return await runtime.open({
+        configurationHash: hashConstructorOptions({
+          environment: input.configuration,
+          sandbox: options,
+        }),
+        environment,
+        environmentConfigurationHash: environment[CONFIGURATION_HASH],
+        options,
+        provider: input.runtime,
+      });
     },
   };
   return environment;
 }
 
-function readCreateOptions(args: readonly unknown[]): object {
+function readOpenOptions(args: readonly unknown[]): object {
   const options = args[0];
   return typeof options === "object" && options !== null ? options : {};
 }
@@ -186,19 +164,25 @@ export function getBoundSandboxEnvironment(value: unknown): SandboxEnvironmentId
 }
 
 export function isSandboxEnvironment(value: unknown): value is SandboxEnvironmentIdentity {
-  return typeof value === "object" && value !== null && Reflect.get(value, ENVIRONMENT) === true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Reflect.get(value, ENVIRONMENT) === true &&
+    typeof Reflect.get(value, "provider") === "string" &&
+    typeof Reflect.get(value, "open") === "function"
+  );
 }
 
 export async function runWithSandboxConstructorRuntime<T>(
   runtime: ConstructorRuntime,
-  callback: () => Promise<T>,
+  callback: () => Promise<T> | T,
 ): Promise<T> {
-  const active = contextStorage.getStore();
-  const context = active ?? new ContextContainer();
+  const existing = contextStorage.getStore();
+  const context = existing ?? new ContextContainer();
   const previous = runtimes.get(context);
   runtimes.set(context, runtime);
   try {
-    return await (active === undefined ? contextStorage.run(context, callback) : callback());
+    return existing === undefined ? await contextStorage.run(context, callback) : await callback();
   } finally {
     if (previous === undefined) runtimes.delete(context);
     else runtimes.set(context, previous);

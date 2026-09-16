@@ -125,7 +125,7 @@ async function createTestVercelSession() {
     seedFiles: [],
     templateName: "template-key",
   });
-  const handle = await backend.getOrCreate({
+  const handle = await backend.open({
     appRoot: "/tmp/test-app-root",
     sandboxName: "session-key",
     templateName: "template-key",
@@ -218,7 +218,7 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       prepared: { snapshotId: "prepared-snapshot" },
       sandboxName: "session-key",
@@ -448,7 +448,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -619,7 +619,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
       templateName: "template-key",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -660,7 +660,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -696,7 +696,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -732,7 +732,7 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: null,
@@ -772,7 +772,7 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: null,
@@ -817,7 +817,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -845,7 +845,7 @@ describe("createVercelSandbox", () => {
     expect(templateSandbox.update).toHaveBeenCalledWith({ networkPolicy: "deny-all" });
   });
 
-  it("applies mounts passed directly to getOrCreate", async () => {
+  it("applies mounts passed directly to open", async () => {
     const sessionSandbox = createMockSandbox({ name: "session" });
     const create = vi.fn().mockResolvedValue(sessionSandbox);
     const provider = createSandboxProviderHarness(
@@ -855,7 +855,7 @@ describe("createVercelSandbox", () => {
       }),
       { mounts: { "/workspace/repos": { drive: "team-drive", mode: "read-write" } } },
     );
-    await provider.getOrCreate({
+    await provider.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: null,
@@ -906,7 +906,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -958,7 +958,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -987,7 +987,7 @@ describe("createVercelSandbox", () => {
     });
 
     await expect(
-      backend.getOrCreate({
+      backend.open({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "expired-template-snapshot" },
         sandboxName: "session-key",
@@ -1031,7 +1031,7 @@ describe("createVercelSandbox", () => {
     });
 
     await expect(
-      backend.getOrCreate({
+      backend.open({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
@@ -1064,7 +1064,7 @@ describe("createVercelSandbox", () => {
     });
 
     await expect(
-      backend.getOrCreate({
+      backend.open({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
@@ -1141,7 +1141,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       existing: {},
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
@@ -1196,7 +1196,7 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       existing: {},
       appRoot: "/tmp/test-app-root",
       prepared: { snapshotId: "template-snapshot" },
@@ -1280,7 +1280,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
       templateName: "template-key",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1322,7 +1322,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
       templateName: "template-key",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1368,7 +1368,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       existing: {},
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
@@ -1419,7 +1419,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1457,7 +1457,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       tags: {
@@ -1508,7 +1508,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1556,31 +1556,6 @@ describe("createVercelSandbox", () => {
     expect(templateSandbox.snapshot).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects conflicting configuration for an existing named sandbox", async () => {
-    const sessionSandbox = createMockSandbox({
-      name: "session-key",
-      tags: { sandboxConfig: "old" },
-    });
-    const backend = createTestVercelSandbox({
-      loadSandboxModule: async () =>
-        ({
-          Sandbox: {
-            create: vi.fn(),
-            get: vi.fn().mockResolvedValue(sessionSandbox),
-          },
-        }) as never,
-    });
-
-    await expect(
-      backend.getOrCreate({
-        appRoot: "/tmp/test-app-root",
-        sandboxName: "session-key",
-        tags: { sandboxConfig: "new" },
-        templateName: null,
-      }),
-    ).rejects.toThrow("conflicting configuration");
-  });
-
   it("updates tags when reattaching existing Vercel sandboxes", async () => {
     const templateSandbox = createMockSandbox({
       name: "template-key",
@@ -1616,7 +1591,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       tags: {
@@ -1650,7 +1625,7 @@ describe("createVercelSandbox", () => {
     });
 
     await expect(
-      backend.getOrCreate({
+      backend.open({
         appRoot: "/tmp/test-app-root",
         prepared: { snapshotId: "template-snapshot" },
         sandboxName: "session-key",
@@ -1691,7 +1666,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1781,7 +1756,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
       templateName: "template-key",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1827,7 +1802,7 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
       templateName: "template-key",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",
@@ -1879,7 +1854,7 @@ describe("createVercelSandbox", () => {
       templateName: "template-key",
     });
 
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/test-app-root",
       sandboxName: "session-key",
       templateName: "template-key",

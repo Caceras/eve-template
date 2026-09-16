@@ -36,10 +36,10 @@ A sandbox module exports an environment and returns a sandbox from `defineSandbo
 import { DefaultSandbox, defineSandbox } from "eve/sandbox";
 
 export const environment = DefaultSandbox.environment();
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 ```
 
-`environment.create()` creates a persistent sandbox owned by the current eve session. Pass options for the live sandbox to `create()`, then configure the returned sandbox before returning it:
+`environment.open()` creates or reconnects to the persistent sandbox owned by the current eve session. Pass options for the live sandbox to `open()`, then configure the returned sandbox before returning it:
 
 ```ts
 import { defineSandbox } from "eve/sandbox";
@@ -48,7 +48,7 @@ import { VercelSandbox } from "eve/sandbox/vercel";
 export const environment = VercelSandbox.environment();
 
 export default defineSandbox(async ({ session }) => {
-  const sandbox = await environment.create({ networkPolicy: "deny-all" });
+  const sandbox = await environment.open({ networkPolicy: "deny-all" });
   await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
   return sandbox;
 });
@@ -73,26 +73,16 @@ export const environment = VercelSandbox.environment({
   },
 });
 
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 ```
 
 eve runs `prepare` while creating a reusable provider artifact, not once for each live session sandbox. Vercel captures a snapshot; Docker captures an image; microsandbox captures a VM snapshot; and just-bash captures a filesystem template.
 
 At runtime, eve passes the recorded artifact directly to the provider when it creates a live sandbox. Runtime does not rebuild or repair a missing artifact. A missing image, snapshot, or template fails with rebuild or redeploy guidance.
 
-### Share a named sandbox
+### Reuse native resources across sessions
 
-`getOrCreate()` shares one provider-owned persistent sandbox across eve sessions that use the same name:
-
-```ts
-export default defineSandbox(({ session }) =>
-  environment.getOrCreate({ name: `team-${session.auth.current?.principalId}` }),
-);
-```
-
-eve namespaces the authored name with the sandbox definition, environment generation, and constructor configuration. Calls that reuse a name must use the same configuration; conflicting calls fail. Named sandboxes have provider-owned lifetime, so an attached eve session cannot delete or stop one.
-
-Do not write per-user credentials into a shared filesystem. A named sandbox also has one network boundary for every attached eve session: use one stable network policy rather than deriving it from the current caller.
+Built-in environments do not expose cross-session sharing. To reuse native compute or storage across eve sessions, define a custom provider that returns a session-owned logical sandbox view and keeps shared resources outside that view's `stop`, `shutdown`, and `delete` operations. A session-specific path is not an isolation boundary; mutually untrusted sessions require separate native compute or stronger provider-owned isolation.
 
 ### Share a parent sandbox
 
@@ -178,10 +168,10 @@ export const AcmeSandbox = defineSandboxProvider<
         };
       },
 
-      async getOrCreate(ctx, source) {
+      async open(ctx, source) {
         const remote = await client.getOrCreate({
-          existingId: ctx.session.kind === "restore" ? ctx.session.metadata.remoteId : undefined,
-          name: ctx.session.name,
+          existingId: ctx.instance.kind === "restore" ? ctx.instance.metadata.remoteId : undefined,
+          name: ctx.instance.name,
           networkPolicy: ctx.options.networkPolicy,
           source:
             source.kind === "base"
@@ -204,9 +194,9 @@ export const AcmeSandbox = defineSandboxProvider<
 
 `ctx.runPreparation(sandbox)` invokes the callback authored as `environment({ prepare })`. Call it after provider resources are available in the temporary sandbox and before capturing the provider artifact.
 
-`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. The second `getOrCreate()` argument is a required source union: `{ kind: "base" }` or `{ kind: "prepared", templateName, artifact }`. The fourth generic gives the prepared branch the provider's exact artifact type.
+`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. The second `open()` argument is a required source union: `{ kind: "base" }` or `{ kind: "prepared", templateName, artifact }`. The fourth generic gives the prepared branch the provider's exact artifact type.
 
-`ctx.options` contains options for the live sandbox. `ctx.session` explicitly distinguishes first creation from restoration and carries typed persisted metadata only in the restore branch. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
+`ctx.options` contains options for the live sandbox. `ctx.instance` explicitly distinguishes first creation from restoration and carries typed persisted metadata only in the restore branch. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
 ## Providers
 

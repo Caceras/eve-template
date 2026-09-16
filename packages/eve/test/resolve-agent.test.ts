@@ -43,8 +43,7 @@ describe("resolveAgent", () => {
     );
     expect(resolved.sandbox).toMatchObject({
       environment: {
-        create: expect.any(Function),
-        getOrCreate: expect.any(Function),
+        open: expect.any(Function),
         provider: expect.any(String),
       },
       kind: "independent",

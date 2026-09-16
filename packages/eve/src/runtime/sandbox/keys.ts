@@ -28,7 +28,6 @@ interface CreateRuntimeSandboxKeysInput {
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly nodeId: string;
   readonly sessionId: string;
-  readonly shared?: boolean;
   readonly sourceId: string;
   readonly templatePlan: RuntimeSandboxTemplatePlan;
 }
@@ -90,7 +89,6 @@ async function deriveRuntimeSandboxKeyParts(input: {
   readonly environmentConfigurationHash?: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly nodeId: string;
-  readonly shared?: boolean;
   readonly sourceId: string;
   readonly templatePlan: RuntimeSandboxTemplatePlan;
 }): Promise<RuntimeSandboxKeyParts> {
@@ -107,7 +105,7 @@ async function deriveRuntimeSandboxKeyParts(input: {
           })}:${input.environmentConfigurationHash ?? input.configurationHash ?? ""}`,
         );
   const environmentHash = createStableHash(
-    `environment:${input.templatePlan.revisionHash}:${input.templatePlan.contentHash ?? ""}:${input.shared === true ? "shared" : (input.configurationHash ?? "")}:${input.nodeId}:${input.sourceId}`,
+    `environment:${input.templatePlan.revisionHash}:${input.templatePlan.contentHash ?? ""}:${input.configurationHash ?? ""}:${input.nodeId}:${input.sourceId}`,
   );
   return { environmentHash, metadata, scope, templateHash };
 }

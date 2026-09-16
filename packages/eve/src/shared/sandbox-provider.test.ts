@@ -7,7 +7,7 @@ import { createSandboxProviderResources, defineSandboxProvider } from "#shared/s
 describe("defineSandboxProvider", () => {
   it("gives providers separate workspace and skill trees at their expected paths", async () => {
     const preparation = vi.fn(async () => {});
-    const getOrCreate = vi.fn(async () => {
+    const open = vi.fn(async () => {
       const sandbox = mockSandbox().session;
       return {
         captureMetadata: async () => ({ remoteId: "remote-1" }),
@@ -24,7 +24,7 @@ describe("defineSandboxProvider", () => {
     >({
       name: "test-provider",
       environment: () => ({
-        getOrCreate,
+        open,
         async prepare(ctx) {
           expect(ctx.resources.source).toEqual({
             key: "resources-v1",
@@ -65,15 +65,15 @@ describe("defineSandboxProvider", () => {
     });
     expect(preparation).toHaveBeenCalledOnce();
 
-    await runtime.implementation.getOrCreate(
+    await runtime.implementation.open(
       {
         appRoot: "/tmp/app",
         options: undefined,
         resources,
-        session: { kind: "create", name: "session-1" },
+        instance: { kind: "create", name: "session-1" },
       },
       { artifact: {}, kind: "prepared", templateName: "template-v1" },
     );
-    expect(getOrCreate).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledOnce();
   });
 });

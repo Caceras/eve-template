@@ -1323,7 +1323,7 @@ describe("compileAgent", () => {
         'import { DefaultSandbox, defineSandbox } from "eve/sandbox";',
         "export const environment = DefaultSandbox.environment();",
         "export default defineSandbox(async () => {",
-        "  const sandbox = await environment.create();",
+        "  const sandbox = await environment.open();",
         '  await sandbox.run({ command: "mkdir -p .research" });',
         "  return sandbox;",
         "});",

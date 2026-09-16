@@ -55,7 +55,7 @@ import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
   isSandboxPreparedArtifactRecord,
   type SandboxPreparedArtifact,
-  type SandboxProviderCreateContext,
+  type SandboxProviderOpenContext,
   type SandboxProviderHandle,
   type SandboxProviderPrepareContext,
   type SandboxProviderSource,
@@ -223,7 +223,7 @@ export async function prewarmMicrosandboxTemplate(input: {
 
 export async function createMicrosandboxHandle(input: {
   readonly providerName: string;
-  readonly context: SandboxProviderCreateContext<
+  readonly context: SandboxProviderOpenContext<
     MicrosandboxSandboxRuntimeOptions,
     MicrosandboxSessionMetadata
   >;
@@ -241,7 +241,7 @@ export async function createMicrosandboxHandle(input: {
           input.providerName,
         );
   const existingMetadata =
-    input.context.session.kind === "restore" ? input.context.session.metadata : null;
+    input.context.instance.kind === "restore" ? input.context.instance.metadata : null;
   const image = resolveMicrosandboxImage(existingMetadata, preparedTemplate, input.options);
   const options: LiveMicrosandboxOptions = {
     ...input.options,
@@ -254,7 +254,7 @@ export async function createMicrosandboxHandle(input: {
   });
   const sessionRootPath = resolveMicrosandboxSessionRootPath(
     cacheDirectory,
-    input.context.session.name,
+    input.context.instance.name,
   );
   const activeSessionKey = createActiveMicrosandboxSessionKey(sessionRootPath, input.optionsHash);
   const activeHandle = activeMicrosandboxSessionHandles.get(activeSessionKey);
@@ -276,7 +276,7 @@ export async function createMicrosandboxHandle(input: {
       metadataPath,
       module,
       options,
-      sessionKey: input.context.session.name,
+      sessionKey: input.context.instance.name,
       tags: sessionTags,
     });
     if (sandbox !== null) {
@@ -306,7 +306,7 @@ export async function createMicrosandboxHandle(input: {
 
   const sandboxName = createProviderName(
     "eve-sbx-ses",
-    `${input.context.session.name}:${randomUUID()}`,
+    `${input.context.instance.name}:${randomUUID()}`,
   );
   let sandbox: MicrosandboxVm;
   try {
@@ -321,7 +321,7 @@ export async function createMicrosandboxHandle(input: {
         input.context.appRoot,
         input.providerName,
       ),
-      sessionKey: input.context.session.name,
+      sessionKey: input.context.instance.name,
       setupBaseRuntime: snapshotName === undefined,
       tags: sessionTags,
     });

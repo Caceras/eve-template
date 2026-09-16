@@ -22,14 +22,8 @@ describe("sandbox providers", () => {
     expect("dockerfile" in VercelSandbox).toBe(false);
   });
 
-  it("rejects empty shared names", async () => {
+  it("returns runtime sandboxes from open", () => {
     const environment = DockerSandbox.environment();
-    await expect(environment.getOrCreate({ name: "  " })).rejects.toThrow("must be non-empty");
-  });
-
-  it("returns runtime sandboxes from both constructors", () => {
-    const environment = DockerSandbox.environment();
-    expectTypeOf(environment.create).returns.toEqualTypeOf<Promise<RuntimeSandboxSession>>();
-    expectTypeOf(environment.getOrCreate).returns.toEqualTypeOf<Promise<RuntimeSandboxSession>>();
+    expectTypeOf(environment.open).returns.toEqualTypeOf<Promise<RuntimeSandboxSession>>();
   });
 });

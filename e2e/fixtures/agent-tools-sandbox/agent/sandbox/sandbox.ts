@@ -148,7 +148,7 @@ export const environment =
       });
 
 export default defineSandbox(async () => {
-  const sandbox = await environment.create();
+  const sandbox = await environment.open();
   await sandbox.writeTextFile({
     path: SANDBOX_SESSION_MARKER_PATH,
     content: SANDBOX_SESSION_MARKER_TOKEN,

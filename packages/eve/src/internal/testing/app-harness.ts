@@ -150,8 +150,8 @@ const TEST_SANDBOX_PROVIDER = defineSandboxProvider({
     async prepare() {
       return { artifact: {}, reused: true };
     },
-    async getOrCreate(context) {
-      const sandbox = mockSandbox({ id: context.session.name });
+    async open(context) {
+      const sandbox = mockSandbox({ id: context.instance.name });
       return {
         captureMetadata: async () => ({}),
         delete: async (options) => await sandbox.access.delete?.(options),
@@ -172,7 +172,7 @@ export async function createTestRuntime(descriptor: TestAppDescriptor = {}): Pro
       {
         loadNamespace: async () => {
           const environment = TEST_SANDBOX_PROVIDER.environment();
-          return { environment, default: defineSandbox(() => environment.create()) };
+          return { environment, default: defineSandbox(() => environment.open()) };
         },
         logicalPath: "sandbox.ts",
       },

@@ -27,7 +27,7 @@ describe("Docker sandbox deletion", () => {
       createDockerSandboxProvider(undefined, dockerCli),
       {},
     );
-    const handle = await provider.getOrCreate({
+    const handle = await provider.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
       templateName: null,
@@ -63,14 +63,14 @@ describe("Docker sandbox deletion", () => {
       createDockerSandboxProvider(undefined, dockerCli),
       {},
     );
-    const oldHandle = await backend.getOrCreate({
+    const oldHandle = await backend.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
       templateName: null,
     });
     await oldHandle.delete();
     containerId = "container-id-2";
-    await backend.getOrCreate({
+    await backend.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
       templateName: null,

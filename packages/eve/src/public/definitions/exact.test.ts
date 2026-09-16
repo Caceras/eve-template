@@ -469,7 +469,7 @@ function typeOnlyFixtures(): void {
 
   const environment = VercelSandbox.environment();
   defineSandbox(async ({ session }) => {
-    const sandbox = await environment.create({
+    const sandbox = await environment.open({
       mounts: {},
       networkPolicy: "deny-all",
       resources: { vcpus: 4 },
@@ -479,10 +479,8 @@ function typeOnlyFixtures(): void {
     void sessionId;
     return sandbox;
   });
-  defineSandbox(({ session }) => environment.getOrCreate({ name: `session-${session.id}` }));
   const dockerEnvironment = DockerSandbox.environment();
-  defineSandbox(() => dockerEnvironment.create({ networkPolicy: "deny-all" }));
-  dockerEnvironment.getOrCreate({ name: "team-acme", networkPolicy: "deny-all" });
+  defineSandbox(() => dockerEnvironment.open({ networkPolicy: "deny-all" }));
 
   defineTool({
     description: "Fetch current weather for a city.",

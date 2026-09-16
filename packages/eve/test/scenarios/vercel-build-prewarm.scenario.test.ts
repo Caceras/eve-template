@@ -255,7 +255,7 @@ function preparedSandboxSource(command: string): string {
     `    await sandbox.run({ command: ${JSON.stringify(command)} });`,
     "  },",
     "});",
-    "export default defineSandbox(() => environment.create());",
+    "export default defineSandbox(() => environment.open());",
     "",
   ].join("\n");
 }

@@ -5,4 +5,4 @@ export const environment = JustBashSandbox.environment({
   filesystem: ({ justBash }) => new justBash.InMemoryFs(),
 });
 
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());

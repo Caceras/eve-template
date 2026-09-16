@@ -56,7 +56,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
   let persisted: SandboxSessionState | null = input.state?.session ?? null;
   let opened: OpenedSandbox | undefined;
   let opening: Promise<RuntimeProviderHandle> | undefined;
-  let providerOwned = false;
   let requiring: Promise<RuntimeProviderHandle> | undefined;
   const appRoot =
     getRuntimeCompiledArtifactsSandboxAppRoot(input.compiledArtifactsSource) ?? process.cwd();
@@ -76,12 +75,10 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
 
   async function open(
     provider: SandboxProviderRuntime,
-    options: object | undefined,
+    options: object,
     configurationHash: string,
     environment: object,
     environmentConfigurationHash: string,
-    name?: string,
-    shared = false,
   ): Promise<RuntimeSandboxSession> {
     if (opening !== undefined) throw new Error("A sandbox definition can create only one sandbox.");
     const inherited = registered.inheritance;
@@ -101,8 +98,7 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       environmentConfigurationHash,
       nodeId: inherited?.nodeId ?? input.nodeId,
       providerName: provider.providerName,
-      sessionId: name ?? input.sessionId,
-      shared,
+      sessionId: input.sessionId,
       sourceId: definition.sourceId,
       templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
     });
@@ -118,21 +114,18 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
         providerName: provider.providerName,
         templateName: keys.templateKey,
       });
-      return await provider.implementation.getOrCreate(
+      return await provider.implementation.open(
         {
           appRoot,
           options,
           resources: createSandboxProviderResources({
             resourcesKey: workspaceResourceRoot.contentHash,
           }),
-          session:
+          instance:
             existing === null
               ? { kind: "create", name: sandboxName }
               : { kind: "restore", metadata: existing.metadata, name: sandboxName },
-          tags: {
-            ...input.tags,
-            ...(shared ? { sandboxConfig: configurationHash.slice(0, 32) } : {}),
-          },
+          tags: input.tags,
         },
         source,
       );
@@ -148,29 +141,17 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     });
 
     const openedHandle = await opening;
-    providerOwned = shared;
     initialized = true;
-    if (!shared) {
-      trackActiveSandboxHandle({
-        handle: openedHandle,
-        providerName: provider.providerName,
-        sessionKey: sandboxName,
-      });
-    }
+    trackActiveSandboxHandle({
+      handle: openedHandle,
+      providerName: provider.providerName,
+      sessionKey: sandboxName,
+    });
 
-    const remove = shared
-      ? async () => {
-          throw new Error("Named shared sandboxes have provider-owned lifetime.");
-        }
-      : (deleteOptions?: SandboxDeleteOptions) => openedHandle.delete(deleteOptions);
     const sandbox = withRuntimeSandboxLifecycle(
       openedHandle.sandbox,
-      remove,
-      shared
-        ? async () => {
-            throw new Error("Named shared sandboxes cannot be stopped by one eve session.");
-          }
-        : () => openedHandle.stop(),
+      (deleteOptions?: SandboxDeleteOptions) => openedHandle.delete(deleteOptions),
+      () => openedHandle.stop(),
     );
     opened = {
       configurationHash,
@@ -223,20 +204,10 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
               configurationHash,
               environment,
               environmentConfigurationHash,
-              name,
               options,
               provider,
-              shared,
             }) =>
-              open(
-                provider,
-                options,
-                configurationHash,
-                environment,
-                environmentConfigurationHash,
-                name,
-                shared,
-              ),
+              open(provider, options, configurationHash, environment, environmentConfigurationHash),
           },
           async () => definition.selector({ session }),
         );
@@ -249,7 +220,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
         opened = undefined;
         initialized = false;
         opening = undefined;
-        providerOwned = false;
         throw error;
       }
     }
@@ -277,7 +247,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       if (input.ownsSandbox === false)
         throw new Error("Only the owning session can delete this sandbox.");
       const current = await requireHandle();
-      if (providerOwned) throw new Error("Named shared sandboxes have provider-owned lifetime.");
       await current.delete(deleteOptions);
       opened = undefined;
       initialized = false;
@@ -290,8 +259,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     },
     async stop() {
       const current = await requireHandle();
-      if (providerOwned)
-        throw new Error("Named shared sandboxes cannot be stopped by one eve session.");
       await current.stop();
     },
   };

@@ -408,7 +408,7 @@ describe("app runtime dependency tracing", () => {
             'import { JustBashSandbox } from "eve/sandbox/just-bash";',
             "",
             "export const environment = JustBashSandbox.environment();",
-            "export default defineSandbox(() => environment.create());",
+            "export default defineSandbox(() => environment.open());",
             "",
           ].join("\n"),
         );

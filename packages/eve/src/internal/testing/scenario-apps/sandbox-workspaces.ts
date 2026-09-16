@@ -10,7 +10,7 @@ export const SANDBOX_WORKSPACES_DESCRIPTOR: ScenarioAppDescriptor = {
     "agent/sandbox/sandbox.ts": `import { DefaultSandbox, defineSandbox } from "eve/sandbox";
 
 export const environment = DefaultSandbox.environment();
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 `,
     "agent/sandbox/workspace/notes.md": `# repo-shell notes
 

@@ -16,7 +16,7 @@ export type {
   SandboxWriteTextFileOptions,
 } from "#shared/sandbox-session.js";
 export type {
-  SandboxCreateArguments,
+  SandboxOpenArguments,
   SandboxEnvironment,
   SandboxPrepare,
   SandboxSelector,

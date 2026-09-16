@@ -11,7 +11,7 @@ import { DockerSandbox } from "eve/sandbox/docker";
 
 export const environment = DockerSandbox.image("ghcr.io/acme/agent@sha256:...");
 
-export default defineSandbox(() => environment.create({ networkPolicy: "deny-all" }));
+export default defineSandbox(() => environment.open({ networkPolicy: "deny-all" }));
 ```
 
 Use `DockerSandbox.environment()` for the default image or `DockerSandbox.dockerfile()` for the colocated Dockerfile convention.
@@ -22,7 +22,7 @@ Image, pull policy, environment variables, and `prepare` belong to the reusable 
 
 ## Live container options
 
-Pass `networkPolicy` to `create()` or `getOrCreate()`. Docker supports only `"allow-all"` and `"deny-all"`. The policy applies to the live container, not the prepared image.
+Pass `networkPolicy` to `open()`. Docker supports only `"allow-all"` and `"deny-all"`. The policy applies to the live container, not the prepared image.
 
 A session-owned container keeps writable `/workspace` state in its container filesystem. A stopped container restarts with that state. A named shared container exposes the same filesystem and network boundary to every attached eve session.
 

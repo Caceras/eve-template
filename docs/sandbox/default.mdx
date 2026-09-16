@@ -9,7 +9,7 @@ description: "Let eve select the sandbox provider for the current environment."
 import { DefaultSandbox, defineSandbox } from "eve/sandbox";
 
 export const environment = DefaultSandbox.environment();
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 ```
 
 On Vercel, it selects [Vercel Sandbox](/docs/sandbox/vercel). Elsewhere, it tries [Docker](/docs/sandbox/docker), [microsandbox](/docs/sandbox/microsandbox), and [just-bash](/docs/sandbox/just-bash), in that order, according to host support.

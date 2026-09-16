@@ -15,7 +15,7 @@ describe("just-bash provider without the optional dependency installed", () => {
     const appRoot = await createScratchDirectory("eve-just-bash-missing-");
     const provider = createSandboxProviderHarness(createJustBashSandboxProvider(), undefined);
     await expect(
-      provider.getOrCreate({
+      provider.open({
         appRoot,
         sandboxName: "session-missing-dependency",
         templateName: null,
@@ -32,7 +32,7 @@ describe("just-bash provider without the optional dependency installed", () => {
         undefined,
       );
       await expect(
-        provider.getOrCreate({
+        provider.open({
           appRoot,
           sandboxName: "session-no-autoinstall",
           templateName: null,

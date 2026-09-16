@@ -12,7 +12,7 @@ describe("sandbox compilation", () => {
         "agent/sandbox.ts": [
           'import { DefaultSandbox, defineSandbox } from "eve/sandbox";',
           "export const environment = DefaultSandbox.environment();",
-          "export default defineSandbox(() => environment.create());",
+          "export default defineSandbox(() => environment.open());",
         ].join("\n"),
       },
       installDependencies: true,
@@ -36,7 +36,7 @@ describe("sandbox compilation", () => {
           'import { defineSandbox } from "eve/sandbox";',
           'import { DockerSandbox } from "eve/sandbox/docker";',
           "export const environment = DockerSandbox.dockerfile();",
-          "export default defineSandbox(() => environment.create());",
+          "export default defineSandbox(() => environment.open());",
         ].join("\n"),
       },
       installDependencies: true,

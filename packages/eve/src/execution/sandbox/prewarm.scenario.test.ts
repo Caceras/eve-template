@@ -38,7 +38,7 @@ describe("prewarmAppSandboxes", () => {
         'import { defineSandbox } from "eve/sandbox";',
         'import { MicrosandboxSandbox } from "eve/sandbox/microsandbox";',
         "export const environment = MicrosandboxSandbox.dockerfile();",
-        "export default defineSandbox(() => environment.create());",
+        "export default defineSandbox(() => environment.open());",
       ].join("\n"),
     );
     const compilerAppRoot = join(appRoot, ".eve", "builds", "isolated", "compiler");
@@ -590,7 +590,7 @@ function preparedSandboxSource(command: string): string {
     `    await sandbox.run({ command: ${JSON.stringify(command)} });`,
     "  },",
     "});",
-    "export default defineSandbox(() => environment.create());",
+    "export default defineSandbox(() => environment.open());",
     "",
   ].join("\n");
 }
@@ -862,7 +862,7 @@ async function writePreparedEnvironmentSandbox(input: {
       `    await sandbox.run({ command: ${JSON.stringify(runPreparationCommand)} });`,
       "  },",
       "});",
-      "export default defineSandbox(() => environment.create());",
+      "export default defineSandbox(() => environment.open());",
       "",
     ].join("\n"),
   );

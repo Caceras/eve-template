@@ -69,8 +69,8 @@ function createSessionSandboxHarness() {
   const provider = defineSandboxProvider({
     name: "session-reset-test",
     environment: () => ({
-      async getOrCreate(context) {
-        sessionKeys.push(context.session.name);
+      async open(context) {
+        sessionKeys.push(context.instance.name);
         sandboxCount += 1;
         const sandbox = mockSandbox({ id: `sandbox-${sandboxCount}` });
         return {
@@ -91,7 +91,7 @@ function createSessionSandboxHarness() {
     logicalPath: "agent/sandbox/sandbox.ts",
     selector: defineSandbox(({ session }) => {
       initializedSessionIds.push(session.id);
-      return environment.create();
+      return environment.open();
     }),
     revisionHash: "session-reset-sandbox-v1",
     sourceId: "agent/sandbox/sandbox",

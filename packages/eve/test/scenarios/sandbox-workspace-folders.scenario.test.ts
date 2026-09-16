@@ -47,7 +47,7 @@ describe("sandbox workspace folder convention", () => {
       templateName: "template-default-workspace",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-default-workspace",
       templateName: "template-default-workspace",
@@ -81,7 +81,7 @@ describe("sandbox workspace folder convention", () => {
       templateName: "template-empty-workspace",
     });
 
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-empty-workspace",
       templateName: "template-empty-workspace",

@@ -4,8 +4,7 @@ describe("VercelSandbox", () => {
   it("creates environments", () => {
     const environment = VercelSandbox.environment({ resources: { vcpus: 4 } });
     expect(environment.provider).toBe("vercel");
-    expectTypeOf(environment.create).toBeFunction();
-    expectTypeOf(environment.getOrCreate).toBeFunction();
+    expectTypeOf(environment.open).toBeFunction();
     expectTypeOf(Drive.getOrCreate).toBeFunction();
   });
 });

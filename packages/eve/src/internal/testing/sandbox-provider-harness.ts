@@ -52,7 +52,7 @@ export function createSandboxProviderHarness<
       preparedArtifacts.set(input.templateName, result.artifact);
       return result;
     },
-    async getOrCreate(input: {
+    async open(input: {
       readonly appRoot: string;
       readonly existing?: Metadata;
       readonly prepared?: PreparedArtifact;
@@ -75,12 +75,12 @@ export function createSandboxProviderHarness<
                 throw new Error(`Missing prepared artifact for template "${input.templateName}".`);
               })()
             : { artifact: prepared, kind: "prepared" as const, templateName: input.templateName };
-      return await implementation.getOrCreate(
+      return await implementation.open(
         {
           appRoot: input.appRoot,
           options,
           resources: createSandboxProviderResources({ resourcesKey: input.resourcesKey }),
-          session:
+          instance:
             input.existing === undefined
               ? { kind: "create", name: input.sandboxName }
               : { kind: "restore", metadata: input.existing, name: input.sandboxName },

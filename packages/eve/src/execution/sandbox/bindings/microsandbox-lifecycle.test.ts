@@ -56,7 +56,7 @@ function createMicrosandboxHandle(
   > & {
     context: Omit<
       Partial<Parameters<typeof createMicrosandboxHandleImplementation>[0]["context"]>,
-      "session"
+      "instance"
     > & {
       readonly appRoot: string;
       readonly existing?: MicrosandboxSessionMetadata;
@@ -71,7 +71,7 @@ function createMicrosandboxHandle(
     context: {
       options: {},
       resources: { source: { kind: "none" } },
-      session:
+      instance:
         existing === undefined
           ? { kind: "create", name: sandboxName }
           : { kind: "restore", metadata: existing, name: sandboxName },

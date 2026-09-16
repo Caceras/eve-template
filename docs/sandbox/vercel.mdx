@@ -16,7 +16,7 @@ export const environment = VercelSandbox.environment({
 });
 
 export default defineSandbox(() =>
-  environment.create({
+  environment.open({
     networkPolicy: {
       allow: {
         "api.github.com": [],
@@ -35,10 +35,10 @@ When a live session sandbox does not exist, eve creates it directly from that sn
 
 ## Network policy
 
-Pass the initial policy to `create()` or `getOrCreate()`. It applies to the new live Vercel Sandbox, not to the environment definition:
+Pass the initial policy to `open()`. It applies to the new live Vercel Sandbox, not to the environment definition:
 
 ```ts
-return environment.create({
+return environment.open({
   networkPolicy: {
     allow: {
       "api.example.com": [
@@ -55,6 +55,6 @@ Credential transforms inject headers at the network boundary so the secret does 
 
 ## Live sandbox options
 
-`create()` and `getOrCreate()` also accept Vercel compute resources, timeout, and Drive mounts. eve owns `name`, `persistent`, and the prepared snapshot source.
+`open()` also accepts Vercel compute resources, timeout, and Drive mounts. eve owns the persistent sandbox identity and prepared snapshot source.
 
 See the [sandbox overview](/docs/sandbox) for managed workspace, skills, sharing, and custom providers.

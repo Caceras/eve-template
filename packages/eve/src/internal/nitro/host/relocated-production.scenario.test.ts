@@ -40,7 +40,7 @@ describe("relocated production applications", () => {
           '    if (result.stdout.trim() !== "app-bootstrap") throw new Error("Wrong app alias");',
           "  },",
           "});",
-          "export default defineSandbox(() => environment.create());",
+          "export default defineSandbox(() => environment.open());",
         ].join("\n"),
         "apps/service/agent/extensions/acme.ts":
           'import extension from "@acme/relocated"; export default extension();',

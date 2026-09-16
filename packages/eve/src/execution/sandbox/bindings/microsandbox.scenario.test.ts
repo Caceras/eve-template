@@ -49,7 +49,7 @@ async function createPrewarmedHandle(input: {
     seedFiles: [],
     templateName: input.templateName,
   });
-  return await backend.getOrCreate({
+  return await backend.open({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
     templateName: input.templateName,
@@ -101,7 +101,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       seedFiles: [],
       templateName: "tpl-dockerfile",
     });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       resourcesKey: "resources-hash",
       appRoot,
       sandboxName: "session-dockerfile",
@@ -229,7 +229,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       templateName: "tpl-reconnect",
     });
 
-    const firstHandle = await backend.getOrCreate({
+    const firstHandle = await backend.open({
       appRoot,
       sandboxName: "session-reconnect",
       templateName: "tpl-reconnect",
@@ -248,7 +248,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       version: 2,
     });
 
-    const reconnectedHandle = await backend.getOrCreate({
+    const reconnectedHandle = await backend.open({
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
@@ -295,7 +295,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
 
     expect(first).toMatchObject({ reused: false });
     expect(second).toMatchObject({ reused: true });
-    const handle = await backend.getOrCreate({
+    const handle = await backend.open({
       appRoot,
       sandboxName: "session-reuse-report",
       templateName: "tpl-reuse-report",

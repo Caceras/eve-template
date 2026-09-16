@@ -165,7 +165,7 @@ function createGraph(
   const provider = defineSandboxProvider({
     name: input.providerName ?? "test",
     environment: () => ({
-      async getOrCreate() {
+      async open() {
         throw new Error("Unexpected create call.");
       },
       async prepare() {
@@ -178,7 +178,7 @@ function createGraph(
     environment,
     kind: "independent",
     logicalPath: "agent/sandbox/sandbox.ts",
-    selector: defineSandbox(() => environment.create()),
+    selector: defineSandbox(() => environment.open()),
     revisionHash: "sandbox-source-hash",
     sourceId: "agent/sandbox/sandbox",
     sourceKind: "module",

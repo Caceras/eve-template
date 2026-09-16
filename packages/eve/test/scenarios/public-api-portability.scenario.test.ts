@@ -77,7 +77,7 @@ const custom = defineSandboxProvider({
   environment() {
     return {
       async prepare() { return { artifact: {}, reused: true }; },
-      async getOrCreate() { throw new Error("unused"); },
+      async open() { throw new Error("unused"); },
     };
   },
 });
@@ -87,13 +87,13 @@ export const environment = process.env.VERCEL === "1"
   ? VercelSandbox.environment({ resources: { vcpus: 2 } })
   : DefaultSandbox.environment({ docker: { image: "ghcr.io/vercel/eve:latest" } });
 void Drive;
-void DockerSandbox.dockerfile().create({ networkPolicy: "deny-all" });
+void DockerSandbox.dockerfile().open({ networkPolicy: "deny-all" });
 void DockerSandbox.image("ghcr.io/acme/agent:latest");
 void JustBashSandbox.environment();
 void MicrosandboxSandbox.dockerfile();
 void MicrosandboxSandbox.image("ghcr.io/acme/agent:latest");
 
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 `,
       },
       name: "sandbox-public-api-portability",

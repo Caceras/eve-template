@@ -10,7 +10,7 @@ import { defineSandbox } from "eve/sandbox";
 import { JustBashSandbox } from "eve/sandbox/just-bash";
 
 export const environment = JustBashSandbox.environment();
-export default defineSandbox(() => environment.create());
+export default defineSandbox(() => environment.open());
 ```
 
 just-bash can prepare and persist its virtual filesystem. It cannot use OCI images or Dockerfiles, does not run native processes, and provides no network isolation. Calls to `setNetworkPolicy()` fail.

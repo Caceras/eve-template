@@ -405,7 +405,7 @@ describe("Docker provider create", () => {
     });
 
     await expect(
-      createEngine({ cli }).getOrCreate({
+      createEngine({ cli }).open({
         appRoot,
         sandboxName: SESSION_KEY,
         templateName: TEMPLATE_KEY,
@@ -429,7 +429,7 @@ describe("Docker provider create", () => {
     });
 
     await expect(
-      createEngine({ cli }).getOrCreate({
+      createEngine({ cli }).open({
         appRoot,
         sandboxName: SESSION_KEY,
         templateName: TEMPLATE_KEY,
@@ -449,7 +449,7 @@ describe("Docker provider create", () => {
     });
 
     try {
-      const handle = await createEngine({ cli }).getOrCreate({
+      const handle = await createEngine({ cli }).open({
         appRoot,
         sandboxName: SESSION_KEY,
         tags: { agent: "weather" },
@@ -498,7 +498,7 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).getOrCreate({
+    await createEngine({ cli }).open({
       appRoot,
       sandboxName: SESSION_KEY,
       templateName: TEMPLATE_KEY,
@@ -517,7 +517,7 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).getOrCreate({
+    await createEngine({ cli }).open({
       existing: { containerName: SESSION_KEY },
       appRoot,
       sandboxName: SESSION_KEY,
@@ -537,7 +537,7 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).getOrCreate({
+    await createEngine({ cli }).open({
       appRoot,
       sandboxName: SESSION_KEY,
       templateName: null,
@@ -563,7 +563,7 @@ describe("docker session primitives", () => {
       }
       return input.respond?.(args);
     });
-    const handle = await createEngine({ cli, options: input.options }).getOrCreate({
+    const handle = await createEngine({ cli, options: input.options }).open({
       appRoot,
       sandboxName: SESSION_KEY,
       templateName: TEMPLATE_KEY,
@@ -762,7 +762,7 @@ describe("docker session primitives", () => {
     await createEngine({
       cli,
       runtimeOptions: { networkPolicy: "deny-all" },
-    }).getOrCreate({
+    }).open({
       appRoot,
       sandboxName: SESSION_KEY,
       templateName: null,

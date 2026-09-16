@@ -124,7 +124,7 @@ export const environment =
   });
 
 export default defineSandbox(() =>
-  environment.create()
+  environment.open()
 );`,
   },
   {

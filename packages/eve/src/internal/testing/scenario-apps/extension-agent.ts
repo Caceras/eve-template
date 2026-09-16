@@ -26,7 +26,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const environment = DefaultSandbox.environment();
 exports.environment = environment;
 exports.default = defineSandbox(async () => {
-  const sandbox = await environment.create();
+  const sandbox = await environment.open();
   await sandbox.run({ command: "mkdir -p .extension-fixture" });
   return sandbox;
 });
