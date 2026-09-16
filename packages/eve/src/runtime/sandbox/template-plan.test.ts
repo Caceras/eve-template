@@ -29,10 +29,10 @@ describe("createRuntimeSandboxTemplatePlan", () => {
         definition: definition(environment),
         workspaceResourceRoot: emptyResources,
       }),
-    ).toEqual({ kind: "prepared", revisionHash: "sandbox-revision" });
+    ).toEqual({ revisionHash: "sandbox-revision" });
   });
 
-  it("uses the base image directly when an image environment has no preparation inputs", () => {
+  it("prepares an image environment even without authored setup", () => {
     const environment = DockerSandbox.image("node:24");
 
     expect(
@@ -40,7 +40,7 @@ describe("createRuntimeSandboxTemplatePlan", () => {
         definition: definition(environment),
         workspaceResourceRoot: emptyResources,
       }),
-    ).toEqual({ kind: "none", revisionHash: "sandbox-revision" });
+    ).toEqual({ contentHash: undefined, revisionHash: "sandbox-revision" });
   });
 
   it("always prepares a Dockerfile environment", () => {
@@ -51,7 +51,7 @@ describe("createRuntimeSandboxTemplatePlan", () => {
         definition: definition(environment),
         workspaceResourceRoot: emptyResources,
       }),
-    ).toEqual({ kind: "prepared", revisionHash: "sandbox-revision" });
+    ).toEqual({ revisionHash: "sandbox-revision" });
   });
 
   it("prepares managed resources independently of provider kind", () => {
@@ -68,7 +68,6 @@ describe("createRuntimeSandboxTemplatePlan", () => {
       }),
     ).toEqual({
       contentHash: "resource-content",
-      kind: "prepared",
       revisionHash: "sandbox-revision",
     });
   });

@@ -27,11 +27,9 @@ export interface FileBackedSandbox {
 }
 
 export function createFileBackedInternalSandboxSession(input: {
-  readonly id: string;
   readonly sandbox: FileBackedSandbox;
 }): InternalSandboxSession {
   return {
-    id: input.id,
     resolvePath: resolveWorkspacePath,
     async spawn(options: SandboxSpawnOptions) {
       return await input.sandbox.spawn(options);

@@ -69,30 +69,7 @@ describe("prewarmAppSandboxes", () => {
 
     expect(firstInputs).toHaveLength(1);
     expect(secondInputs).toHaveLength(1);
-    expect(firstInputs[0]?.appRoot).toBe(appRoot);
-    expect(secondInputs[0]?.appRoot).toBe(appRoot);
-    expect(firstInputs[0]?.templateName).toBe(secondInputs[0]?.templateName);
-  });
-
-  it("skips backend prewarm when the sandbox signature is already warm", async () => {
-    const appRoot = process.cwd();
-    const inputs: SandboxProviderPrepareContext[] = [];
-    const signatures: string[] = [];
-
-    await prewarmAppSandboxes({
-      appRoot,
-      compiledArtifactsSource: createDiskRuntimeCompiledArtifactsSource(appRoot),
-      dispatch: recordPrewarmInputs(inputs),
-      loadAgentGraph: async () => createGraph(),
-      preparedArtifactStore: createMemoryArtifactStore(true),
-      shouldPrewarmSignature: (signature) => {
-        signatures.push(signature);
-        return false;
-      },
-    });
-
-    expect(inputs).toHaveLength(0);
-    expect(signatures).toHaveLength(1);
+    expect(firstInputs[0]?.storagePath).toBe(secondInputs[0]?.storagePath);
   });
 
   it.each(["docker", "microsandbox"])(
@@ -148,7 +125,7 @@ function createMemoryArtifactStore(hasEntries = false): SandboxPreparedArtifactS
 function recordPrewarmInputs(inputs: SandboxProviderPrepareContext[]) {
   return async ({ context }: { context: SandboxProviderPrepareContext }) => {
     inputs.push(context);
-    return { artifact: {}, reused: true };
+    return null;
   };
 }
 
@@ -165,15 +142,18 @@ function createGraph(
   const provider = defineSandboxProvider({
     name: input.providerName ?? "test",
     environment: () => ({
-      async open() {
-        throw new Error("Unexpected create call.");
-      },
       async prepare() {
-        return { artifact: {}, reused: true };
+        return null;
+      },
+      async resume() {
+        throw new Error("Unexpected resume call.");
+      },
+      async start() {
+        throw new Error("Unexpected start call.");
       },
     }),
   });
-  const environment = provider.environment({ prepare: async () => {} });
+  const environment = provider.environment();
   const definition: ResolvedSandboxDefinition = {
     environment,
     kind: "independent",

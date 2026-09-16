@@ -76,8 +76,9 @@ const custom = defineSandboxProvider({
   name: "custom",
   environment() {
     return {
-      async prepare() { return { artifact: {}, reused: true }; },
-      async open() { throw new Error("unused"); },
+      async prepare() { return null; },
+      async resume() { throw new Error("unused"); },
+      async start() { throw new Error("unused"); },
     };
   },
 });

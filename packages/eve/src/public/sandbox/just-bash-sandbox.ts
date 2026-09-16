@@ -1,11 +1,14 @@
 import type { CustomCommand, IFileSystem } from "just-bash";
+import type { SandboxSession } from "#shared/sandbox-session.js";
 
 /**
  * Context passed to a custom just-bash filesystem factory for each live handle.
  */
 export interface JustBashFilesystemContext {
-  /** Stable application root for this provider create call. */
-  readonly appRoot: string;
+  /** Resolves an application-relative path without exposing project layout. */
+  resolveProjectPath(path: string): string;
+  /** Stable provider-private storage directory for this sandbox. */
+  readonly storagePath: string;
   /** eve's durable, session-owned filesystem, including `/workspace`. */
   readonly defaultFilesystem: IFileSystem;
   /** The just-bash engine resolved by eve after its optional installation check. */
@@ -50,4 +53,6 @@ export interface JustBashSandboxCreateOptions {
    * preparation.
    */
   readonly filesystem?: (context: JustBashFilesystemContext) => IFileSystem | Promise<IFileSystem>;
+  /** Idempotent setup captured in the prepared virtual filesystem. */
+  readonly prepare?: (sandbox: SandboxSession) => Promise<void> | void;
 }

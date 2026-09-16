@@ -13,10 +13,10 @@ import type { RuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.
 
 /*
  * Template keys include this version for sandbox runtime contract changes
- * that are not captured by revision or resource hashes. Version 8 replaces
- * provider-specific template inputs with one compiled sandbox revision.
+ * that are not captured by revision or resource hashes. Version 9 moves native
+ * identity and preparation input discovery into providers.
  */
-const RUNTIME_SANDBOX_CONTRACT_VERSION = 8;
+const RUNTIME_SANDBOX_CONTRACT_VERSION = 9;
 
 /**
  * Input for deriving the stable runtime keys used for one sandbox definition.
@@ -94,16 +94,13 @@ async function deriveRuntimeSandboxKeyParts(input: {
 }): Promise<RuntimeSandboxKeyParts> {
   const metadata = await loadCompileMetadataForKeys(input.compiledArtifactsSource);
   const scope = await resolveRuntimeSandboxScope(input);
-  const templateHash =
-    input.templatePlan.kind === "none"
-      ? null
-      : createStableHash(
-          `${resolveRuntimeSandboxTemplateHash({
-            nodeId: input.nodeId,
-            sourceId: input.sourceId,
-            templatePlan: input.templatePlan,
-          })}:${input.environmentConfigurationHash ?? input.configurationHash ?? ""}`,
-        );
+  const templateHash = createStableHash(
+    `${resolveRuntimeSandboxTemplateHash({
+      nodeId: input.nodeId,
+      sourceId: input.sourceId,
+      templatePlan: input.templatePlan,
+    })}:${input.environmentConfigurationHash ?? input.configurationHash ?? ""}`,
+  );
   const environmentHash = createStableHash(
     `environment:${input.templatePlan.revisionHash}:${input.templatePlan.contentHash ?? ""}:${input.configurationHash ?? ""}:${input.nodeId}:${input.sourceId}`,
   );

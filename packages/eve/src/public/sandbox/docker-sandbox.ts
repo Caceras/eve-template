@@ -1,3 +1,5 @@
+import type { SandboxSelectorContext } from "#shared/sandbox-environment.js";
+import type { SandboxSession } from "#shared/sandbox-session.js";
 import type {
   SandboxNetworkOptions,
   SandboxNetworkPolicy,
@@ -17,10 +19,17 @@ export interface DockerSandboxEnvironmentOptions {
   readonly env?: Readonly<Record<string, string>>;
   /** Base image pull behavior. @default "if-not-present" */
   readonly pullPolicy?: DockerSandboxPullPolicy;
+  /** Idempotent setup captured in the prepared image. */
+  readonly prepare?: (sandbox: SandboxSession) => Promise<void> | void;
 }
 
 /** Options applied when eve creates one live Docker sandbox. */
 export interface DockerSandboxRuntimeOptions extends SandboxNetworkOptions {
   /** Initial network policy for this container. @default "allow-all" */
   readonly networkPolicy?: DockerSandboxNetworkPolicy;
+  /** Idempotent setup run whenever this session's native container is created. */
+  readonly onSession?: (context: {
+    readonly sandbox: SandboxSession;
+    readonly session: SandboxSelectorContext["session"];
+  }) => Promise<void> | void;
 }

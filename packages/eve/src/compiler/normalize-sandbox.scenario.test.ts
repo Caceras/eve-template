@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compileAgentManifest } from "#compiler/normalize-manifest.js";
@@ -28,41 +27,6 @@ describe("sandbox compilation", () => {
       inheritsParent: undefined,
     });
   });
-  it("captures a colocated Dockerfile in the environment generation", async () => {
-    const app = await scenarioApp({
-      files: {
-        "agent/sandbox/Dockerfile": "FROM alpine:3.21\n",
-        "agent/sandbox/sandbox.ts": [
-          'import { defineSandbox } from "eve/sandbox";',
-          'import { DockerSandbox } from "eve/sandbox/docker";',
-          "export const environment = DockerSandbox.dockerfile();",
-          "export default defineSandbox(() => environment.open());",
-        ].join("\n"),
-      },
-      installDependencies: true,
-      name: "sandbox-dockerfile-environment",
-    });
-    const discovered = await discoverAgent({
-      agentRoot: join(app.appRoot, "agent"),
-      appRoot: app.appRoot,
-    });
-    const manifest = await compileAgentManifest(discovered.manifest);
-    expect(manifest.sandbox).toMatchObject({
-      providerName: "docker",
-      environmentExportName: "environment",
-      revisionHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-    });
-    expect(manifest.sandbox).not.toHaveProperty("dockerfileHash");
-
-    await writeFile(join(app.appRoot, "agent", "sandbox", "Dockerfile"), "FROM alpine:3.22\n");
-    const changed = await discoverAgent({
-      agentRoot: join(app.appRoot, "agent"),
-      appRoot: app.appRoot,
-    });
-    const changedManifest = await compileAgentManifest(changed.manifest);
-    expect(changedManifest.sandbox.revisionHash).not.toBe(manifest.sandbox.revisionHash);
-  });
-
   it("compiles managed child resources for runtime rejection", async () => {
     const app = await scenarioApp({
       files: {

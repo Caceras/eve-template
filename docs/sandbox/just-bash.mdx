@@ -13,6 +13,6 @@ export const environment = JustBashSandbox.environment();
 export default defineSandbox(() => environment.open());
 ```
 
-just-bash can prepare and persist its virtual filesystem. It cannot use OCI images or Dockerfiles, does not run native processes, and provides no network isolation. Calls to `setNetworkPolicy()` fail.
+just-bash can prepare and persist its virtual filesystem. It cannot use OCI images or Dockerfiles, does not run native processes, and provides no network isolation. The session does not expose `setNetworkPolicy()`.
 
 See the [sandbox overview](/docs/sandbox) for managed workspace, skills, parent inheritance, and custom providers.

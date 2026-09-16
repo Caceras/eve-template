@@ -4,386 +4,202 @@ status: draft
 last_updated: "2026-09-15"
 ---
 
-# Sandbox environments and `open()`
+# Sandbox environments and provider sessions
 
 ## Decision
 
-A sandbox environment exposes one operation:
+Authors configure an immutable provider environment, then open its sandbox for the current eve session:
 
 ```ts
-interface SandboxEnvironment<OpenOptions> {
-  readonly provider: string;
-  open(options?: OpenOptions): Promise<RuntimeSandboxSession>;
-}
-```
-
-`open()` opens the logical sandbox owned by the current eve session. On first
-access the provider creates native resources. On later access the provider
-reconnects from persisted metadata. The author does not choose a framework
-name, scope, or sharing policy.
-
-```ts
-import { defineSandbox } from "eve/sandbox";
-import { VercelSandbox } from "eve/sandbox/vercel";
-
-export const environment = VercelSandbox.environment();
-
-export default defineSandbox(({ session }) =>
-  environment.open({
-    networkPolicy: session.auth.current === null ? "deny-all" : { allow: ["api.example.com"] },
-    resources: { vcpus: 4 },
-  }),
-);
-```
-
-The selector must return the exact `RuntimeSandboxSession` returned by
-`environment.open()`.
-
-## Why one operation
-
-The environment operation represents both first access and reconnection after a durable boundary. Native resource identity remains a provider implementation detail rather than an author-controlled framework sharing contract.
-
-The operation establishes one core invariant:
-
-```text
-eve session
-  → one derived logical sandbox identity
-  → provider create or restore
-  → live RuntimeSandboxSession
-```
-
-Cross-session native resource reuse is not a built-in environment feature. It
-requires a custom provider that defines its own isolation, attachment,
-concurrency, retention, and teardown rules while still returning a
-session-owned logical sandbox view.
-
-## Environment and live options
-
-Environment construction declares immutable inputs:
-
-```ts
-export const environment = DockerSandbox.image("node:24-bookworm", {
-  pullPolicy: "if-not-present",
+export const environment = VercelSandbox.environment({
   prepare: async (sandbox) => {
-    await sandbox.run({ command: "corepack enable" });
+    await sandbox.run({ command: "pnpm install --frozen-lockfile" });
   },
 });
-```
 
-`open()` accepts live options for the current session:
-
-```ts
 export default defineSandbox(() =>
   environment.open({
     networkPolicy: "deny-all",
+    onSession: async ({ sandbox, session }) => {
+      await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
+    },
   }),
 );
 ```
 
-The environment and live options both participate in the session sandbox
-identity. A material change rotates the logical sandbox rather than mutating an
-unrelated existing resource.
+`environment.open()` returns the exact `RuntimeSandboxSession` selected by the sandbox definition. It is the only author-facing environment operation.
 
-## Live network policy
+## Provider-owned options and hooks
 
-Network-capable environments may accept an initial policy in `open()` so the
-policy applies when native compute starts:
+Environment configuration and live options are single provider-owned objects. Core passes them unchanged and never reserves, injects, extracts, or interprets fields such as `prepare` or `onSession`.
 
-```ts
-const sandbox = await environment.open({
-  networkPolicy: "deny-all",
-});
-```
+Omission remains `undefined`. Providers normalize optional input themselves. Objects with required fields remain required; positional arguments are not supported.
 
-The returned live session may change its policy later:
+Providers own callback names, argument types, ordering, and lifecycle timing. A snapshot provider may expose `prepare(sandbox)`. A provider may expose an `onSession` callback in its open options and construct that callback's arguments from the live sandbox, current artifact, and read-only eve session context. Dockerfile image providers expose no authored preparation callback when immutable setup belongs in the Dockerfile.
 
-```ts
-const sandbox = await environment.open({
-  networkPolicy: "deny-all",
-});
+Provider callbacks and runtime callback arguments are never stored in prepared artifacts. Provider-defined session-hook return values may enter serialized provider session state only when `resume()` needs them.
 
-await sandbox.setNetworkPolicy({
-  allow: ["api.example.com"],
-});
+## Public sandbox sessions
 
-return sandbox;
-```
+`SandboxSession` is an I/O-only surface used by preparation and provider-defined session hooks. It contains process and file operations, eve-owned `resolvePath()`, and optional `setNetworkPolicy()`. It has no `id`, `stop()`, or `delete()`.
 
-The method remains `setNetworkPolicy()`, not `updateNetworkPolicy()`. It is an
-eve-owned `RuntimeSandboxSession` operation; providers adapt it to their native
-network API. Docker supports coarse allow/deny policy, Vercel and microsandbox
-support richer policies, and just-bash does not expose mutable network policy.
+`RuntimeSandboxSession` extends that surface with `stop()` and `delete()` and is returned by `environment.open()`.
 
-Passing the final policy to `open()` is safer when untrusted startup code must
-never run with broader access. Calling `setNetworkPolicy()` afterward is useful
-when authored setup intentionally starts from a restricted policy and then
-opens selected destinations.
+Authors use `ctx.session.id` for durable eve identity. Provider-native IDs and core artifact keys remain private. `resolvePath()` remains unchanged: relative paths resolve beneath `/workspace`, and absolute paths pass through.
+
+`setNetworkPolicy()` is an optional capability. Dedicated Vercel, Docker, and microsandbox providers expose it. A provider that reuses one native network boundary may omit it and require immutable policy in environment configuration.
 
 ## Provider contract
 
-Built-in and custom providers use one lifecycle method:
-
 ```ts
-interface SandboxProviderImplementation<OpenOptions, Metadata, Artifact> {
-  prepare(context: SandboxProviderPrepareContext): Promise<{
-    artifact: Artifact;
-    reused: boolean;
+interface SandboxProviderImplementation<OpenOptions, Artifact, SessionState> {
+  prepare(context: SandboxProviderPrepareContext): Promise<Artifact>;
+
+  start(
+    context: SandboxProviderSessionContext,
+    options: Readonly<OpenOptions> | undefined,
+    artifact: Readonly<Artifact>,
+  ): Promise<{
+    handle: SandboxProviderHandle;
+    state: SessionState;
   }>;
 
-  open(
-    context: SandboxProviderOpenContext<OpenOptions, Metadata>,
-    source: SandboxProviderSource<Artifact>,
-  ): Promise<SandboxProviderHandle<Metadata>>;
+  resume(
+    context: SandboxProviderSessionContext,
+    options: Readonly<OpenOptions> | undefined,
+    artifact: Readonly<Artifact>,
+    state: Readonly<SessionState>,
+  ): Promise<SandboxProviderHandle>;
+}
+
+interface SandboxProviderSessionContext {
+  readonly session: SandboxSelectorContext["session"];
+  readonly storagePath: string;
+}
+
+interface SandboxProviderHandle {
+  readonly sandbox: SandboxSession;
+  onSessionStop(): Promise<void>;
+  onRuntimeShutdown(): Promise<void>;
+  onSessionDelete(options?: SandboxDeleteOptions): Promise<void>;
 }
 ```
 
-The open context separates provider restoration from prepared source:
+`Artifact` and `SessionState` are JSON-compatible provider-owned types. Core erases exact types only at the heterogeneous runtime registry boundary.
+
+### Preparation
+
+`prepare()` is mandatory and returns only the complete artifact. A provider with no build work may return `null`. Cache reuse is provider logging, not shared return data.
+
+Managed workspace and skills are available only during preparation. The artifact captures their files or exact provider references. Runtime never rebuilds, rehydrates, repairs, or reinterprets build inputs.
+
+Core keeps its artifact storage key private and passes the artifact directly to `start()` and `resume()`. There is no `base | prepared` source union.
+
+### Provider-discovered files
+
+Preparation context exposes a tracked filesystem scoped to the authored sandbox directory:
 
 ```ts
-type SandboxProviderInstance<Metadata> =
-  | {
-      kind: "create";
-      name: string;
-    }
-  | {
-      kind: "restore";
-      name: string;
-      metadata: Readonly<Metadata>;
-    };
-
-type SandboxProviderSource<Artifact> =
-  | { kind: "base" }
-  | {
-      kind: "prepared";
-      templateName: string;
-      artifact: Artifact;
-    };
-
-interface SandboxProviderOpenContext<OpenOptions, Metadata> {
-  appRoot: string;
-  instance: SandboxProviderInstance<Metadata>;
-  options: Readonly<OpenOptions>;
-  resources: SandboxProviderResources;
-  tags?: SandboxProviderTags;
+interface SandboxProviderFiles {
+  glob(pattern: string): Promise<readonly string[]>;
+  read(path: string): Promise<Uint8Array>;
+  readText(path: string): Promise<string>;
 }
 ```
 
-`instance` tells the provider whether eve has compatible persisted metadata.
-`source` tells the provider whether it must start from an exact prepared
-artifact. Neither union carries cross-session ownership.
+Providers discover their own Dockerfiles and build contexts through this surface. Core tracks, hashes, and watches reads. Providers do not receive the application root for authored file discovery.
 
-Every built-in provider opens the name eve derives from the current durable
-session, agent node, authenticated principal scope, environment revision, and
-live configuration. Providers do not accept an author-controlled native name.
+Provider contexts expose `storagePath` for private caches, local VM state, and temporary files. Core owns project layout.
 
-## Custom provider example
+### Start and resume
 
-```ts
-import { defineSandboxProvider } from "eve/sandbox/provider";
+Core calls `start()` when no serialized provider session state exists and `resume()` whenever it does. `start()` is idempotent: repeated or concurrent calls with the same context, options, and artifact converge on the same native resource and equivalent state. `resume()` may run repeatedly across process restarts.
 
-interface AcmeEnvironmentOptions {
-  readonly image: string;
-  readonly region: string;
-}
+`start()` receives the current provider-owned open options and exact artifact. `resume()` receives the same options, the target deployment's exact artifact, and persisted provider state. Providers validate artifacts during both methods.
 
-interface AcmeOpenOptions {
-  readonly networkPolicy?: "allow-all" | "deny-all";
-}
+Provider, environment configuration, open options, artifact selection, and provider state are pinned to the durable sandbox session generation. They do not rotate implicitly. Deletion or explicit migration clears or replaces state.
 
-interface AcmeMetadata {
-  readonly remoteId: string;
-}
+During deployment handoff, the target provider validates state against its current implementation and artifact. Incompatibility rejects activation, leaving the existing owner on its current deployment. Core does not persist old artifacts or migrate provider state.
 
-type AcmeArtifact = {
-  readonly templateId: string;
-};
+### Minimal session state
 
-export const AcmeSandbox = defineSandboxProvider<
-  AcmeEnvironmentOptions,
-  AcmeOpenOptions,
-  AcmeMetadata,
-  AcmeArtifact
->({
-  name: "acme",
+Provider session state contains only values that cannot be cheaply and deterministically recovered, such as an opaque platform ID. It does not duplicate prepared artifacts, options, credentials, clients, callbacks, or derivable hashes. Providers version and validate their state in `resume()`.
 
-  environment(options) {
-    return {
-      async prepare(ctx) {
-        const template = await acme.createTemplate({
-          image: options.image,
-          name: ctx.templateName,
-          region: options.region,
-          resources: ctx.resources,
-        });
-        const sandbox = adaptAcmeSandbox(template);
-        await ctx.runPreparation(sandbox);
-        const captured = await template.capture();
-        return {
-          artifact: { templateId: captured.id },
-          reused: captured.reused,
-        };
-      },
+There is no post-open `captureMetadata()` and no create/restore context union.
 
-      async open(ctx, source) {
-        const remote =
-          ctx.instance.kind === "restore"
-            ? await acme.restore({
-                id: ctx.instance.metadata.remoteId,
-                name: ctx.instance.name,
-              })
-            : await acme.create({
-                name: ctx.instance.name,
-                networkPolicy: ctx.options.networkPolicy,
-                source:
-                  source.kind === "base"
-                    ? { image: options.image }
-                    : { templateId: source.artifact.templateId },
-              });
+### Lifecycle hooks
 
-        return {
-          sandbox: adaptAcmeSandbox(remote),
-          captureMetadata: async () => ({ remoteId: remote.id }),
-          stop: () => remote.stop(),
-          shutdown: () => remote.stop(),
-          delete: () => remote.delete(),
-        };
-      },
-    };
-  },
-});
+Provider-handle hooks describe the eve event, not a required native effect:
+
+- `onSessionStop()` handles authored `sandbox.stop()` while preserving provider session state.
+- `onRuntimeShutdown()` releases a process-local attachment without changing durable state.
+- `onSessionDelete()` handles authored deletion; core clears provider state after it succeeds.
+
+Dedicated providers normally map these hooks to native stop or delete. Providers that reuse native resources map them to logical detachment. Core has no native ownership flag or provider-owned lifetime branch.
+
+## Native identity
+
+Core does not derive provider instance keys or native names. Each provider derives identity from the inputs it owns.
+
+Dedicated providers include `session.id`:
+
+```text
+session ID
++ validated artifact
++ immutable environment options
++ open options
++ provider contract version
+→ native identity
 ```
 
-Authoring remains the same as a built-in environment:
+A reused provider excludes the eve session ID:
 
-```ts
-export const environment = AcmeSandbox.environment({
-  image: "acme/node@sha256:...",
-  region: "iad1",
-  prepare: async (sandbox) => {
-    await sandbox.run({ command: "install-agent-dependencies" });
-  },
-});
-
-export default defineSandbox(() =>
-  environment.open({
-    networkPolicy: "deny-all",
-  }),
-);
+```text
+validated artifact
++ immutable environment options
++ provider contract version
+→ reused native identity
 ```
 
-## Cross-session native reuse
+Identity derivation excludes credentials, signals, clients, callbacks, logs, and mutable turn data. Providers canonicalize supported values and reject unsupported non-serializable identity inputs.
 
-Core does not expose cross-session sharing. A custom provider may reuse native
-compute internally if it still returns a session-owned logical view.
+Core does not expose a universal generation or revalidation field. It does not pass its internal artifact key to providers. Compatibility is the provider-derived identity; no `sandboxConfig` or second provider manifest is added.
 
-For example, one provider can combine team-scoped compute with a session-scoped
-Drive:
+## Dedicated Vercel behavior
 
-```ts
-interface TeamWorkspaceOpenOptions {
-  readonly teamId: string;
-  readonly workspaceId: string;
-}
+The Vercel provider retains the useful pre-redesign behavior inside its own implementation:
 
-async function open(ctx, source) {
-  const compute = await openTeamCompute({
-    key: hash(ctx.options.teamId),
-  });
+1. `start()` derives a deterministic native name from `session.id`, the validated artifact, environment options, open options, and a Vercel contract version.
+2. It looks up that name and creates only when absent.
+3. When it creates native compute, it runs its provider-owned `onSession` hook.
+4. It returns minimal state such as `{ version: 1, sandboxName }`.
+5. `resume()` reconnects from that state.
+6. If native compute is missing during resume, it recreates from the exact artifact and runs `onSession` for the newly created Sandbox.
 
-  const workspace =
-    ctx.instance.kind === "restore"
-      ? await restoreWorkspace(ctx.instance.metadata)
-      : await createSessionWorkspace({
-          key: hash(ctx.options.teamId, ctx.options.workspaceId),
-        });
+Snapshot-unavailable replacement behavior remains provider-owned. No author controls the native name.
 
-  const mountPath = `/eve/sessions/${hash(ctx.options.workspaceId)}`;
-  const attachment = await attachWorkspace({ compute, mountPath, workspace });
+## Reused providers
 
-  return {
-    sandbox: createScopedSandboxSession({
-      id: ctx.instance.name,
-      nativeSandbox: compute,
-      workspaceRoot: mountPath,
-    }),
-    captureMetadata: async () => ({
-      mountPath,
-      workspaceId: workspace.id,
-    }),
-    stop: () => attachment.detach(),
-    shutdown: () => attachment.detach(),
-    delete: async () => {
-      await attachment.detach();
-      await workspace.delete();
-    },
-  };
-}
-```
+Cross-session native reuse is not a core feature. A custom provider may derive native identity without `session.id` while returning one session-owned logical view per eve session.
 
-The sandbox definition still calls only `open()`:
+The experimental reused Vercel provider uses the same prepared image and Drive mechanics but has a distinct provider contract. It exposes immutable shared network policy and no mutable `setNetworkPolicy()`. Its lifecycle hooks do not tear down native compute used by other sessions.
 
-```ts
-export default defineSandbox(({ session }) =>
-  environment.open({
-    teamId: requireTeamId(session),
-    workspaceId: session.id,
-  }),
-);
-```
+Concurrent creation, initialization recovery, attachment accounting, active-handle deduplication, and garbage collection remain provider implementation details. Core tracks one logical handle per eve session.
 
-The provider must not let one session's lifecycle methods stop or delete shared
-team compute. A session-specific path is not a security boundary: mutually
-untrusted sessions require separate native compute or stronger provider-owned
-isolation.
+## Default selection
 
-## Built-in environments
+`defineSandboxProvider()` has one implementation contract and no `select` escape hatch. `DefaultSandbox` is an explicit facade that probes the host and returns a concrete Vercel, Docker, microsandbox, or just-bash environment. Every concrete provider uses `defineSandboxProvider()`.
 
-All built-ins expose only `open()`:
-
-```ts
-DefaultSandbox.environment().open();
-VercelSandbox.environment().open(options);
-DockerSandbox.environment().open(options);
-DockerSandbox.image(reference).open(options);
-DockerSandbox.dockerfile().open(options);
-MicrosandboxSandbox.environment().open(options);
-MicrosandboxSandbox.image(reference).open(options);
-MicrosandboxSandbox.dockerfile().open(options);
-JustBashSandbox.environment().open();
-```
-
-The experimental Vercel image environment follows the same rule:
-
-```ts
-ExperimentalVercelDockerfile.environment({ region: "iad1" }).open({
-  networkPolicy: "deny-all",
-  resources: { vcpus: 4 },
-});
-```
-
-## Parent inheritance
-
-Parent inheritance remains explicit and does not call an environment method:
-
-```ts
-import { defineParentSandbox } from "eve/sandbox";
-
-export default defineParentSandbox();
-```
-
-The child uses the parent's exact logical sandbox and lifecycle ownership.
+Core exposes no public environment `kind`. Providers discover their own preparation inputs through the tracked filesystem.
 
 ## Observable invariants
 
-- A sandbox selector returns the exact live session returned by `open()`.
-- Core derives one logical sandbox identity for the current eve session.
-- `open()` creates or reconnects; the author does not distinguish those paths.
-- Provider restoration and prepared source are explicit, independent unions.
-- Built-in providers do not expose cross-session sharing.
-- Custom providers may compose shared native resources only behind a
-  session-owned logical view.
-- Initial network policy belongs in `open()`; later policy changes use
-  `sandbox.setNetworkPolicy()`.
-- Build and development activation complete provider preparation before
-  serving traffic.
-- Runtime never rebuilds or mutates prepared artifacts.
+- Authors use only `environment.open(options)`.
+- Environment and open options are provider-owned single objects; omission remains `undefined`.
+- Core invokes provider `prepare()`, `start()`, and `resume()` directly.
+- Prepared artifacts are immutable, complete, and consumed directly at runtime.
+- Provider start is idempotent; resume may repeat across process restarts.
+- Provider session state is minimal, JSON-compatible, and provider-validated.
+- Existing sessions retain their pinned generation across deployment handoff or remain on the old deployment when incompatible.
+- Core contains no provider-native identity, sharing, ownership, or repair branch.
+- Public sandbox sessions expose operations rather than provider or core identity.

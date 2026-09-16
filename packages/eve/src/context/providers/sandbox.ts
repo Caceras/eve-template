@@ -1,14 +1,9 @@
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import type { HarnessSession } from "#harness/types.js";
 import type { SandboxAccess, SandboxState } from "#sandbox/state.js";
-import { type ChannelAdapter, getAdapterKind } from "#channel/adapter.js";
 import type { ContextContainer } from "#context/container.js";
 import { SandboxKey, SessionIdKey } from "#context/keys.js";
-import {
-  BundleKey,
-  ChannelKey,
-  type CompiledBundle,
-} from "#runtime/sessions/runtime-context-keys.js";
+import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { getActiveRuntimeNode } from "#context/node.js";
 import type { FrameworkContextProvider } from "#context/provider.js";
 
@@ -38,11 +33,6 @@ export const sandboxProvider: FrameworkContextProvider<SandboxAccess> = {
         sessionId: sandboxSessionId,
         state:
           session.sandboxState ?? (reusesOwnerSandbox ? parentSandboxState : undefined) ?? null,
-        tags: {
-          agent: resolveTagAgentName({ bundle, node }),
-          channel: resolveTagChannelKind(channel),
-          sessionId,
-        },
       }),
     };
   },
@@ -52,27 +42,3 @@ export const sandboxProvider: FrameworkContextProvider<SandboxAccess> = {
     return { ...session, sandboxState: state };
   },
 };
-
-function resolveTagAgentName(input: {
-  readonly bundle: CompiledBundle;
-  readonly node: ReturnType<typeof getActiveRuntimeNode>;
-}): string {
-  const partialNode = input.node as {
-    readonly agent?: { readonly config?: { readonly name?: string } };
-    readonly nodeId?: string;
-  };
-  const partialBundle = input.bundle as {
-    readonly resolvedAgent?: { readonly config?: { readonly name?: string } };
-  };
-
-  return (
-    partialNode.agent?.config?.name ??
-    partialBundle.resolvedAgent?.config?.name ??
-    partialNode.nodeId ??
-    "unknown"
-  );
-}
-
-function resolveTagChannelKind(channel: ChannelAdapter | undefined): string {
-  return channel === undefined ? "unknown" : getAdapterKind(channel);
-}

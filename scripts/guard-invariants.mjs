@@ -109,7 +109,7 @@
  *             executor. The generic inbox and state cursor must not
  *             import subagent modules; session/turn composition roots may
  *             compose built-in executors directly.
- *   rule 44 — Every built-in sandbox provider is defined through
+ *   rule 44 — Every concrete built-in sandbox provider is defined through
  *             `defineSandboxProvider()` and does not import sandbox runtime
  *             orchestration, registries, key derivation, or session state.
  *             Built-ins and authored providers must share one contract.
@@ -1359,7 +1359,7 @@ function diffCounts(current, baseline) {
 // ---------- Entry point ----------
 
 async function checkRule44SandboxProviders() {
-  const providerNames = ["default", "docker", "just-bash", "microsandbox", "vercel"];
+  const providerNames = ["docker", "just-bash", "microsandbox", "vercel"];
   const forbidden = [
     "#execution/sandbox/ensure.js",
     "#execution/sandbox/prewarm.js",

@@ -53,7 +53,6 @@ async function createTemporaryAppRoot(options?: { sourceGraphHash?: string }): P
 const WORKSPACE_PLAN = {
   contentHash: "workspace-hash",
   revisionHash: "environment-v1",
-  kind: "prepared",
 } as const;
 
 function stubEmptyVercelProjectSources(): void {
@@ -141,7 +140,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "prepared",
       },
     });
 
@@ -155,7 +153,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "prepared",
       },
     });
 
@@ -173,7 +170,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -187,7 +183,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -208,7 +203,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         revisionHash: "environment-v1",
         contentHash: "workspace-hash",
-        kind: "prepared",
       },
     } as const;
 
@@ -231,7 +225,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -242,7 +235,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -260,7 +252,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: "sandbox-revision-one",
       },
     });
@@ -271,7 +262,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash",
-        kind: "prepared",
         revisionHash: "sandbox-revision-two",
       },
     });
@@ -289,7 +279,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash-one",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -300,7 +289,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       sourceId: "sandbox/sandbox.ts",
       templatePlan: {
         contentHash: "workspace-hash-two",
-        kind: "prepared",
         revisionHash: SANDBOX_REVISION_HASH,
       },
     });
@@ -319,7 +307,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         revisionHash: "environment-v1",
         contentHash: "workspace-hash-one",
-        kind: "prepared",
       },
     });
     const secondKey = await createRuntimeSandboxTemplateKey({
@@ -330,7 +317,6 @@ describe("createRuntimeSandboxTemplateKey", () => {
       templatePlan: {
         revisionHash: "environment-v1",
         contentHash: "workspace-hash-two",
-        kind: "prepared",
       },
     });
 
@@ -343,7 +329,7 @@ describe("createRuntimeSandboxTemplateKey", () => {
       compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
       nodeId: "__root__",
       sourceId: "eve:default-sandbox",
-      templatePlan: { revisionHash: "environment-v1", kind: "none" },
+      templatePlan: { revisionHash: "environment-v1" },
     });
 
     expect(key).toBeNull();

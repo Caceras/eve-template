@@ -55,6 +55,16 @@ Credential transforms inject headers at the network boundary so the secret does 
 
 ## Live sandbox options
 
-`open()` also accepts Vercel compute resources, timeout, and Drive mounts. eve owns the persistent sandbox identity and prepared snapshot source.
+`open()` also accepts Vercel compute resources, timeout, Drive mounts, and an idempotent `onSession` callback. Vercel runs `onSession` whenever it creates native session compute, including recreation during resume; ordinary reconnection does not rerun it.
+
+```ts
+return environment.open({
+  onSession: async ({ sandbox, session }) => {
+    await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
+  },
+});
+```
+
+eve owns the persistent sandbox identity and prepared snapshot source.
 
 See the [sandbox overview](/docs/sandbox) for managed workspace, skills, parent inheritance, and custom providers.

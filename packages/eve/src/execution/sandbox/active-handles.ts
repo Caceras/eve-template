@@ -6,7 +6,7 @@ import { toErrorMessage } from "#shared/errors.js";
  * variance friction.
  */
 export interface ShutdownCapableSandboxHandle {
-  shutdown(): Promise<void>;
+  onRuntimeShutdown(): Promise<void>;
 }
 
 /**
@@ -51,7 +51,7 @@ export async function shutdownActiveSandboxHandles(input?: {
   const entries = [...activeSandboxHandles.entries()];
   activeSandboxHandles.clear();
 
-  const results = await Promise.allSettled(entries.map(([, handle]) => handle.shutdown()));
+  const results = await Promise.allSettled(entries.map(([, handle]) => handle.onRuntimeShutdown()));
 
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {

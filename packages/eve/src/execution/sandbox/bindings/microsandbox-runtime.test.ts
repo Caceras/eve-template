@@ -49,7 +49,7 @@ describe.skipIf(process.platform === "win32")("connectMicrosandbox", () => {
       }),
     );
 
-    await vm.setNetworkPolicy("deny-all");
+    await vm.setNetworkPolicy?.("deny-all");
 
     expect(metadataState.writeSessionMetadata).toHaveBeenCalledWith(
       "/tmp/eve-microsandbox-session/metadata.json",

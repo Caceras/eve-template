@@ -148,20 +148,28 @@ const TEST_SANDBOX_PROVIDER = defineSandboxProvider({
   name: "eve-test-memory",
   environment: () => ({
     async prepare() {
-      return { artifact: {}, reused: true };
+      return null;
     },
-    async open(context) {
-      const sandbox = mockSandbox({ id: context.instance.name });
-      return {
-        captureMetadata: async () => ({}),
-        delete: async (options) => await sandbox.access.delete?.(options),
-        sandbox: sandbox.session,
-        shutdown: async () => undefined,
-        stop: async () => undefined,
-      };
+    async resume(context) {
+      return createHandle(context.session.id);
+    },
+    async start(context) {
+      return { handle: createHandle(context.session.id), state: null };
     },
   }),
 });
+
+function createHandle(sessionId: string) {
+  const sandbox = mockSandbox({ id: sessionId });
+  return {
+    sandbox: sandbox.session,
+    async onSessionDelete(options?: import("#shared/sandbox-provider.js").SandboxDeleteOptions) {
+      await sandbox.access.delete?.(options);
+    },
+    async onSessionStop() {},
+    async onRuntimeShutdown() {},
+  };
+}
 
 export async function createTestRuntime(descriptor: TestAppDescriptor = {}): Promise<TestRuntime> {
   const compileInput: CompileFromMemoryInput = {

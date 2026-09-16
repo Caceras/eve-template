@@ -3,7 +3,6 @@ export {
   defineSandbox,
   type SandboxOpenArguments,
   type SandboxEnvironment,
-  type SandboxPrepare,
   type SandboxSelector,
   type SandboxSelectorContext,
   type SandboxCommandResult,

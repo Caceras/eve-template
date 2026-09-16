@@ -26,15 +26,15 @@ describe("Docker sandbox deletion", () => {
     const provider = createSandboxProviderHarness(
       createDockerSandboxProvider(undefined, dockerCli),
       {},
+      { preparedArtifact: () => ({ imageReference: "prepared-image" }) },
     );
     const handle = await provider.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
-      templateName: null,
     });
     vi.mocked(run).mockClear();
 
-    await handle.delete();
+    await handle.onSessionDelete();
 
     expect(run).toHaveBeenNthCalledWith(1, ["stop", "-t", "0", "container-id-1"]);
     expect(run).toHaveBeenNthCalledWith(2, ["rm", "-f", "container-id-1"]);
@@ -62,18 +62,17 @@ describe("Docker sandbox deletion", () => {
     const backend = createSandboxProviderHarness(
       createDockerSandboxProvider(undefined, dockerCli),
       {},
+      { preparedArtifact: () => ({ imageReference: "prepared-image" }) },
     );
     const oldHandle = await backend.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
-      templateName: null,
     });
-    await oldHandle.delete();
+    await oldHandle.onSessionDelete();
     containerId = "container-id-2";
     await backend.open({
       appRoot: "/tmp/eve-app",
       sandboxName: "session-key",
-      templateName: null,
     });
     vi.mocked(run).mockClear();
 

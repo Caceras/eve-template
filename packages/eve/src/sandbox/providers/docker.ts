@@ -4,22 +4,20 @@ import type {
   DockerSandboxRuntimeOptions,
 } from "#public/sandbox/docker-sandbox.js";
 import type { SandboxEnvironment } from "#shared/sandbox-environment.js";
-import {
-  defineSandboxProvider,
-  type SandboxProviderEnvironmentOptions,
-} from "#shared/sandbox-provider.js";
+import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 
 export type {
   DockerSandboxEnvironmentOptions,
   DockerSandboxRuntimeOptions,
 } from "#public/sandbox/docker-sandbox.js";
 
-type DockerEnvironmentInput = SandboxProviderEnvironmentOptions<DockerSandboxEnvironmentOptions>;
-type DockerfileEnvironmentInput = Omit<DockerEnvironmentInput, "image">;
+type DockerfileEnvironmentInput = Omit<DockerSandboxEnvironmentOptions, "image">;
 
 const provider = defineSandboxProvider<
   DockerSandboxEnvironmentOptions,
-  DockerSandboxRuntimeOptions
+  DockerSandboxRuntimeOptions,
+  { readonly imageReference: string },
+  { readonly containerName: string; readonly version: 1 }
 >({
   name: "docker",
   environment(options) {
@@ -32,14 +30,12 @@ export const DockerSandbox = {
   dockerfile(
     options: DockerfileEnvironmentInput = {},
   ): SandboxEnvironment<DockerSandboxRuntimeOptions> {
-    const environment = provider.environment(options);
-    return Object.defineProperty(environment, "kind", { value: "dockerfile" });
+    return provider.environment(options);
   },
   image(
     reference: string,
     options: DockerfileEnvironmentInput = {},
   ): SandboxEnvironment<DockerSandboxRuntimeOptions> {
-    const environment = provider.environment({ ...options, image: reference });
-    return Object.defineProperty(environment, "kind", { value: "image" });
+    return provider.environment({ ...options, image: reference });
   },
 };

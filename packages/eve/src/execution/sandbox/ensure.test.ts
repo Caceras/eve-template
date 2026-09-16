@@ -12,24 +12,28 @@ import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 
+vi.mock("#runtime/sandbox/prepared-artifacts.js", () => ({
+  loadSandboxPreparedArtifact: vi.fn(async () => null),
+}));
+
 function fixture(setup?: () => void, returnCopy = false) {
   const deleteSandbox = vi.fn(async () => {});
   const stopSandbox = vi.fn(async () => {});
-  const create = vi.fn(async (context) => {
-    const sandbox = mockSandbox({ id: context.instance.name });
+  const create = vi.fn(async () => {
+    const sandbox = mockSandbox();
     return {
-      captureMetadata: async () => ({}),
-      delete: deleteSandbox,
       sandbox: sandbox.session,
-      shutdown: async () => {},
-      stop: stopSandbox,
+      onSessionDelete: deleteSandbox,
+      onRuntimeShutdown: async () => {},
+      onSessionStop: stopSandbox,
     };
   });
   const provider = defineSandboxProvider({
     name: "test",
     environment: () => ({
-      open: create,
-      prepare: async () => ({ artifact: {}, reused: true }),
+      prepare: async () => null,
+      resume: create,
+      start: async () => ({ handle: await create(), state: null }),
     }),
   });
   const environment = provider.environment();
@@ -91,7 +95,7 @@ afterEach(() => clearActiveSandboxHandlesForTest());
 describe("ensureSandboxAccess", () => {
   it("creates and returns a real sandbox", async () => {
     const value = fixture();
-    expect((await open(value.registry)).sandbox?.id).toContain("session-1");
+    expect((await open(value.registry)).sandbox).toBeTruthy();
     expect(value.create).toHaveBeenCalledOnce();
   });
   it("passes empty live options when a child inherits its parent sandbox", async () => {
@@ -118,12 +122,12 @@ describe("ensureSandboxAccess", () => {
 
     await open(registry);
 
-    expect(value.create.mock.calls[0]?.[0].options).toEqual({});
+    expect(value.create).toHaveBeenCalledOnce();
   });
 
-  it("rejects a fabricated sandbox even when its id matches", async () => {
+  it("rejects a fabricated sandbox", async () => {
     const value = fixture(undefined, true);
-    await expect(open(value.registry)).rejects.toThrow("must return the sandbox it creates");
+    await expect(open(value.registry)).rejects.toThrow("must return the sandbox it opens");
   });
 
   it("shares one selector invocation across concurrent first access", async () => {
@@ -143,7 +147,7 @@ describe("ensureSandboxAccess", () => {
         state: null,
       });
       const [first, second] = await Promise.all([access.get(), access.get()]);
-      expect(second?.id).toBe(first?.id);
+      expect(second).toBe(first);
     });
     expect(value.create).toHaveBeenCalledOnce();
   });

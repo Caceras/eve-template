@@ -18,7 +18,6 @@ describe("just-bash provider without the optional dependency installed", () => {
       provider.open({
         appRoot,
         sandboxName: "session-missing-dependency",
-        templateName: null,
       }),
     ).rejects.toThrow(/pnpm add -D just-bash/);
   });
@@ -35,7 +34,6 @@ describe("just-bash provider without the optional dependency installed", () => {
         provider.open({
           appRoot,
           sandboxName: "session-no-autoinstall",
-          templateName: null,
         }),
       ).rejects.toThrow(/pnpm add -D just-bash/);
     } finally {

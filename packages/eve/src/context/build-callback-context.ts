@@ -68,14 +68,15 @@ export function withRuntimeSandboxLifecycle(
 ): RuntimeSandboxSession {
   return {
     delete: deleteSandbox,
-    id: sandbox.id,
     readBinaryFile: (options) => sandbox.readBinaryFile(options),
     readFile: (options) => sandbox.readFile(options),
     readTextFile: (options) => sandbox.readTextFile(options),
     removePath: (options) => sandbox.removePath(options),
     resolvePath: (path) => sandbox.resolvePath(path),
     run: (options) => sandbox.run(options),
-    setNetworkPolicy: (policy) => sandbox.setNetworkPolicy(policy),
+    ...(sandbox.setNetworkPolicy === undefined
+      ? {}
+      : { setNetworkPolicy: (policy) => sandbox.setNetworkPolicy!(policy) }),
     spawn: (options) => sandbox.spawn(options),
     stop,
     writeBinaryFile: (options) => sandbox.writeBinaryFile(options),

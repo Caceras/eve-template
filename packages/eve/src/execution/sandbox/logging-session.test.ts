@@ -45,7 +45,7 @@ describe("createLoggingSandboxSession", () => {
         ],
       },
     };
-    await wrapped.setNetworkPolicy(policy);
+    await wrapped.setNetworkPolicy?.(policy);
 
     const message = log.mock.calls.flat().join("\n");
     expect(message).toContain("api.github.com");
@@ -120,7 +120,6 @@ describe("createLoggingSandboxSession", () => {
 
 function createTestSession(runResult = { exitCode: 0, stderr: "", stdout: "" }): SandboxSession {
   return {
-    id: "test-session",
     resolvePath: (path) => (path.startsWith("/") ? path : `/workspace/${path}`),
     run: vi.fn(async () => runResult),
     spawn: vi.fn(async () => ({

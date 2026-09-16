@@ -11,7 +11,6 @@ import {
 } from "#execution/sandbox/bindings/microsandbox.js";
 import { isMicrosandboxPlatformSupported } from "#execution/sandbox/bindings/microsandbox-platform.js";
 import { createSandboxProviderHarness } from "#internal/testing/sandbox-provider-harness.js";
-import { resolveSandboxDockerfile } from "#execution/sandbox/dockerfile.js";
 
 // Microsandbox is unsupported on Windows (native bindings ship for
 // macOS Apple Silicon and glibc Linux only), so every suite in this
@@ -41,18 +40,15 @@ async function createTemporaryCacheDirectory(label: string): Promise<string> {
 async function createPrewarmedHandle(input: {
   readonly appRoot: string;
   readonly sandboxName: string;
-  readonly templateName: string;
 }) {
   const backend = createProvider();
   await backend.prepare({
     appRoot: input.appRoot,
     seedFiles: [],
-    templateName: input.templateName,
   });
   return await backend.open({
     appRoot: input.appRoot,
     sandboxName: input.sandboxName,
-    templateName: input.templateName,
   });
 }
 
@@ -91,21 +87,15 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const resourcesPath = join(appRoot, "compiled-resources");
     await mkdir(join(resourcesPath, "workspace"), { recursive: true });
     await writeFile(join(resourcesPath, "workspace", "seed.txt"), "immutable seed");
-    const dockerfile = await resolveSandboxDockerfile(agentRoot);
     const backend = createProvider();
     await backend.prepare({
-      dockerfile,
-      resourcesKey: "resources-hash",
       resourcesPath,
       appRoot,
       seedFiles: [],
-      templateName: "tpl-dockerfile",
     });
     const handle = await backend.open({
-      resourcesKey: "resources-hash",
       appRoot,
       sandboxName: "session-dockerfile",
-      templateName: "tpl-dockerfile",
     });
 
     const result = await handle.sandbox.run({
@@ -124,7 +114,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-write-read",
-      templateName: "tpl-write-read",
     });
 
     await handle.sandbox.writeTextFile({ content: "hello world", path: "note.txt" });
@@ -138,7 +127,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-run-env",
-      templateName: "tpl-run-env",
     });
 
     const result = await handle.sandbox.run({
@@ -155,7 +143,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-spawn-env",
-      templateName: "tpl-spawn-env",
     });
 
     const spawned = await handle.sandbox.spawn({
@@ -174,10 +161,9 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-network-policy",
-      templateName: "tpl-network-policy",
     });
 
-    await expect(handle.sandbox.setNetworkPolicy("deny-all")).resolves.toBeUndefined();
+    await expect(handle.sandbox.setNetworkPolicy?.("deny-all")).resolves.toBeUndefined();
   });
 
   it("readFile returns null for a missing file", async () => {
@@ -185,7 +171,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-missing",
-      templateName: "tpl-missing",
     });
 
     const content = await handle.sandbox.readTextFile({ path: "does-not-exist.txt" });
@@ -198,7 +183,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-remove",
-      templateName: "tpl-remove",
     });
 
     await handle.sandbox.writeTextFile({
@@ -226,21 +210,16 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     await backend.prepare({
       appRoot,
       seedFiles: [],
-      templateName: "tpl-reconnect",
     });
 
-    const firstHandle = await backend.open({
+    const { handle: firstHandle, state } = await backend.start({
       appRoot,
       sandboxName: "session-reconnect",
-      templateName: "tpl-reconnect",
     });
     await firstHandle.sandbox.writeTextFile({
       content: "survives reconnect",
       path: "persisted.txt",
     });
-
-    const state = await firstHandle.captureMetadata?.();
-    if (state === undefined) throw new Error("Expected captured provider metadata.");
 
     expect(state).toMatchObject({
       optionsHash: expect.any(String),
@@ -252,7 +231,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       existing: state,
       appRoot,
       sandboxName: "session-reconnect",
-      templateName: "tpl-reconnect",
     });
     const content = await reconnectedHandle.sandbox.readTextFile({ path: "persisted.txt" });
 
@@ -264,7 +242,6 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const handle = await createPrewarmedHandle({
       appRoot,
       sandboxName: "session-buffer",
-      templateName: "tpl-buffer",
     });
 
     // A PNG header plus a handful of non-UTF-8 bytes. Reading this
@@ -285,20 +262,16 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
     const first = await backend.prepare({
       appRoot,
       seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
-      templateName: "tpl-reuse-report",
     });
     const second = await backend.prepare({
       appRoot,
       seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
-      templateName: "tpl-reuse-report",
     });
 
-    expect(first).toMatchObject({ reused: false });
-    expect(second).toMatchObject({ reused: true });
+    expect(second).toEqual(first);
     const handle = await backend.open({
       appRoot,
       sandboxName: "session-reuse-report",
-      templateName: "tpl-reuse-report",
     });
     await expect(
       handle.sandbox.readTextFile({ path: "/workspace/skills/weather.md" }),

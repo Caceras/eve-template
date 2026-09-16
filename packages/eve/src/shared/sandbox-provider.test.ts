@@ -1,79 +1,74 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import { getSandboxEnvironmentRuntime } from "#shared/sandbox-environment.js";
-import { createSandboxProviderResources, defineSandboxProvider } from "#shared/sandbox-provider.js";
+import { defineSandboxProvider } from "#shared/sandbox-provider.js";
+
+const provider = defineSandboxProvider<
+  { readonly image?: string },
+  { readonly networkPolicy?: "allow-all" | "deny-all" },
+  { readonly templateId: string },
+  { readonly nativeId: string; readonly version: 1 }
+>({
+  name: "test-provider",
+  environment: (environmentOptions) => ({
+    async prepare() {
+      return { templateId: environmentOptions?.image ?? "default" };
+    },
+    async resume(_context, _options, _artifact, state) {
+      return handle(state.nativeId);
+    },
+    async start(context) {
+      const nativeId = `native-${context.session.id}`;
+      return { handle: handle(nativeId), state: { nativeId, version: 1 } };
+    },
+  }),
+});
+
+function handle(nativeId: string) {
+  return {
+    sandbox: {
+      resolvePath: (path: string) => path,
+      run: vi.fn(),
+      spawn: vi.fn(),
+      readFile: vi.fn(),
+      readBinaryFile: vi.fn(),
+      readTextFile: vi.fn(),
+      writeFile: vi.fn(),
+      writeBinaryFile: vi.fn(),
+      writeTextFile: vi.fn(),
+      removePath: vi.fn(),
+    },
+    onRuntimeShutdown: vi.fn(async () => {}),
+    onSessionDelete: vi.fn(async () => {}),
+    onSessionStop: vi.fn(async () => {}),
+    nativeId,
+  };
+}
 
 describe("defineSandboxProvider", () => {
-  it("gives providers separate workspace and skill trees at their expected paths", async () => {
-    const preparation = vi.fn(async () => {});
-    const open = vi.fn(async () => {
-      const sandbox = mockSandbox().session;
-      return {
-        captureMetadata: async () => ({ remoteId: "remote-1" }),
-        delete: async () => {},
-        sandbox,
-        shutdown: async () => {},
-        stop: async () => {},
-      };
-    });
-    const provider = defineSandboxProvider<
-      { readonly image?: string },
-      undefined,
-      { readonly remoteId: string }
-    >({
-      name: "test-provider",
-      environment: () => ({
-        open,
-        async prepare(ctx) {
-          expect(ctx.resources.source).toEqual({
-            key: "resources-v1",
-            kind: "materialized",
-            path: "/tmp/resources",
-          });
-          expect(ctx.resources.workspace).toMatchObject({
-            mountPath: "/eve/resources/workspace",
-            targetPath: "/workspace",
-          });
-          expect(ctx.resources.workspace?.files[0]?.relativePath).toBe("notes.txt");
-          expect(ctx.resources.skills).toMatchObject({
-            mountPath: "/eve/resources/skills",
-            targetPath: "$HOME/.agents/skills",
-          });
-          expect(ctx.resources.skills?.files[0]?.relativePath).toBe("review/SKILL.md");
-          await ctx.runPreparation(mockSandbox().session);
-          return { artifact: {}, reused: false };
-        },
-      }),
-    });
+  it("preserves provider-owned environment and open option types", () => {
+    const environment = provider.environment({ image: "node:24" });
+    expect(environment.provider).toBe("test-provider");
+    expectTypeOf(environment.open).parameter(0).toEqualTypeOf<
+      | {
+          readonly networkPolicy?: "allow-all" | "deny-all";
+        }
+      | undefined
+    >();
+  });
 
-    const environment = provider.environment({ prepare: preparation });
-    const runtime = getSandboxEnvironmentRuntime(environment);
-    const resources = createSandboxProviderResources({
-      resourcesKey: "resources-v1",
-      resourcesPath: "/tmp/resources",
-      seedFiles: [
-        { content: "notes", path: "/workspace/notes.txt" },
-        { content: "skill", path: "$HOME/.agents/skills/review/SKILL.md" },
-      ],
-    });
-    await runtime.implementation.prepare({
-      appRoot: "/tmp/app",
-      resources,
-      runPreparation: async (sandbox) => await runtime.prepare?.(sandbox),
-      templateName: "template-v1",
-    });
-    expect(preparation).toHaveBeenCalledOnce();
-
-    await runtime.implementation.open(
-      {
-        appRoot: "/tmp/app",
-        options: undefined,
-        resources,
-        instance: { kind: "create", name: "session-1" },
+  it("stores one direct implementation without extracting provider options", async () => {
+    const environment = provider.environment({ image: "node:24" });
+    const implementation = getSandboxEnvironmentRuntime(environment).implementation;
+    const artifact = await implementation.prepare({
+      files: { glob: async () => [], read: async () => new Uint8Array(), readText: async () => "" },
+      host: {
+        loadOptionalPackage: async ({ importModule }) => await importModule(),
+        resolveProjectPath: (path) => path,
       },
-      { artifact: {}, kind: "prepared", templateName: "template-v1" },
-    );
-    expect(open).toHaveBeenCalledOnce();
+      resources: { source: { kind: "none" } },
+      storagePath: "/tmp/test",
+    });
+    expect(artifact).toEqual({ templateId: "node:24" });
   });
 });

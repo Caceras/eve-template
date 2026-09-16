@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { ContextContainer, contextStorage, type AlsContext } from "#context/container.js";
 import type { SessionAuth, SessionParent, SessionTurn } from "#context/keys.js";
 import type { SandboxProviderRuntime } from "#shared/sandbox-provider.js";
-import type { RuntimeSandboxSession, SandboxSession } from "#shared/sandbox-session.js";
+import type { RuntimeSandboxSession } from "#shared/sandbox-session.js";
 
 const ENVIRONMENT = Symbol.for("eve.sandbox-environment");
 const PROVIDER_RUNTIME = Symbol.for("eve.sandbox-provider-runtime");
@@ -33,7 +33,6 @@ export interface SandboxEnvironmentIdentity {
   readonly [CONFIGURATION_HASH]: string;
   readonly [ENVIRONMENT]: true;
   readonly [PROVIDER_RUNTIME]: SandboxProviderRuntime;
-  readonly kind: "default" | "dockerfile" | "image" | "prepared";
   readonly provider: string;
 }
 
@@ -48,7 +47,7 @@ interface ConstructorRuntime {
     readonly configurationHash: string;
     readonly environment: object;
     readonly environmentConfigurationHash: string;
-    readonly options: object;
+    readonly options: object | undefined;
     readonly provider: SandboxProviderRuntime;
   }): Promise<RuntimeSandboxSession>;
 }
@@ -61,7 +60,6 @@ const runtimes = (globals[RUNTIMES] ??= new WeakMap<AlsContext, ConstructorRunti
 
 export function createSandboxEnvironment<Options extends object | undefined = object>(input: {
   readonly configuration?: unknown;
-  readonly kind?: SandboxEnvironment["kind"];
   readonly runtime: SandboxProviderRuntime;
 }): SandboxEnvironment<Options> {
   let environment: SandboxEnvironment<Options>;
@@ -70,10 +68,9 @@ export function createSandboxEnvironment<Options extends object | undefined = ob
     [CONFIGURATION_HASH]: hashConstructorOptions({ environment: input.configuration, sandbox: {} }),
     [ENVIRONMENT]: true,
     [PROVIDER_RUNTIME]: input.runtime,
-    kind: input.kind ?? "default",
     provider: input.runtime.providerName,
     async open(...args: SandboxOpenArguments<Options>) {
-      const options = readOpenOptions(args);
+      const options = args[0] as object | undefined;
       const context = contextStorage.getStore();
       const runtime = context === undefined ? undefined : runtimes.get(context);
       if (runtime === undefined) {
@@ -92,11 +89,6 @@ export function createSandboxEnvironment<Options extends object | undefined = ob
     },
   };
   return environment;
-}
-
-function readOpenOptions(args: readonly unknown[]): object {
-  const options = args[0];
-  return typeof options === "object" && options !== null ? options : {};
 }
 
 function hashConstructorOptions(options: unknown): string {
@@ -129,8 +121,6 @@ function stableSerialize(value: unknown, seen = new WeakSet<object>()): string {
   return typeof value;
 }
 
-export type SandboxPrepare = (sandbox: SandboxSession) => Promise<void> | void;
-
 export function getSandboxEnvironmentConfigurationHash(
   environment: SandboxEnvironmentIdentity,
 ): string {
@@ -141,12 +131,6 @@ export function getSandboxEnvironmentRuntime(
   environment: SandboxEnvironmentIdentity,
 ): SandboxProviderRuntime {
   return environment[PROVIDER_RUNTIME];
-}
-
-export function getSandboxEnvironmentPreparation(
-  environment: SandboxEnvironmentIdentity,
-): SandboxPrepare | undefined {
-  return environment[PROVIDER_RUNTIME].prepare;
 }
 
 export function bindSandboxEnvironment(

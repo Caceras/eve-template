@@ -103,17 +103,6 @@ export interface SandboxSession extends Pick<
   | "writeTextFile"
 > {
   /**
-   * Stable identifier for the provider session this handle wraps.
-   *
-   * Persists across reconnects to the same logical session: two calls
-   * that resume the same underlying provider sandbox observe the same
-   * `id`. Template sessions constructed during preparation expose the
-   * template key; live sessions expose the session key assigned by the
-   * runtime. Useful as a cache key for per-session state that must
-   * outlive individual step executions.
-   */
-  readonly id: string;
-  /**
    * Anchors a sandbox-relative path to `/workspace` and returns the
    * resulting absolute path.
    *
@@ -135,7 +124,7 @@ export interface SandboxSession extends Pick<
    * the just-bash provider rejects this call entirely (its network policy
    * is fixed at sandbox creation and it runs no binaries to govern).
    */
-  setNetworkPolicy(policy: SandboxNetworkPolicy): Promise<void>;
+  setNetworkPolicy?(policy: SandboxNetworkPolicy): Promise<void>;
   /**
    * Removes one file or directory from the sandbox filesystem.
    *
@@ -180,10 +169,6 @@ export interface InternalSandboxSession extends Pick<
   AiSdkSandbox,
   "spawn" | "readFile" | "writeFile"
 > {
-  /**
-   * Stable identifier surfaced on the public {@link SandboxSession}.
-   */
-  readonly id: string;
   /** Removes an already-resolved path from the provider filesystem. */
   removePath(options: SandboxRemovePathOptions): Promise<void>;
   /** Translates a user-facing path to the provider's native path. */

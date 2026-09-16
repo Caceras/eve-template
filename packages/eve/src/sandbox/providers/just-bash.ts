@@ -4,7 +4,12 @@ import { defineSandboxProvider } from "#shared/sandbox-provider.js";
 
 export type JustBashEnvironmentOptions = JustBashSandboxCreateOptions;
 
-export const JustBashSandbox = defineSandboxProvider<JustBashEnvironmentOptions, undefined>({
+export const JustBashSandbox = defineSandboxProvider<
+  JustBashEnvironmentOptions,
+  undefined,
+  { readonly templateRootPath: string },
+  { readonly rootPath: string; readonly version: 1 }
+>({
   name: "just-bash",
   environment: (options) => createJustBashSandboxProvider(options),
 });

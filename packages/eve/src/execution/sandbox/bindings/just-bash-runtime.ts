@@ -10,8 +10,7 @@ import {
 import { adaptMultiplexedCommandToSandboxProcess } from "#execution/sandbox/multiplexed-command.js";
 import { shellQuote } from "#execution/sandbox/shell-quote.js";
 import { buildSandboxSession } from "#execution/sandbox/session.js";
-import { loadOptionalEnginePackage } from "#internal/application/optional-package-install.js";
-import type { SandboxProviderHandle } from "#shared/sandbox-provider.js";
+import type { SandboxProviderHandle, SandboxProviderHost } from "#shared/sandbox-provider.js";
 import type { JustBashSandboxCreateOptions } from "#public/sandbox/just-bash-sandbox.js";
 import { WORKSPACE_ROOT } from "#runtime/workspace/types.js";
 import type {
@@ -57,36 +56,38 @@ let justBashModulePromise: Promise<JustBashModule> | undefined;
  * with an actionable install error.
  */
 async function loadJustBashModule(input: {
-  readonly appRoot: string;
   readonly autoInstall: boolean;
+  readonly host: SandboxProviderHost;
 }): Promise<JustBashModule> {
-  justBashModulePromise ??= loadOptionalEnginePackage<JustBashModule>({
-    appRoot: input.appRoot,
-    autoInstall: input.autoInstall,
-    importModule: async () => await import("just-bash"),
-    missingMessage:
-      "The just-bash sandbox provider requires the `just-bash` package, which is not bundled " +
-      "with eve. Install it in your application (for example `pnpm add -D just-bash`), or use " +
-      "DockerSandbox or DefaultSandbox instead.",
-    packageName: JUST_BASH_PACKAGE_NAME,
-  }).catch((error: unknown) => {
-    justBashModulePromise = undefined;
-    throw error;
-  });
+  justBashModulePromise ??= input.host
+    .loadOptionalPackage<JustBashModule>({
+      autoInstall: input.autoInstall,
+      importModule: async () => await import("just-bash"),
+      missingMessage:
+        "The just-bash sandbox provider requires the `just-bash` package, which is not bundled " +
+        "with eve. Install it in your application (for example `pnpm add -D just-bash`), or use " +
+        "DockerSandbox or DefaultSandbox instead.",
+      packageName: JUST_BASH_PACKAGE_NAME,
+    })
+    .catch((error: unknown) => {
+      justBashModulePromise = undefined;
+      throw error;
+    });
   return await justBashModulePromise;
 }
 
 export async function createBashSandbox(input: {
-  readonly appRoot: string;
   readonly autoInstall: boolean;
+  readonly host: SandboxProviderHost;
   readonly customCommands?: JustBashSandboxCreateOptions["customCommands"];
   readonly filesystem?: JustBashSandboxCreateOptions["filesystem"];
   readonly rootPath: string;
   readonly sessionKey: string;
+  readonly storagePath: string;
 }): Promise<BashSandbox> {
   const justBash = await loadJustBashModule({
-    appRoot: input.appRoot,
     autoInstall: input.autoInstall,
+    host: input.host,
   });
   const { ReadWriteFs, Sandbox } = justBash;
   const filesystemRootPath = resolveLocalSandboxFilesystemRootPath(input.rootPath);
@@ -104,8 +105,9 @@ export async function createBashSandbox(input: {
   if (input.filesystem !== undefined) {
     try {
       filesystem = await input.filesystem({
-        appRoot: input.appRoot,
         defaultFilesystem,
+        resolveProjectPath: input.host.resolveProjectPath,
+        storagePath: input.storagePath,
         justBash,
       });
     } catch (error) {
@@ -208,26 +210,23 @@ export async function justBashSetNetworkPolicyUnsupported(): Promise<never> {
   );
 }
 
-export function createJustBashHandle(
-  sandbox: BashSandbox,
-): SandboxProviderHandle<JustBashSessionMetadata> {
+export function createJustBashHandle(sandbox: BashSandbox): SandboxProviderHandle {
   const session = buildSandboxSession(
-    createFileBackedInternalSandboxSession({ id: sandbox.sessionKey, sandbox }),
+    createFileBackedInternalSandboxSession({ sandbox }),
     justBashSetNetworkPolicyUnsupported,
   );
   return {
-    captureMetadata: async () => await sandbox.captureState(),
     sandbox: session,
-    async delete() {
+    async onSessionDelete() {
       await sandbox.dispose();
       await rm(sandbox.rootPath, { force: true, recursive: true });
     },
-    async stop() {
+    async onSessionStop() {
       await sandbox.dispose();
     },
     // The interpreter lives in this process, so stopping it is all the
     // shutdown a just-bash sandbox needs.
-    async shutdown() {
+    async onRuntimeShutdown() {
       await sandbox.dispose();
     },
   };

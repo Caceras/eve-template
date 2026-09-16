@@ -1,42 +1,50 @@
+import { createSandboxProviderFiles } from "#execution/sandbox/provider-files.js";
+import { createSandboxProviderHost } from "#execution/sandbox/provider-host.js";
 import {
   createSandboxProviderResources,
-  type SandboxDockerfileInput,
   type SandboxPreparedArtifact,
   type SandboxProviderHandle,
   type SandboxProviderImplementation,
-  type SandboxProviderTags,
 } from "#shared/sandbox-provider.js";
-import type { SandboxSession } from "#shared/sandbox-session.js";
 
 export function createSandboxProviderHarness<
   Options extends object | undefined,
-  Metadata,
   PreparedArtifact extends SandboxPreparedArtifact,
+  SessionState,
 >(
-  implementation: SandboxProviderImplementation<Options, Metadata, PreparedArtifact>,
+  implementation: SandboxProviderImplementation<Options, PreparedArtifact, SessionState>,
   options: Options,
   harnessOptions: {
-    readonly preparedArtifact?: (templateName: string) => PreparedArtifact;
+    readonly preparedArtifact?: () => PreparedArtifact;
   } = {},
 ) {
-  const preparedArtifacts = new Map<string, PreparedArtifact>();
-  return {
+  let preparedArtifact: PreparedArtifact | undefined;
+  async function resolveArtifact(input: {
+    readonly appRoot: string;
+    readonly prepared?: PreparedArtifact;
+  }): Promise<PreparedArtifact> {
+    return (
+      input.prepared ??
+      preparedArtifact ??
+      harnessOptions.preparedArtifact?.() ??
+      (await harness.prepare({ appRoot: input.appRoot }))
+    );
+  }
+
+  const harness = {
     async prepare(input: {
       readonly appRoot: string;
-      readonly dockerfile?: SandboxDockerfileInput;
       readonly log?: (message: string) => void;
       readonly resourcesKey?: string;
       readonly resourcesPath?: string;
-      readonly runPreparation?: (sandbox: SandboxSession) => Promise<void>;
       readonly seedFiles?: readonly {
         readonly content: string | Uint8Array;
         readonly path: string;
       }[];
-      readonly templateName: string;
     }) {
-      const result = await implementation.prepare({
-        appRoot: input.appRoot,
-        dockerfile: input.dockerfile,
+      const artifact = await implementation.prepare({
+        files: createSandboxProviderFiles(`${input.appRoot}/sandbox`),
+        host: createSandboxProviderHost(input.appRoot),
         log: input.log,
         resources: createSandboxProviderResources({
           ...input,
@@ -46,48 +54,52 @@ export function createSandboxProviderHarness<
               ? undefined
               : "test-resources"),
         }),
-        runPreparation: input.runPreparation ?? (async () => {}),
-        templateName: input.templateName,
+        storagePath: input.appRoot,
       });
-      preparedArtifacts.set(input.templateName, result.artifact);
-      return result;
+      preparedArtifact = artifact;
+      return artifact;
     },
     async open(input: {
       readonly appRoot: string;
-      readonly existing?: Metadata;
+      readonly existing?: SessionState;
       readonly prepared?: PreparedArtifact;
-      readonly resourcesKey?: string;
       readonly sandboxName: string;
-      readonly tags?: SandboxProviderTags;
-      readonly templateName: string | null;
-    }): Promise<SandboxProviderHandle<Metadata>> {
-      const prepared =
-        input.prepared ??
-        (input.templateName === null
-          ? undefined
-          : (preparedArtifacts.get(input.templateName) ??
-            harnessOptions.preparedArtifact?.(input.templateName)));
-      const source =
-        input.templateName === null
-          ? ({ kind: "base" } as const)
-          : prepared === undefined
-            ? (() => {
-                throw new Error(`Missing prepared artifact for template "${input.templateName}".`);
-              })()
-            : { artifact: prepared, kind: "prepared" as const, templateName: input.templateName };
-      return await implementation.open(
-        {
-          appRoot: input.appRoot,
-          options,
-          resources: createSandboxProviderResources({ resourcesKey: input.resourcesKey }),
-          instance:
-            input.existing === undefined
-              ? { kind: "create", name: input.sandboxName }
-              : { kind: "restore", metadata: input.existing, name: input.sandboxName },
-          tags: input.tags,
+    }): Promise<SandboxProviderHandle> {
+      const artifact = await resolveArtifact(input);
+      const context = {
+        host: createSandboxProviderHost(input.appRoot),
+        session: {
+          auth: { current: null, initiator: null },
+          id: input.sandboxName,
+          turn: { id: "test-turn", sequence: 0 },
         },
-        source,
+        storagePath: input.appRoot,
+      } as const;
+      if (input.existing === undefined) {
+        return (await implementation.start(context, options, artifact)).handle;
+      }
+      return await implementation.resume(context, options, artifact, input.existing);
+    },
+    async start(input: {
+      readonly appRoot: string;
+      readonly prepared?: PreparedArtifact;
+      readonly sandboxName: string;
+    }) {
+      const artifact = await resolveArtifact(input);
+      return await implementation.start(
+        {
+          host: createSandboxProviderHost(input.appRoot),
+          session: {
+            auth: { current: null, initiator: null },
+            id: input.sandboxName,
+            turn: { id: "test-turn", sequence: 0 },
+          },
+          storagePath: input.appRoot,
+        },
+        options,
+        artifact,
       );
     },
   };
+  return harness;
 }

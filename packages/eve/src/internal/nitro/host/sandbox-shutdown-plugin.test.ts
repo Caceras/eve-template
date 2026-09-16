@@ -63,7 +63,7 @@ describe("installSandboxShutdownHandlers", () => {
   });
 
   it("stops tracked sandboxes and exits 143 on SIGTERM", async () => {
-    const handle = { shutdown: vi.fn(async () => {}) };
+    const handle = { onRuntimeShutdown: vi.fn(async () => {}) };
     trackActiveSandboxHandle({ providerName: "docker", handle, sessionKey: "session-1" });
     const fakeProcess = createFakeProcess();
 
@@ -73,11 +73,11 @@ describe("installSandboxShutdownHandlers", () => {
     await vi.waitFor(() => {
       expect(fakeProcess.exit).toHaveBeenCalledWith(143);
     });
-    expect(handle.shutdown).toHaveBeenCalledTimes(1);
+    expect(handle.onRuntimeShutdown).toHaveBeenCalledTimes(1);
   });
 
   it("stops tracked sandboxes and exits 130 on SIGINT", async () => {
-    const handle = { shutdown: vi.fn(async () => {}) };
+    const handle = { onRuntimeShutdown: vi.fn(async () => {}) };
     trackActiveSandboxHandle({ providerName: "docker", handle, sessionKey: "session-1" });
     const fakeProcess = createFakeProcess();
 
@@ -87,11 +87,11 @@ describe("installSandboxShutdownHandlers", () => {
     await vi.waitFor(() => {
       expect(fakeProcess.exit).toHaveBeenCalledWith(130);
     });
-    expect(handle.shutdown).toHaveBeenCalledTimes(1);
+    expect(handle.onRuntimeShutdown).toHaveBeenCalledTimes(1);
   });
 
   it("stops tracked sandboxes through the nitro close hook", async () => {
-    const handle = { shutdown: vi.fn(async () => {}) };
+    const handle = { onRuntimeShutdown: vi.fn(async () => {}) };
     trackActiveSandboxHandle({ providerName: "docker", handle, sessionKey: "session-1" });
     let closeHandler: (() => Promise<void>) | undefined;
     const nitroApp = {
@@ -112,7 +112,7 @@ describe("installSandboxShutdownHandlers", () => {
     });
     await closeHandler?.();
 
-    expect(handle.shutdown).toHaveBeenCalledTimes(1);
+    expect(handle.onRuntimeShutdown).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -120,7 +120,7 @@ describe("runSandboxShutdown", () => {
   it("exits even when a handle shutdown never settles", async () => {
     vi.useFakeTimers();
     try {
-      const handle = { shutdown: vi.fn(() => new Promise<void>(() => {})) };
+      const handle = { onRuntimeShutdown: vi.fn(() => new Promise<void>(() => {})) };
       trackActiveSandboxHandle({ providerName: "docker", handle, sessionKey: "session-1" });
       const log = vi.fn();
 

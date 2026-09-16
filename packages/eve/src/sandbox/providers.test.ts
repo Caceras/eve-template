@@ -13,11 +13,13 @@ describe("sandbox providers", () => {
     }).environment();
     expect(environment.provider).toBe("vercel");
   });
-  it("exposes image and Dockerfile environments only for local image backends", () => {
-    expect(DockerSandbox.image("example.test/agent@sha256:abc").kind).toBe("image");
-    expect(DockerSandbox.dockerfile().kind).toBe("dockerfile");
-    expect(MicrosandboxSandbox.image("example.test/agent@sha256:abc").kind).toBe("image");
-    expect(MicrosandboxSandbox.dockerfile().kind).toBe("dockerfile");
+  it("exposes image and Dockerfile constructors only for local image providers", () => {
+    expect(DockerSandbox.image("example.test/agent@sha256:abc").provider).toBe("docker");
+    expect(DockerSandbox.dockerfile().provider).toBe("docker");
+    expect(MicrosandboxSandbox.image("example.test/agent@sha256:abc").provider).toBe(
+      "microsandbox",
+    );
+    expect(MicrosandboxSandbox.dockerfile().provider).toBe("microsandbox");
     expect("image" in VercelSandbox).toBe(false);
     expect("dockerfile" in VercelSandbox).toBe(false);
   });

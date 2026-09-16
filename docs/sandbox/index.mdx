@@ -136,16 +136,16 @@ Docker and microsandbox mount the compiled trees read-only under `/eve/resources
 
 ## Custom providers
 
-Define a provider with `defineSandboxProvider()` from `eve/sandbox/provider`. The four generic parameters describe environment options, live sandbox options, persisted handle metadata, and the prepared artifact:
+Define a provider with `defineSandboxProvider()` from `eve/sandbox/provider`. The four generic parameters describe environment options, live options, the prepared artifact, and minimal serialized session state:
 
 ```ts
 import { defineSandboxProvider } from "eve/sandbox/provider";
 
 export const AcmeSandbox = defineSandboxProvider<
-  { image: string },
+  { image: string; prepare?: (sandbox: SandboxSession) => Promise<void> },
   { networkPolicy?: "allow-all" | "deny-all" },
-  { remoteId: string },
-  { templateId: string }
+  { templateId: string },
+  { remoteId: string; version: 1 }
 >({
   name: "acme",
   environment(options) {
@@ -154,49 +154,38 @@ export const AcmeSandbox = defineSandboxProvider<
     return {
       async prepare(ctx) {
         const temporary = await client.createTemporary({
-          mounts: await uploadResources(ctx.resources),
-          name: ctx.templateName,
+          files: await ctx.files.glob("**/*"),
+          resources: ctx.resources,
         });
         const sandbox = adaptAcmeSandbox(temporary);
-        await hydrateResources(sandbox, ctx.resources);
-        await ctx.runPreparation(sandbox);
-        const template = await client.saveTemplate(ctx.templateName, temporary);
+        await options?.prepare?.(sandbox);
+        return { templateId: (await temporary.capture()).id };
+      },
 
+      async start(ctx, liveOptions, artifact) {
+        const remote = await client.open({
+          identity: sessionIdentity(ctx.session.id, artifact, liveOptions),
+          networkPolicy: liveOptions?.networkPolicy,
+          templateId: artifact.templateId,
+        });
         return {
-          artifact: { templateId: template.id },
-          reused: false,
+          handle: createHandle(remote),
+          state: { remoteId: remote.id, version: 1 },
         };
       },
 
-      async open(ctx, source) {
-        const remote = await client.open({
-          existingId: ctx.instance.kind === "restore" ? ctx.instance.metadata.remoteId : undefined,
-          name: ctx.instance.name,
-          networkPolicy: ctx.options.networkPolicy,
-          source:
-            source.kind === "base"
-              ? { image: options.image }
-              : { templateId: source.artifact.templateId },
-        });
-
-        return {
-          sandbox: adaptAcmeSandbox(remote),
-          captureMetadata: async () => ({ remoteId: remote.id }),
-          stop: () => remote.stop(),
-          shutdown: () => remote.stop(),
-          delete: () => remote.delete(),
-        };
+      async resume(_ctx, _liveOptions, artifact, state) {
+        const remote = await client.resume({ id: state.remoteId, templateId: artifact.templateId });
+        return createHandle(remote);
       },
     };
   },
 });
 ```
 
-`ctx.runPreparation(sandbox)` invokes the callback authored as `environment({ prepare })`. Call it after provider resources are available in the temporary sandbox and before capturing the provider artifact.
+`prepare()` returns the complete JSON-serializable artifact. Core calls `start()` once for a new durable sandbox session and persists its minimal JSON-compatible state. Process restarts call `resume()` with that state and the target deployment's exact artifact. Provider handles implement `onSessionStop()`, `onRuntimeShutdown()`, and `onSessionDelete()`.
 
-`prepare()` returns a JSON-serializable artifact that eve stores by provider and template generation. The second `open()` argument is a required source union: `{ kind: "base" }` or `{ kind: "prepared", templateName, artifact }`. The fourth generic gives the prepared branch the provider's exact artifact type.
-
-`ctx.options` contains options for the live sandbox. `ctx.instance` explicitly distinguishes first creation from restoration and carries typed persisted metadata only in the restore branch. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
+Environment and live option fields—including provider-specific callbacks—belong to the provider. Preparation discovers authored files through `ctx.files`; core keeps project layout and artifact storage keys private. Keep provider SDK values behind the provider so selectors always receive eve's `RuntimeSandboxSession`.
 
 ## Providers
 

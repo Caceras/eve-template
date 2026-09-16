@@ -41,9 +41,9 @@ describe("docker CLI resolution", () => {
       const appRoot = await createScratchDirectory("eve-docker-missing-");
       const engine = createEngine();
 
-      await expect(
-        engine.prepare({ appRoot, seedFiles: [], templateName: "tpl-x" }),
-      ).rejects.toThrow(DockerUnavailableError);
+      await expect(engine.prepare({ appRoot, seedFiles: [] })).rejects.toThrow(
+        DockerUnavailableError,
+      );
     } finally {
       vi.unstubAllEnvs();
     }
@@ -111,18 +111,13 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
 
       const engine = createEngine();
       await engine.prepare({
-        dockerfile,
-        resourcesKey: "resources-hash",
         resourcesPath,
         appRoot,
         seedFiles: [],
-        templateName: dockerfileTemplateKey,
       });
       const handle = await engine.open({
-        resourcesKey: "resources-hash",
         appRoot,
         sandboxName: nextSessionKey("dockerfile"),
-        templateName: dockerfileTemplateKey,
       });
 
       const result = await handle.sandbox.run({
@@ -150,21 +145,16 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const first = await engine.prepare({
         appRoot,
         seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
-        templateName: templateKey,
       });
-      expect(first).toMatchObject({ reused: false });
-
       const second = await engine.prepare({
         appRoot,
         seedFiles: [{ content: "# Weather skill\n", path: "/workspace/skills/weather.md" }],
-        templateName: templateKey,
       });
-      expect(second).toMatchObject({ reused: true });
+      expect(second).toEqual(first);
 
       const handle = await engine.open({
         appRoot,
         sandboxName: nextSessionKey("seeded"),
-        templateName: templateKey,
       });
 
       const result = await handle.sandbox.run({
@@ -184,7 +174,6 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const handle = await engine.open({
         appRoot,
         sandboxName: nextSessionKey("env"),
-        templateName: templateKey,
       });
 
       const result = await handle.sandbox.run({
@@ -215,7 +204,6 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const handle = await engine.open({
         appRoot,
         sandboxName: nextSessionKey("kill-tree"),
-        templateName: templateKey,
       });
 
       // Counts container processes whose cmdline matches the sentinel
@@ -265,7 +253,6 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const handle = await engine.open({
         appRoot,
         sandboxName: nextSessionKey("files"),
-        templateName: templateKey,
       });
 
       await handle.sandbox.writeTextFile({ content: "hello", path: "deep/nested/note.txt" });
@@ -304,18 +291,17 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const handle = await engine.open({
         appRoot,
         sandboxName: nextSessionKey("network-flip"),
-        templateName: templateKey,
       });
 
       // `--network none` containers have no interfaces beyond loopback.
       const denied = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(denied.stdout.trim()).toBe("0");
 
-      await handle.sandbox.setNetworkPolicy("allow-all");
+      await handle.sandbox.setNetworkPolicy?.("allow-all");
       const allowed = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(Number(allowed.stdout.trim())).toBeGreaterThan(0);
 
-      await handle.sandbox.setNetworkPolicy("deny-all");
+      await handle.sandbox.setNetworkPolicy?.("deny-all");
       const deniedAgain = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(deniedAgain.stdout.trim()).toBe("0");
     },
@@ -329,26 +315,23 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const engine = createEngine();
       const sessionKey = nextSessionKey("reconnect");
 
-      const firstHandle = await engine.open({
+      const { handle: firstHandle, state } = await engine.start({
         appRoot,
         sandboxName: sessionKey,
-        templateName: templateKey,
       });
       await firstHandle.sandbox.writeTextFile({
         content: "survives reconnect",
         path: "persisted.txt",
       });
-      const state = await firstHandle.captureMetadata();
-      expect(state).toEqual({});
+      expect(state).toMatchObject({ version: 1 });
       // Server shutdown stops the container; reattach must restart it
       // transparently.
-      await firstHandle.shutdown();
+      await firstHandle.onRuntimeShutdown();
 
       const reconnected = await engine.open({
         existing: state,
         appRoot,
         sandboxName: sessionKey,
-        templateName: templateKey,
       });
       await expect(reconnected.sandbox.readTextFile({ path: "persisted.txt" })).resolves.toBe(
         "survives reconnect",

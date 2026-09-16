@@ -4,7 +4,6 @@ import {
   copyDirectoryAtomically,
   writeSandboxSeedFiles,
 } from "#execution/sandbox/bindings/local-provider-utils.js";
-import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
   providerResourceTargetFiles,
   type SandboxProviderResources,
@@ -14,20 +13,15 @@ import type { SandboxSession } from "#shared/sandbox-session.js";
 export const SANDBOX_RESOURCES_ROOT = "/eve/resources";
 
 export function resolveImmutableResourcesPath(input: {
-  readonly appRoot: string;
+  readonly storagePath: string;
   readonly provider: string;
   readonly resourcesKey: string;
 }): string {
-  return join(
-    resolveSandboxCacheDirectory(input.appRoot),
-    input.provider,
-    "resources",
-    input.resourcesKey,
-  );
+  return join(input.storagePath, input.provider, "resources", input.resourcesKey);
 }
 
 export async function prepareImmutableResources(input: {
-  readonly appRoot: string;
+  readonly storagePath: string;
   readonly provider: string;
   readonly resourcesKey: string;
   readonly sourcePath: string;
@@ -51,8 +45,6 @@ export async function hydrateSandboxProviderResources(input: {
       input.log?.("hydrating workspace and skills from read-only resources");
       await hydrateSandboxFromImmutableResources(input.session);
       return;
-    case "reference":
-      throw new Error("Referenced sandbox resources cannot be hydrated during preparation.");
   }
 }
 

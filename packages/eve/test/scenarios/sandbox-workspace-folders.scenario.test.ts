@@ -44,13 +44,11 @@ describe("sandbox workspace folder convention", () => {
     await backend.prepare({
       appRoot,
       seedFiles: files.map((file) => ({ content: file.content, path: file.path })),
-      templateName: "template-default-workspace",
     });
 
     const handle = await backend.open({
       appRoot,
       sandboxName: "session-default-workspace",
-      templateName: "template-default-workspace",
     });
 
     const notesContent = await handle.sandbox.readTextFile({ path: "/workspace/notes.md" });
@@ -68,7 +66,7 @@ describe("sandbox workspace folder convention", () => {
     const roundTrip = await handle.sandbox.readTextFile({ path: "/workspace/authored.txt" });
     expect(roundTrip).toBe("round-trip");
 
-    await handle.shutdown();
+    await handle.onRuntimeShutdown();
   });
 
   it("opens an empty prewarmed template when the sandbox has no authored workspace files", async () => {
@@ -78,13 +76,11 @@ describe("sandbox workspace folder convention", () => {
     await backend.prepare({
       appRoot,
       seedFiles: [],
-      templateName: "template-empty-workspace",
     });
 
     const handle = await backend.open({
       appRoot,
       sandboxName: "session-empty-workspace",
-      templateName: "template-empty-workspace",
     });
 
     // An empty prewarmed template snapshots a clean `/workspace` and
@@ -96,7 +92,7 @@ describe("sandbox workspace folder convention", () => {
     expect(result.exitCode).toBe(0);
     expect(Number(result.stdout.trim())).toBe(0);
 
-    await handle.shutdown();
+    await handle.onRuntimeShutdown();
   });
 
   it("materializes a fixture default workspace folder into a deterministic file list", async () => {

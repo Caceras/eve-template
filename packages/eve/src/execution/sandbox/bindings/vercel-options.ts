@@ -1,11 +1,10 @@
 import type { VercelCreateOptions } from "#execution/sandbox/bindings/vercel-sdk-types.js";
-import type { SandboxProviderTags } from "#shared/sandbox-provider.js";
 
 const VERCEL_SANDBOX_TAG_LIMIT = 5;
 
 export function resolveVercelSandboxTags(
   userTags: VercelCreateOptions["tags"],
-  eveTags: SandboxProviderTags | undefined,
+  eveTags: Readonly<Record<string, string>> | undefined,
 ): Record<string, string> | undefined {
   const tags: Record<string, string> = {};
 

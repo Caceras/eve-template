@@ -33,10 +33,14 @@ export function createLoggingSandboxSession(input: {
       log?.(`preparation spawn: ${formatCommand(options.command)}`);
       return await session.spawn(options);
     },
-    async setNetworkPolicy(policy: SandboxNetworkPolicy) {
-      log?.(`preparation set network policy: ${formatNetworkPolicy(policy)}`);
-      return await session.setNetworkPolicy(policy);
-    },
+    ...(session.setNetworkPolicy === undefined
+      ? {}
+      : {
+          async setNetworkPolicy(policy: SandboxNetworkPolicy) {
+            log?.(`preparation set network policy: ${formatNetworkPolicy(policy)}`);
+            return await session.setNetworkPolicy!(policy);
+          },
+        }),
     async writeFile(options: SandboxWriteFileOptions) {
       log?.(`preparation write file: ${options.path}`);
       return await session.writeFile(options);

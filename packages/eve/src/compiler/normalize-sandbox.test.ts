@@ -6,9 +6,12 @@ const provider = defineSandboxProvider({
   name: "test",
   environment: () => ({
     async prepare() {
-      return { artifact: {}, reused: true };
+      return null;
     },
-    async open() {
+    async resume() {
+      throw new Error("unused");
+    },
+    async start() {
       throw new Error("unused");
     },
   }),

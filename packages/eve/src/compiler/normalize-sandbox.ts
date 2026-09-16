@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { resolveSandboxDockerfile } from "#execution/sandbox/dockerfile.js";
 import type { CompiledSandboxDefinition } from "#compiler/manifest.js";
 import type { ModuleBackedDefinitionLoadOptions } from "#compiler/normalize-helpers.js";
 import type { SandboxSourceRef } from "#discover/manifest.js";
@@ -25,20 +24,11 @@ export async function compileSandboxDefinition(
     : getBoundSandboxEnvironment(selector);
   if (!inheritsParent && candidate === undefined)
     throw new Error(`Sandbox "${source.logicalPath}" must export an environment.`);
-  const dockerfile =
-    candidate?.kind === "dockerfile" ? await resolveSandboxDockerfile(_agentRoot) : undefined;
-  if (candidate?.kind === "dockerfile" && dockerfile === undefined)
-    throw new Error(
-      `Sandbox "${source.logicalPath}" uses a Dockerfile environment, but agent/sandbox/Dockerfile was not found.`,
-    );
   const authoredSource =
     options.binding.backing.kind === "programmatic"
       ? (options.binding.backing.semanticRevision ?? options.binding.backing.revision)
       : await readFile(options.binding.backing.sourcePath);
   const revision = createHash("sha256").update("sandbox-source\0").update(authoredSource);
-  if (dockerfile !== undefined) {
-    revision.update("\0dockerfile-context\0").update(dockerfile.contentHash);
-  }
   return {
     providerName: candidate?.provider,
     environmentExportName: isSandboxEnvironment(namespace.environment) ? "environment" : undefined,

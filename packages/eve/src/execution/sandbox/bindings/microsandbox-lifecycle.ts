@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   hydrateSandboxProviderResources,
   prepareImmutableResources,
-  resolveImmutableResourcesPath,
 } from "#execution/sandbox/bindings/immutable-resources.js";
 
 import {
@@ -36,8 +35,8 @@ import {
   connectMicrosandbox,
   createPreparedMicrosandbox,
   createProviderName,
+  createStableHash,
   doesPathExist,
-  isMicrosandboxNotFoundError,
   loadMicrosandboxModule,
   type MicrosandboxVm,
   removeSnapshotIfExists,
@@ -51,15 +50,12 @@ import {
 import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.js";
 import { withDevelopmentSandboxMetadataPathTag } from "#execution/sandbox/development-run.js";
 import { buildSandboxSession } from "#execution/sandbox/session.js";
-import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import {
   isSandboxPreparedArtifactRecord,
   type SandboxPreparedArtifact,
-  type SandboxProviderOpenContext,
+  type SandboxProviderSessionContext,
   type SandboxProviderHandle,
   type SandboxProviderPrepareContext,
-  type SandboxProviderSource,
-  type SandboxProviderResources,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
 import type { InternalSandboxSession } from "#shared/sandbox-session.js";
@@ -73,28 +69,27 @@ export type MicrosandboxPreparedArtifact = {
   readonly version: typeof MICROSANDBOX_METADATA_VERSION;
 };
 
-const activeMicrosandboxSessionHandles = new Map<
-  string,
-  SandboxProviderHandle<MicrosandboxSessionMetadata>
->();
+const activeMicrosandboxSessionHandles = new Map<string, SandboxProviderHandle>();
 
 export async function prewarmMicrosandboxTemplate(input: {
   readonly providerName: string;
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
   readonly context: SandboxProviderPrepareContext;
-}): Promise<{ readonly artifact: MicrosandboxPreparedArtifact; readonly reused: boolean }> {
+  readonly dockerfile?: import("#execution/sandbox/dockerfile.js").SandboxDockerfile;
+  readonly prepare?: (
+    sandbox: import("#shared/sandbox-session.js").SandboxSession,
+  ) => Promise<void> | void;
+  readonly templateKey: string;
+}): Promise<MicrosandboxPreparedArtifact> {
   input.context.log?.("loading microsandbox runtime");
   const module = await loadMicrosandboxModule({
-    appRoot: input.context.appRoot,
+    host: input.context.host,
     log: input.context.log,
     options: input.options,
   });
-  const cacheDirectory = resolveSandboxCacheDirectory(input.context.appRoot);
-  const templateRootPath = resolveMicrosandboxTemplateRootPath(
-    cacheDirectory,
-    input.context.templateName,
-  );
+  const cacheDirectory = input.context.storagePath;
+  const templateRootPath = resolveMicrosandboxTemplateRootPath(cacheDirectory, input.templateKey);
   const metadataPath = resolveMicrosandboxMetadataPath(templateRootPath);
   input.context.log?.("checking cached snapshot");
   const existing = await readTemplateMetadata(metadataPath);
@@ -105,18 +100,14 @@ export async function prewarmMicrosandboxTemplate(input: {
   ) {
     input.context.log?.("reusing cached snapshot");
     await touchDirectory(templateRootPath);
-    return { artifact: microsandboxTemplateArtifact(existing), reused: true };
+    return microsandboxTemplateArtifact(existing);
   }
 
-  const snapshotName = createProviderName(
-    "eve-sbx-tpl",
-    input.context.templateName,
-    input.optionsHash,
-  );
+  const snapshotName = createProviderName("eve-sbx-tpl", input.templateKey, input.optionsHash);
   const temporaryTemplateRootPath = `${templateRootPath}.${randomUUID()}.tmp`;
   const temporarySandboxName = createProviderName(
     "eve-sbx-tpl-tmp",
-    `${input.context.templateName}:${randomUUID()}`,
+    `${input.templateKey}:${randomUUID()}`,
   );
 
   await removeSnapshotIfExists(module, snapshotName);
@@ -124,17 +115,17 @@ export async function prewarmMicrosandboxTemplate(input: {
   await mkdir(temporaryTemplateRootPath, { recursive: true });
 
   let templateOptions = input.options;
-  if (input.context.dockerfile !== undefined) {
+  if (input.dockerfile !== undefined) {
     const cli = createDockerCli();
     await assertDockerDaemonAvailable(cli);
     const imageReference = dockerfileImageReference({
-      dockerfile: input.context.dockerfile,
-      templateKey: input.context.templateName,
+      dockerfile: input.dockerfile,
+      templateKey: input.templateKey,
     });
-    input.context.log?.(`building sandbox Dockerfile "${input.context.dockerfile.path}"`);
+    input.context.log?.(`building sandbox Dockerfile "${input.dockerfile.path}"`);
     await buildSandboxDockerfile({
       cli,
-      dockerfile: input.context.dockerfile,
+      dockerfile: input.dockerfile,
       imageReference,
     });
     input.context.log?.("publishing Dockerfile image for microsandbox");
@@ -146,7 +137,7 @@ export async function prewarmMicrosandboxTemplate(input: {
   const resourcesPath =
     resourceSource.kind === "materialized"
       ? await prepareImmutableResources({
-          appRoot: input.context.appRoot,
+          storagePath: input.context.storagePath,
           provider: input.providerName,
           resourcesKey: resourceSource.key,
           sourcePath: resourceSource.path,
@@ -160,7 +151,7 @@ export async function prewarmMicrosandboxTemplate(input: {
     networkPolicy: "allow-all",
     options: templateOptions,
     resourcesPath,
-    sessionKey: input.context.templateName,
+    sessionKey: input.templateKey,
     setupBaseRuntime: true,
     tags: undefined,
   });
@@ -178,15 +169,17 @@ export async function prewarmMicrosandboxTemplate(input: {
       session: templateSession,
     });
 
-    input.context.log?.("running sandbox preparation");
-    await input.context.runPreparation(
-      createLoggingSandboxSession({ log: input.context.log, session: templateSession }),
-    );
+    if (input.prepare !== undefined) {
+      input.context.log?.("running sandbox preparation");
+      await input.prepare(
+        createLoggingSandboxSession({ log: input.context.log, session: templateSession }),
+      );
+    }
 
     input.context.log?.("snapshotting template VM");
     await templateSandbox.stopAndSnapshot(snapshotName);
     await writeTemplateMetadata(resolveMicrosandboxMetadataPath(temporaryTemplateRootPath), {
-      image: input.context.dockerfile === undefined ? undefined : templateOptions.image,
+      image: input.dockerfile === undefined ? undefined : templateOptions.image,
       optionsHash: input.optionsHash,
       snapshotName,
       version: MICROSANDBOX_METADATA_VERSION,
@@ -200,7 +193,7 @@ export async function prewarmMicrosandboxTemplate(input: {
       if (await doesPathExist(templateRootPath)) {
         const published = await readTemplateMetadata(metadataPath);
         if (published !== null) {
-          return { artifact: microsandboxTemplateArtifact(published), reused: true };
+          return microsandboxTemplateArtifact(published);
         }
       }
       throw error;
@@ -210,142 +203,115 @@ export async function prewarmMicrosandboxTemplate(input: {
     await rm(temporaryTemplateRootPath, { force: true, recursive: true }).catch(() => {});
   }
 
-  return {
-    artifact: microsandboxTemplateArtifact({
-      image: input.context.dockerfile === undefined ? undefined : templateOptions.image,
-      optionsHash: input.optionsHash,
-      snapshotName,
-      version: MICROSANDBOX_METADATA_VERSION,
-    }),
-    reused: false,
-  };
+  return microsandboxTemplateArtifact({
+    image: input.dockerfile === undefined ? undefined : templateOptions.image,
+    optionsHash: input.optionsHash,
+    snapshotName,
+    version: MICROSANDBOX_METADATA_VERSION,
+  });
 }
 
 export async function createMicrosandboxHandle(input: {
-  readonly providerName: string;
-  readonly context: SandboxProviderOpenContext<
-    MicrosandboxSandboxRuntimeOptions,
-    MicrosandboxSessionMetadata
-  >;
+  readonly artifact: MicrosandboxPreparedArtifact;
+  readonly context: SandboxProviderSessionContext;
+  readonly existingState?: MicrosandboxSessionMetadata;
+  readonly onSession?: (input: {
+    readonly sandbox: import("#shared/sandbox-session.js").SandboxSession;
+    readonly session: SandboxProviderSessionContext["session"];
+  }) => Promise<void> | void;
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
-  readonly source: SandboxProviderSource<MicrosandboxPreparedArtifact>;
-}): Promise<SandboxProviderHandle<MicrosandboxSessionMetadata>> {
-  const cacheDirectory = resolveSandboxCacheDirectory(input.context.appRoot);
-  const preparedTemplate =
-    input.source.kind === "base"
-      ? undefined
-      : requirePreparedMicrosandboxTemplate(
-          input.source.artifact,
-          input.source.templateName,
-          input.providerName,
-        );
-  const existingMetadata =
-    input.context.instance.kind === "restore" ? input.context.instance.metadata : null;
-  const image = resolveMicrosandboxImage(existingMetadata, preparedTemplate, input.options);
+  readonly providerName: string;
+  readonly runtimeOptions?: MicrosandboxSandboxRuntimeOptions;
+}): Promise<{
+  readonly handle: SandboxProviderHandle;
+  readonly state: MicrosandboxSessionMetadata;
+}> {
+  const preparedTemplate = requirePreparedMicrosandboxTemplate(input.artifact, input.providerName);
+  const existingState = input.existingState;
+  const image = resolveMicrosandboxImage(existingState ?? null, preparedTemplate, input.options);
   const options: LiveMicrosandboxOptions = {
     ...input.options,
     ...image,
-    networkPolicy: input.context.options.networkPolicy,
+    networkPolicy: input.runtimeOptions?.networkPolicy,
   };
-  const module = await loadMicrosandboxModule({
-    appRoot: input.context.appRoot,
-    options,
-  });
+  const module = await loadMicrosandboxModule({ host: input.context.host, options });
+  const sessionIdentity = createStableHash(
+    `${input.context.session.id}:${preparedTemplate.snapshotName}:${input.optionsHash}`,
+  ).slice(0, 32);
   const sessionRootPath = resolveMicrosandboxSessionRootPath(
-    cacheDirectory,
-    input.context.instance.name,
+    input.context.storagePath,
+    sessionIdentity,
   );
   const activeSessionKey = createActiveMicrosandboxSessionKey(sessionRootPath, input.optionsHash);
   const activeHandle = activeMicrosandboxSessionHandles.get(activeSessionKey);
-  if (activeHandle !== undefined) {
-    return activeHandle;
+  if (activeHandle !== undefined && existingState !== undefined) {
+    return { handle: activeHandle, state: existingState };
   }
 
   const metadataPath = resolveMicrosandboxMetadataPath(sessionRootPath);
-  const sessionTags = withDevelopmentSandboxMetadataPathTag(input.context.tags, metadataPath);
-
+  const sessionTags = withDevelopmentSandboxMetadataPathTag(
+    { sessionId: input.context.session.id },
+    metadataPath,
+  );
   if (
-    existingMetadata?.optionsHash === input.optionsHash &&
-    ((await sandboxExists(module, existingMetadata.sandboxName)) ||
-      (existingMetadata.stateSnapshotName !== undefined &&
-        (await snapshotExists(module, existingMetadata.stateSnapshotName))))
+    existingState?.optionsHash === input.optionsHash &&
+    ((await sandboxExists(module, existingState.sandboxName)) ||
+      (existingState.stateSnapshotName !== undefined &&
+        (await snapshotExists(module, existingState.stateSnapshotName))))
   ) {
-    const sandbox = await connectMicrosandbox({
-      metadata: existingMetadata,
+    const connected = await connectMicrosandbox({
+      metadata: existingState,
       metadataPath,
       module,
       options,
-      sessionKey: input.context.instance.name,
+      sessionKey: input.context.session.id,
       tags: sessionTags,
     });
-    if (sandbox !== null) {
-      return cacheHandle(
-        activeSessionKey,
-        createHandle(sandbox, input.optionsHash, () => {
-          activeMicrosandboxSessionHandles.delete(activeSessionKey);
-        }),
-      );
+    if (connected !== null) {
+      return {
+        handle: cacheHandle(
+          activeSessionKey,
+          createHandle(connected, input.optionsHash, () => {
+            activeMicrosandboxSessionHandles.delete(activeSessionKey);
+          }),
+        ),
+        state: existingState,
+      };
     }
   }
 
-  let snapshotName: string | undefined;
-  if (preparedTemplate !== undefined && input.source.kind === "prepared") {
-    if (
-      preparedTemplate.optionsHash !== input.optionsHash ||
-      !(await snapshotExists(module, preparedTemplate.snapshotName))
-    ) {
-      throw new SandboxTemplateNotProvisionedError({
-        providerName: input.providerName,
-        templateKey: input.source.templateName,
-      });
-    }
-
-    snapshotName = preparedTemplate.snapshotName;
-  }
-
-  const sandboxName = createProviderName(
-    "eve-sbx-ses",
-    `${input.context.instance.name}:${randomUUID()}`,
-  );
-  let sandbox: MicrosandboxVm;
-  try {
-    sandbox = await createPreparedMicrosandbox({
-      fromSnapshot: snapshotName,
-      module,
-      name: sandboxName,
-      networkPolicy: options.networkPolicy,
-      options,
-      resourcesPath: resolveProviderResourcesPath(
-        input.context.resources,
-        input.context.appRoot,
-        input.providerName,
-      ),
-      sessionKey: input.context.instance.name,
-      setupBaseRuntime: snapshotName === undefined,
-      tags: sessionTags,
+  if (
+    preparedTemplate.optionsHash !== input.optionsHash ||
+    !(await snapshotExists(module, preparedTemplate.snapshotName))
+  ) {
+    throw new SandboxTemplateNotProvisionedError({
+      providerName: input.providerName,
+      templateKey: preparedTemplate.snapshotName,
     });
-  } catch (error) {
-    if (
-      snapshotName !== undefined &&
-      input.source.kind === "prepared" &&
-      isMicrosandboxNotFoundError(error)
-    ) {
-      throw new SandboxTemplateNotProvisionedError({
-        providerName: input.providerName,
-        templateKey: input.source.templateName,
-      });
-    }
-    throw error;
   }
-
+  const sandboxName = createProviderName("eve-sbx-ses", sessionIdentity);
+  const sandbox = await createPreparedMicrosandbox({
+    fromSnapshot: preparedTemplate.snapshotName,
+    module,
+    name: sandboxName,
+    networkPolicy: options.networkPolicy,
+    options,
+    sessionKey: input.context.session.id,
+    setupBaseRuntime: false,
+    tags: sessionTags,
+  });
   await sandbox.writeMetadata(metadataPath, input.optionsHash);
-  return cacheHandle(
+  const handle = cacheHandle(
     activeSessionKey,
     createHandle(sandbox, input.optionsHash, () => {
       activeMicrosandboxSessionHandles.delete(activeSessionKey);
     }),
   );
+  if (input.onSession !== undefined) {
+    await input.onSession({ sandbox: handle.sandbox, session: input.context.session });
+  }
+  return { handle, state: await sandbox.captureState(input.optionsHash) };
 }
 
 function resolveMicrosandboxImage(
@@ -375,7 +341,6 @@ function microsandboxTemplateArtifact(
 
 function requirePreparedMicrosandboxTemplate(
   artifact: SandboxPreparedArtifact,
-  templateKey: string,
   providerName: string,
 ): MicrosandboxTemplateMetadata {
   if (
@@ -384,7 +349,10 @@ function requirePreparedMicrosandboxTemplate(
     typeof artifact.optionsHash !== "string" ||
     typeof artifact.snapshotName !== "string"
   ) {
-    throw new SandboxTemplateNotProvisionedError({ providerName, templateKey });
+    throw new SandboxTemplateNotProvisionedError({
+      providerName,
+      templateKey: "invalid-artifact",
+    });
   }
   return {
     image: typeof artifact.image === "string" ? artifact.image : undefined,
@@ -396,9 +364,9 @@ function requirePreparedMicrosandboxTemplate(
 
 function createHandle(
   sandbox: MicrosandboxVm,
-  optionsHash: string,
+  _optionsHash: string,
   onShutdown?: () => void,
-): SandboxProviderHandle<MicrosandboxSessionMetadata> {
+): SandboxProviderHandle {
   const session = buildSandboxSession(
     createMicrosandboxInternalSession(sandbox),
     async (policy) => {
@@ -406,47 +374,32 @@ function createHandle(
     },
   );
   return {
-    captureMetadata: async () => await sandbox.captureState(optionsHash),
     sandbox: session,
-    async delete() {
+    async onSessionDelete() {
       await sandbox.shutdown();
       await sandbox.removePersisted();
       onShutdown?.();
     },
-    async stop() {
+    async onSessionStop() {
       await sandbox.stop();
       onShutdown?.();
     },
-    async shutdown() {
+    async onRuntimeShutdown() {
       onShutdown?.();
       await sandbox.shutdown();
     },
   };
 }
 
-function resolveProviderResourcesPath(
-  resources: SandboxProviderResources,
-  appRoot: string,
-  provider: string,
-): string | undefined {
-  const source = resources.source;
-  return source.kind === "none"
-    ? undefined
-    : resolveImmutableResourcesPath({ appRoot, provider, resourcesKey: source.key });
-}
-
 function createMicrosandboxInternalSession(sandbox: MicrosandboxVm): InternalSandboxSession {
-  return createFileBackedInternalSandboxSession({ id: sandbox.id, sandbox });
+  return createFileBackedInternalSandboxSession({ sandbox });
 }
 
 function createActiveMicrosandboxSessionKey(sessionRootPath: string, optionsHash: string): string {
   return `${sessionRootPath}\0${optionsHash}`;
 }
 
-function cacheHandle(
-  key: string,
-  handle: SandboxProviderHandle<MicrosandboxSessionMetadata>,
-): SandboxProviderHandle<MicrosandboxSessionMetadata> {
+function cacheHandle(key: string, handle: SandboxProviderHandle): SandboxProviderHandle {
   activeMicrosandboxSessionHandles.set(key, handle);
   return handle;
 }

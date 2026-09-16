@@ -1,21 +1,12 @@
 import {
   createSandboxEnvironment,
   type SandboxEnvironment,
-  type SandboxPrepare,
+  type SandboxSelectorContext,
 } from "#shared/sandbox-environment.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 
 export interface SandboxDeleteOptions {
   readonly abortSignal?: AbortSignal;
-}
-
-export type SandboxProviderTags = Readonly<Record<string, string>>;
-export type NoSandboxProviderMetadata = Record<never, never>;
-
-export interface SandboxDockerfileInput {
-  readonly contextPath: string;
-  readonly contentHash: string;
-  readonly path: string;
 }
 
 export interface SandboxProviderResourceFile {
@@ -33,8 +24,7 @@ export interface SandboxProviderResourceTree {
 export type SandboxProviderResourceSource =
   | { readonly kind: "none" }
   | { readonly key: string; readonly kind: "inline" }
-  | { readonly key: string; readonly kind: "materialized"; readonly path: string }
-  | { readonly key: string; readonly kind: "reference" };
+  | { readonly key: string; readonly kind: "materialized"; readonly path: string };
 
 export interface SandboxProviderResources {
   readonly skills?: SandboxProviderResourceTree;
@@ -68,149 +58,142 @@ export type SandboxPreparedArtifact =
   | readonly SandboxPreparedArtifact[]
   | { readonly [key: string]: SandboxPreparedArtifact };
 
-export type SandboxProviderMetadata = Readonly<Record<string, SandboxPreparedArtifact>>;
+export function isSandboxPreparedArtifact(value: unknown): value is SandboxPreparedArtifact {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) return value.every(isSandboxPreparedArtifact);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every(isSandboxPreparedArtifact)
+  );
+}
 
 export function isSandboxPreparedArtifactRecord(
-  artifact: SandboxPreparedArtifact | undefined,
+  artifact: unknown,
 ): artifact is { readonly [key: string]: SandboxPreparedArtifact } {
   return typeof artifact === "object" && artifact !== null && !Array.isArray(artifact);
 }
 
+export interface SandboxProviderFiles {
+  glob(pattern: string): Promise<readonly string[]>;
+  read(path: string): Promise<Uint8Array>;
+  readText(path: string): Promise<string>;
+}
+
+export interface SandboxProviderHost {
+  loadOptionalPackage<T>(input: {
+    readonly autoInstall: boolean;
+    readonly importModule: () => Promise<T>;
+    readonly missingMessage: string;
+    readonly packageName: string;
+  }): Promise<T>;
+  resolveProjectPath(path: string): string;
+}
+
 export interface SandboxProviderPrepareContext {
-  readonly appRoot: string;
-  readonly dockerfile?: SandboxDockerfileInput;
+  readonly files: SandboxProviderFiles;
+  readonly host: SandboxProviderHost;
   readonly log?: (message: string) => void;
   readonly resources: SandboxProviderResources;
-  runPreparation(sandbox: SandboxSession): Promise<void>;
-  readonly templateName: string;
+  readonly storagePath: string;
 }
 
-export type SandboxProviderSource<
-  PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
-> =
-  | { readonly kind: "base" }
-  | {
-      readonly artifact: PreparedArtifact;
-      readonly kind: "prepared";
-      readonly templateName: string;
-    };
-
-export type SandboxProviderInstance<Metadata> =
-  | { readonly kind: "create"; readonly name: string }
-  | {
-      readonly kind: "restore";
-      readonly metadata: Readonly<Metadata>;
-      readonly name: string;
-    };
-
-export interface SandboxProviderOpenContext<OpenOptions, Metadata> {
-  readonly appRoot: string;
-  readonly options: Readonly<OpenOptions>;
-  readonly instance: SandboxProviderInstance<Metadata>;
-  readonly resources: SandboxProviderResources;
-  readonly tags?: SandboxProviderTags;
+export interface SandboxProviderSessionContext {
+  readonly host: SandboxProviderHost;
+  readonly session: SandboxSelectorContext["session"];
+  readonly storagePath: string;
 }
 
-export interface SandboxProviderHandle<Metadata> {
-  captureMetadata(): Promise<Metadata>;
+export interface SandboxProviderHandle {
   readonly sandbox: SandboxSession;
-  delete(options?: SandboxDeleteOptions): Promise<void>;
-  shutdown(): Promise<void>;
-  stop(): Promise<void>;
+  onRuntimeShutdown(): Promise<void>;
+  onSessionDelete(options?: SandboxDeleteOptions): Promise<void>;
+  onSessionStop(): Promise<void>;
 }
 
 export interface SandboxProviderImplementation<
-  OpenOptions,
-  Metadata,
-  PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
+  OpenOptions extends object | undefined,
+  PreparedArtifact extends SandboxPreparedArtifact,
+  SessionState,
 > {
-  prepare(
-    context: SandboxProviderPrepareContext,
-  ): Promise<{ readonly artifact: PreparedArtifact; readonly reused: boolean }>;
-  open(
-    context: SandboxProviderOpenContext<OpenOptions, Metadata>,
-    source: SandboxProviderSource<PreparedArtifact>,
-  ): Promise<SandboxProviderHandle<Metadata>>;
+  prepare(context: SandboxProviderPrepareContext): Promise<PreparedArtifact>;
+  resume(
+    context: SandboxProviderSessionContext,
+    options: Readonly<OpenOptions> | undefined,
+    artifact: Readonly<PreparedArtifact>,
+    state: Readonly<SessionState>,
+  ): Promise<SandboxProviderHandle>;
+  start(
+    context: SandboxProviderSessionContext,
+    options: Readonly<OpenOptions> | undefined,
+    artifact: Readonly<PreparedArtifact>,
+  ): Promise<{ readonly handle: SandboxProviderHandle; readonly state: SessionState }>;
 }
 
+type SandboxOptionArguments<Options extends object | undefined> = Options extends undefined
+  ? [options?: undefined]
+  : Record<never, never> extends Options
+    ? [options?: Readonly<Options>]
+    : [options: Readonly<Options>];
+
 export type SandboxProviderDefinition<
-  EnvironmentOptions extends object,
+  EnvironmentOptions extends object | undefined,
   OpenOptions extends object | undefined,
-  Metadata extends object,
   PreparedArtifact extends SandboxPreparedArtifact,
+  SessionState,
 > = {
   readonly name: string;
-  kind?(options: Readonly<EnvironmentOptions>): SandboxEnvironment["kind"];
-} & (
-  | {
-      environment(
-        options: Readonly<EnvironmentOptions>,
-      ): SandboxProviderImplementation<OpenOptions, Metadata, PreparedArtifact>;
-      readonly select?: never;
-    }
-  | {
-      readonly environment?: never;
-      select(
-        options: Readonly<EnvironmentOptions>,
-        prepare: SandboxPrepare | undefined,
-      ): SandboxEnvironment<OpenOptions>;
-    }
-);
-
-export type SandboxProviderEnvironmentOptions<Options extends object> = Omit<Options, "prepare"> & {
-  readonly prepare?: SandboxPrepare;
+  environment(
+    ...args: SandboxOptionArguments<EnvironmentOptions>
+  ): SandboxProviderImplementation<OpenOptions, PreparedArtifact, SessionState>;
 };
 
-export type SandboxProviderEnvironmentArguments<Options extends object> =
-  Record<never, never> extends Options
-    ? [options?: SandboxProviderEnvironmentOptions<Options>]
-    : [options: SandboxProviderEnvironmentOptions<Options>];
-
 export interface SandboxProvider<
-  EnvironmentOptions extends object,
+  EnvironmentOptions extends object | undefined,
   OpenOptions extends object | undefined,
 > {
   readonly name: string;
-  environment(
-    ...args: SandboxProviderEnvironmentArguments<EnvironmentOptions>
-  ): SandboxEnvironment<OpenOptions>;
+  environment(...args: SandboxOptionArguments<EnvironmentOptions>): SandboxEnvironment<OpenOptions>;
 }
 
 type ErasedSandboxProviderImplementation = SandboxProviderImplementation<
   object | undefined,
-  SandboxProviderMetadata
+  SandboxPreparedArtifact,
+  SandboxPreparedArtifact
 >;
 
 export interface SandboxProviderRuntime {
   readonly implementation: ErasedSandboxProviderImplementation;
-  readonly prepare?: SandboxPrepare;
   readonly providerName: string;
 }
 
 export function defineSandboxProvider<
-  EnvironmentOptions extends object,
+  EnvironmentOptions extends object | undefined = undefined,
   OpenOptions extends object | undefined = undefined,
-  Metadata extends object = NoSandboxProviderMetadata,
   PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
+  SessionState = SandboxPreparedArtifact,
 >(
   definition: SandboxProviderDefinition<
     EnvironmentOptions,
     OpenOptions,
-    Metadata,
-    PreparedArtifact
+    PreparedArtifact,
+    SessionState
   >,
 ): SandboxProvider<EnvironmentOptions, OpenOptions> {
   return {
     name: definition.name,
-    environment(...args: SandboxProviderEnvironmentArguments<EnvironmentOptions>) {
-      const { options, prepare } = splitSandboxEnvironmentOptions<EnvironmentOptions>(args[0]);
-      if (definition.select !== undefined) return definition.select(options, prepare);
+    environment(...args: SandboxOptionArguments<EnvironmentOptions>) {
       return createSandboxEnvironment({
-        configuration: { options, prepare },
-        kind: definition.kind?.(options) ?? (prepare === undefined ? "default" : "prepared"),
+        configuration: args[0],
         runtime: {
-          implementation: eraseSandboxProviderImplementation(definition.environment(options)),
-          prepare,
+          implementation: eraseSandboxProviderImplementation(definition.environment(...args)),
           providerName: definition.name,
         },
       });
@@ -218,24 +201,13 @@ export function defineSandboxProvider<
   };
 }
 
-function splitSandboxEnvironmentOptions<Options extends object>(
-  authoredOptions: SandboxProviderEnvironmentOptions<Options> | undefined,
-): { readonly options: Readonly<Options>; readonly prepare: SandboxPrepare | undefined } {
-  const { prepare, ...options } = authoredOptions ?? {};
-  // Omit cannot prove that removing eve's `prepare` key reconstructs the
-  // provider's generic options, even though that is how the public type is defined.
-  return { options: options as Options, prepare };
-}
-
 function eraseSandboxProviderImplementation<
-  Options,
-  Metadata,
+  Options extends object | undefined,
   Artifact extends SandboxPreparedArtifact,
+  SessionState,
 >(
-  implementation: SandboxProviderImplementation<Options, Metadata, Artifact>,
+  implementation: SandboxProviderImplementation<Options, Artifact, SessionState>,
 ): ErasedSandboxProviderImplementation {
-  // Runtime registries contain heterogeneous providers; exact types remain at
-  // each implementation boundary and are erased only when entering the registry.
   return implementation as ErasedSandboxProviderImplementation;
 }
 
@@ -252,9 +224,7 @@ export function createSandboxProviderResources(input: {
   const source: SandboxProviderResourceSource =
     input.resourcesPath !== undefined
       ? { key: input.resourcesKey, kind: "materialized", path: input.resourcesPath }
-      : input.seedFiles !== undefined
-        ? { key: input.resourcesKey, kind: "inline" }
-        : { key: input.resourcesKey, kind: "reference" };
+      : { key: input.resourcesKey, kind: "inline" };
   return {
     skills: createResourceTree({
       files: files.filter((file) => file.path.startsWith("$HOME/.agents/skills/")),

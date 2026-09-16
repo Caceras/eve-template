@@ -18,7 +18,6 @@ export type {
 export type {
   SandboxOpenArguments,
   SandboxEnvironment,
-  SandboxPrepare,
   SandboxSelector,
   SandboxSelectorContext,
 } from "#shared/sandbox-environment.js";

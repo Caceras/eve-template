@@ -51,7 +51,6 @@ const DOCKER_KILL_TREE_SCRIPT = [
 export function createDockerInternalSession(input: {
   readonly cli: DockerCli;
   readonly containerIdentity: string;
-  readonly id: string;
 }): InternalSandboxSession {
   const { cli, containerIdentity } = input;
 
@@ -72,7 +71,6 @@ export function createDockerInternalSession(input: {
   }
 
   return {
-    id: input.id,
     resolvePath: resolveWorkspacePath,
     async spawn(options: SandboxSpawnOptions) {
       const args = ["exec", "-w", resolveWorkspacePath(options.workingDirectory ?? WORKSPACE_ROOT)];

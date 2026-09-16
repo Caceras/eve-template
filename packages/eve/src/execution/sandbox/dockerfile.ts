@@ -1,14 +1,50 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
 import type { DockerCli } from "#execution/sandbox/bindings/docker-cli.js";
+import type { SandboxProviderFiles } from "#shared/sandbox-provider.js";
 import { expectDockerSuccess } from "#execution/sandbox/bindings/docker-utils.js";
 
 export interface SandboxDockerfile {
   readonly contextPath: string;
   readonly contentHash: string;
   readonly path: string;
+}
+
+export async function materializeSandboxDockerfile(input: {
+  readonly files: SandboxProviderFiles;
+  readonly storagePath: string;
+}): Promise<SandboxDockerfile | undefined> {
+  let content: Uint8Array;
+  try {
+    content = await input.files.read("Dockerfile");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  const paths = await input.files.glob("**/*");
+  const hash = createHash("sha256");
+  const contents = await Promise.all(
+    paths.map(async (path) => ({ content: await input.files.read(path), path })),
+  );
+  for (const file of contents)
+    hash.update(file.path).update("\0").update(file.content).update("\0");
+  const contentHash = hash.digest("hex");
+  const contextPath = join(input.storagePath, "dockerfiles", contentHash);
+  await rm(contextPath, { force: true, recursive: true });
+  await Promise.all(
+    contents.map(async (file) => {
+      const target = join(contextPath, file.path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, file.content);
+    }),
+  );
+  if (!paths.includes("Dockerfile")) {
+    await mkdir(contextPath, { recursive: true });
+    await writeFile(join(contextPath, "Dockerfile"), content);
+  }
+  return { contentHash, contextPath, path: join(contextPath, "Dockerfile") };
 }
 
 export async function resolveSandboxDockerfile(

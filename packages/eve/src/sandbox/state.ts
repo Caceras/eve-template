@@ -1,15 +1,12 @@
 import type { SandboxSession } from "#public/definitions/sandbox.js";
-import type { SandboxDeleteOptions, SandboxProviderMetadata } from "#shared/sandbox-provider.js";
+import type { SandboxDeleteOptions, SandboxPreparedArtifact } from "#shared/sandbox-provider.js";
 
 export interface SandboxSessionState {
-  readonly configurationHash?: string;
-  readonly metadata: SandboxProviderMetadata;
   readonly providerName: string;
-  readonly sessionKey: string;
+  readonly state: SandboxPreparedArtifact;
 }
 
 export interface SandboxState {
-  readonly initialized: boolean;
   readonly session: SandboxSessionState | null;
 }
 

@@ -1,3 +1,5 @@
+import type { SandboxSelectorContext } from "#shared/sandbox-environment.js";
+import type { SandboxSession } from "#shared/sandbox-session.js";
 import type {
   SandboxNetworkOptions,
   SandboxNetworkPolicy,
@@ -31,6 +33,8 @@ export interface MicrosandboxSandboxCreateOptions {
   readonly env?: Readonly<Record<string, string>>;
   /** OCI image pull policy. @default "if-missing" */
   readonly pullPolicy?: "always" | "if-missing" | "never";
+  /** Idempotent setup captured in the prepared VM snapshot. */
+  readonly prepare?: (sandbox: SandboxSession) => Promise<void> | void;
   /**
    * Installation behavior for the microsandbox npm package and its VM
    * runtime. By default eve installs both automatically when missing —
@@ -47,4 +51,9 @@ export interface MicrosandboxSandboxCreateOptions {
 export interface MicrosandboxSandboxRuntimeOptions extends SandboxNetworkOptions {
   /** Initial network policy for this VM. @default "allow-all" */
   readonly networkPolicy?: SandboxNetworkPolicy;
+  /** Idempotent setup run whenever this session's native VM is created. */
+  readonly onSession?: (context: {
+    readonly sandbox: SandboxSession;
+    readonly session: SandboxSelectorContext["session"];
+  }) => Promise<void> | void;
 }

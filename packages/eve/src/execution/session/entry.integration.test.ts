@@ -35,7 +35,6 @@ import type {
 } from "#shared/connection-types.js";
 import type { ResolvedToolDefinition } from "#runtime/types.js";
 import { toInputSchema } from "#tools/schema.js";
-import { defineHook } from "#public/definitions/hook.js";
 import { ConversationContextKey } from "#shared/conversation-context.js";
 import { SessionTitleKey } from "#context/keys.js";
 
@@ -1914,49 +1913,6 @@ describe("workflowEntry integration", () => {
         output: expect.stringContaining("hello there"),
       });
       await expect(run.status).resolves.toBe("completed");
-    });
-  });
-
-  it("can delete the sandbox from a session.completed hook", async () => {
-    let deletions = 0;
-    const runtime = await createTestRuntime({
-      agent: { name: "workflow-entry-task-delete-sandbox" },
-      modules: [
-        {
-          logicalPath: "hooks/delete-sandbox.ts",
-          loadNamespace: async () => ({
-            default: defineHook({
-              events: {
-                async "session.completed"(_event, ctx) {
-                  const sandbox = await ctx.getSandbox();
-                  await sandbox.delete();
-                  deletions += 1;
-                },
-              },
-            }),
-          }),
-        },
-      ],
-    });
-
-    await runtime.run(async () => {
-      const run = await start(workflowEntry, [
-        {
-          kind: "initial",
-          ownerDeploymentId: "dpl_inline",
-          input: { message: "hello there" },
-          serializedContext: buildSerializedContext({
-            channelKind: "http",
-            continuationToken: "http:workflow-entry-task-delete-sandbox",
-            mode: "task",
-          }),
-        },
-      ]);
-
-      await expect(run.returnValue).resolves.toEqual({
-        output: expect.stringContaining("hello there"),
-      });
-      expect(deletions).toBe(1);
     });
   });
 

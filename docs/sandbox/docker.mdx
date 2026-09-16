@@ -24,6 +24,6 @@ Image, pull policy, environment variables, and `prepare` belong to the reusable 
 
 Pass `networkPolicy` to `open()`. Docker supports only `"allow-all"` and `"deny-all"`. The policy applies to the live container, not the prepared image.
 
-A session-owned container keeps writable `/workspace` state in its container filesystem. A stopped container restarts with that state. A named shared container exposes the same filesystem and network boundary to every attached eve session.
+A session-owned container keeps writable `/workspace` state in its container filesystem. A stopped container restarts with that state.
 
 See the [sandbox overview](/docs/sandbox) for managed workspace, skills, parent inheritance, and custom providers.

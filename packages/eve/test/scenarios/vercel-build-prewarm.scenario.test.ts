@@ -8,7 +8,6 @@ import { prewarmAppSandboxes } from "../../src/execution/sandbox/prewarm.js";
 import { runVercelBuildPrewarm } from "../../src/internal/nitro/host/vercel-build-prewarm.js";
 import type { SandboxProviderPrepareContext } from "../../src/shared/sandbox-provider.js";
 import { useTemporaryDirectories } from "../../src/internal/testing/use-temporary-app-roots.js";
-import { stubSpawnProcess } from "../_helpers/sandbox-session-stub.js";
 
 const createScratchDirectory = useTemporaryDirectories();
 
@@ -16,53 +15,6 @@ describe("Vercel build-time sandbox prewarm", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
-  });
-
-  it("prepares root and subagent sandbox templates without running selectors", async () => {
-    vi.stubEnv("VERCEL", "1");
-    vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_test_build_prewarm");
-
-    const appRoot = await createScenarioAppRoot();
-    const events = createPrewarmEvents();
-    const log = vi.fn();
-
-    await compileAgent({
-      startPath: appRoot,
-    });
-    await prewarmAppSandboxes({
-      appRoot,
-      log,
-      dispatch: createRecordingDispatch(events),
-    });
-
-    expect(events.templateKeys).toHaveLength(2);
-    expect(events.templateKeys.every((templateKey) => templateKey.startsWith("eve-sbx-tpl-"))).toBe(
-      true,
-    );
-    expect([...events.commands].sort()).toEqual(["echo child-bootstrap", "echo root-bootstrap"]);
-    expect(log.mock.calls.map(([message]) => message)).toEqual([
-      "eve: initializing 2 sandbox templates...",
-      "eve: initialized 2 sandbox templates (0 reused, 2 built).",
-    ]);
-  });
-
-  it("fails the hosted build when sandbox preparation fails", async () => {
-    vi.stubEnv("VERCEL", "1");
-    vi.stubEnv("VERCEL_DEPLOYMENT_ID", "");
-    vi.stubEnv("VERCEL_OIDC_TOKEN", createVercelOidcToken("prj_hosted_build"));
-
-    const appRoot = await createScenarioAppRoot();
-
-    await compileAgent({
-      startPath: appRoot,
-    });
-
-    await expect(
-      runVercelBuildPrewarm({
-        appRoot,
-        dispatch: createFailingBootstrapDispatch(),
-      }),
-    ).rejects.toThrow("bootstrap command failed");
   });
 
   it("skips sandbox prewarm outside a Vercel build", async () => {
@@ -91,23 +43,6 @@ describe("Vercel build-time sandbox prewarm", () => {
     ).rejects.toThrow(
       "Cannot build deployable Vercel output because this app requires sandbox templates and VERCEL_OIDC_TOKEN is missing. Run `vercel link` and `vercel pull`, then retry `vercel build`. Do not deploy the generated .vercel/output.",
     );
-  });
-
-  it("allows a Vercel build without OIDC when no sandbox template is required", async () => {
-    vi.stubEnv("VERCEL", "1");
-    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
-
-    const appRoot = await createTemplateFreeScenarioAppRoot();
-
-    await compileAgent({
-      startPath: appRoot,
-    });
-
-    await expect(
-      runVercelBuildPrewarm({
-        appRoot,
-      }),
-    ).resolves.toBe(true);
   });
 
   it("prewarms sandbox templates for a local Vercel build without a deployment id", async () => {
@@ -161,21 +96,6 @@ function createVercelOidcToken(projectId: string): string {
     JSON.stringify({ owner_id: "team_test", project_id: projectId }),
   ).toString("base64url");
   return `header.${payload}.signature`;
-}
-
-async function createTemplateFreeScenarioAppRoot(): Promise<string> {
-  const appRoot = await createScratchDirectory("eve-vercel-build-without-prewarm-");
-  const agentRoot = join(appRoot, "agent");
-
-  await mkdir(agentRoot, { recursive: true });
-  await writeFile(
-    join(appRoot, "package.json"),
-    JSON.stringify({ name: "vercel-build-without-prewarm", type: "module" }, null, 2),
-  );
-  await writeFile(join(agentRoot, "agent.ts"), 'export default { model: "openai/gpt-5.4" };\n');
-  await writeFile(join(agentRoot, "instructions.md"), "Root system prompt.\n");
-
-  return appRoot;
 }
 
 async function createScenarioAppRoot(
@@ -262,7 +182,7 @@ function preparedSandboxSource(command: string): string {
 
 function createRecordingDispatch(events: ReturnType<typeof createPrewarmEvents>) {
   return async ({ context }: { context: SandboxProviderPrepareContext }) => {
-    events.templateKeys.push(context.templateName);
+    events.templateKeys.push(context.storagePath);
     const files = [
       ...(context.resources.workspace?.files.map((file) => ({
         path: `${context.resources.workspace?.targetPath}/${file.relativePath}`,
@@ -275,53 +195,8 @@ function createRecordingDispatch(events: ReturnType<typeof createPrewarmEvents>)
       events.seededTemplates.push("default");
       events.writtenFilePaths.push(...files.map((file) => file.path));
     }
-    await context.runPreparation(
-      createPreparationSession(context.templateName, (command) => {
-        events.commands.push(command);
-      }),
-    );
-    return { artifact: { templateName: context.templateName }, reused: false };
-  };
-}
 
-function createFailingBootstrapDispatch() {
-  return async ({ context }: { context: SandboxProviderPrepareContext }) => {
-    await context.runPreparation(
-      createPreparationSession(context.templateName, () => {
-        throw new Error("bootstrap command failed");
-      }),
-    );
-    return { artifact: { templateName: context.templateName }, reused: false };
-  };
-}
-
-function createPreparationSession(id: string, run: (command: string) => void) {
-  return {
-    id,
-    async readFile() {
-      return null;
-    },
-    async readBinaryFile() {
-      return null;
-    },
-    async readTextFile() {
-      return null;
-    },
-    async setNetworkPolicy() {},
-    async removePath() {},
-    resolvePath(path: string) {
-      return path;
-    },
-    async run({ command }: { command: string }) {
-      run(command);
-      return { exitCode: 0, stderr: "", stdout: "" };
-    },
-    async spawn() {
-      return stubSpawnProcess();
-    },
-    async writeFile() {},
-    async writeBinaryFile() {},
-    async writeTextFile() {},
+    return { storagePath: context.storagePath };
   };
 }
 

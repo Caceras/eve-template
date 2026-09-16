@@ -32,7 +32,7 @@ export type { InternalSandboxSession };
  */
 export function buildSandboxSession(
   primitives: InternalSandboxSession,
-  setNetworkPolicy: (policy: SandboxNetworkPolicy) => Promise<void> = async () => {},
+  setNetworkPolicy?: (policy: SandboxNetworkPolicy) => Promise<void>,
 ): SandboxSession {
   async function run(options: SandboxRunOptions) {
     const process = await primitives.spawn(options);
@@ -43,8 +43,7 @@ export function buildSandboxSession(
     ]);
     return { exitCode, stderr, stdout };
   }
-  return {
-    id: primitives.id,
+  const session: { -readonly [Key in keyof SandboxSession]: SandboxSession[Key] } = {
     resolvePath(path: string): string {
       return primitives.resolvePath(path);
     },
@@ -111,8 +110,9 @@ export function buildSandboxSession(
         recursive: options.recursive,
       });
     },
-    setNetworkPolicy,
   };
+  if (setNetworkPolicy !== undefined) session.setNetworkPolicy = setNetworkPolicy;
+  return session;
 }
 
 /**

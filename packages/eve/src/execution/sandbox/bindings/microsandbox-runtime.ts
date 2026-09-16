@@ -26,12 +26,11 @@ import { adaptMicrosandboxExecToSandboxProcess } from "#execution/sandbox/bindin
 import {
   importInstalledEnginePackage,
   isEveDevEnvironment,
-  loadOptionalEnginePackage,
 } from "#internal/application/optional-package-install.js";
 import { withDevelopmentSandboxTags } from "#execution/sandbox/development-run.js";
-import type { SandboxProviderTags } from "#shared/sandbox-provider.js";
 import { WORKSPACE_ROOT } from "#runtime/workspace/types.js";
 import type { SandboxNetworkPolicy } from "#shared/sandbox-network-policy.js";
+import type { SandboxProviderHost } from "#shared/sandbox-provider.js";
 import type {
   SandboxProcess,
   SandboxRemovePathOptions,
@@ -64,7 +63,7 @@ export class MicrosandboxVm {
     readonly module: MicrosandboxModule;
     readonly options: ResolvedMicrosandboxOptions;
     readonly sessionKey: string;
-    readonly tags?: SandboxProviderTags;
+    readonly tags?: Readonly<Record<string, string>>;
   };
   #metadataPath?: string;
   #networkPolicy?: SandboxNetworkPolicy;
@@ -78,7 +77,7 @@ export class MicrosandboxVm {
       readonly module: MicrosandboxModule;
       readonly options: ResolvedMicrosandboxOptions;
       readonly sessionKey: string;
-      readonly tags?: SandboxProviderTags;
+      readonly tags?: Readonly<Record<string, string>>;
     },
     sandbox: MicrosandboxSandbox,
     sandboxName: string,
@@ -327,7 +326,7 @@ export async function createPreparedMicrosandbox(input: {
   readonly resourcesPath?: string;
   readonly sessionKey: string;
   readonly setupBaseRuntime: boolean;
-  readonly tags?: SandboxProviderTags;
+  readonly tags?: Readonly<Record<string, string>>;
 }): Promise<MicrosandboxVm> {
   const initialNetworkPolicy = input.setupBaseRuntime ? "allow-all" : input.networkPolicy;
   const sandbox = await createMicrosandbox({
@@ -374,7 +373,7 @@ export async function connectMicrosandbox(input: {
   readonly module: MicrosandboxModule;
   readonly options: ResolvedMicrosandboxOptions;
   readonly sessionKey: string;
-  readonly tags?: SandboxProviderTags;
+  readonly tags?: Readonly<Record<string, string>>;
 }): Promise<MicrosandboxVm | null> {
   let handle;
   try {
@@ -424,7 +423,7 @@ async function restoreMicrosandboxSessionSnapshot(input: {
   readonly module: MicrosandboxModule;
   readonly options: ResolvedMicrosandboxOptions;
   readonly sessionKey: string;
-  readonly tags?: SandboxProviderTags;
+  readonly tags?: Readonly<Record<string, string>>;
 }): Promise<MicrosandboxVm | null> {
   if (
     input.metadata.stateSnapshotName === undefined ||
@@ -478,7 +477,7 @@ const MICROSANDBOX_MISSING_PACKAGE_MESSAGE =
  * errors instead.
  */
 export async function loadMicrosandboxModule(input: {
-  readonly appRoot: string;
+  readonly host: SandboxProviderHost;
   readonly log?: (message: string) => void;
   readonly options: ResolvedMicrosandboxOptions;
 }): Promise<MicrosandboxModule> {
@@ -486,8 +485,7 @@ export async function loadMicrosandboxModule(input: {
   await assertMicrosandboxPlatformCandidate();
 
   const module = await withProgressHeartbeat("loading microsandbox npm package", input.log, () =>
-    loadOptionalEnginePackage<MicrosandboxModule>({
-      appRoot: input.appRoot,
+    input.host.loadOptionalPackage<MicrosandboxModule>({
       autoInstall: input.options.setup.autoInstall,
       importModule: async () => await import("microsandbox"),
       missingMessage: MICROSANDBOX_MISSING_PACKAGE_MESSAGE,
@@ -603,7 +601,7 @@ async function createMicrosandbox(input: {
   readonly networkPolicy?: SandboxNetworkPolicy;
   readonly options: ResolvedMicrosandboxOptions;
   readonly resourcesPath?: string;
-  readonly tags?: SandboxProviderTags;
+  readonly tags?: Readonly<Record<string, string>>;
   readonly user?: string;
   readonly workdir: string;
 }): Promise<MicrosandboxSandbox> {
@@ -677,7 +675,9 @@ async function removeSandboxIfExists(
   }
 }
 
-function resolveMicrosandboxLabels(tags: SandboxProviderTags | undefined): Record<string, string> {
+function resolveMicrosandboxLabels(
+  tags: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
   return {
     "eve.backend": "microsandbox",
     ...withDevelopmentSandboxTags(tags),
