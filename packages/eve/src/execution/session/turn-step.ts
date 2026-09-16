@@ -110,9 +110,6 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
 
   let durableSession = readDurableSession(input.sessionState);
   const ctx = await deserializeContext(input.serializedContext);
-  if (rawDelivery !== undefined) {
-    ctx.set(TurnTaskDeliveryKey, "none");
-  }
   const adapter = ctx.require(ChannelKey);
   const bundle = ctx.require(BundleKey);
   const effectiveAgent = resolveEffectiveAgentRuntime(bundle, ctx);
@@ -154,6 +151,8 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
     }
   }
 
+  const previousAuth = ctx.get(AuthKey);
+
   // Apply deliver-time auth ferried via `resumeHook` (initial-turn
   // input has no auth; it was seeded by buildRunContext).
   if (delivery?.auth !== undefined) {
@@ -187,18 +186,6 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       ctx.set(SessionTitleKey, title);
       await setEveAttributes({ "$eve.title": title });
     }
-  }
-
-  if (rawDelivery?.payloads.some((payload) => payload.message !== undefined)) {
-    const ids = rawDelivery.deliveryMetadata?.map((entry) => entry.deliveryId) ?? [];
-    ctx.set(
-      TurnDeliveryIdsKey,
-      initialEmissionState.turnId
-        ? [...new Set([...(ctx.get(TurnDeliveryIdsKey) ?? []), ...ids])]
-        : ids,
-    );
-  } else if (!initialEmissionState.sessionStarted && ctx.get(ChannelDeliveryKey) !== undefined) {
-    ctx.set(TurnDeliveryIdsKey, [ctx.require(ChannelDeliveryKey).deliveryId]);
   }
 
   if (rawDelivery !== undefined) {
@@ -240,6 +227,10 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
   });
   const { adapterCtx, dynamicConnections, effectiveNode, handleEvent } = sink;
   try {
+    const previousAdapterState =
+      delivery !== undefined && !isHarnessBetweenTurns(initialSession)
+        ? structuredClone(adapterCtx.state)
+        : undefined;
     // Run the adapter's deliver hook for each queued payload and coalesce
     // the resulting StepInput values; runtime results ride the same input.
     let resolved: StepInput | undefined;
@@ -263,6 +254,32 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       }
       resolved = results.length === 0 ? undefined : results.reduce(coalesceTurnInputs);
     }
+    const ignoredActiveDelivery =
+      delivery !== undefined && resolved === undefined && !isHarnessBetweenTurns(initialSession);
+    if (ignoredActiveDelivery) {
+      // The adapter sees the incoming caller, but an ignored correction must
+      // not change the identity or reply destination of the interrupted work.
+      if (previousAuth === undefined) ctx.delete(AuthKey);
+      else ctx.set(AuthKey, previousAuth);
+      adapterCtx.state = previousAdapterState!;
+    } else {
+      if (rawDelivery !== undefined) ctx.set(TurnTaskDeliveryKey, "none");
+      if (rawDelivery?.payloads.some((payload) => payload.message !== undefined)) {
+        const ids = rawDelivery.deliveryMetadata?.map((entry) => entry.deliveryId) ?? [];
+        ctx.set(
+          TurnDeliveryIdsKey,
+          initialEmissionState.turnId
+            ? [...new Set([...(ctx.get(TurnDeliveryIdsKey) ?? []), ...ids])]
+            : ids,
+        );
+      } else if (
+        !initialEmissionState.sessionStarted &&
+        ctx.get(ChannelDeliveryKey) !== undefined
+      ) {
+        ctx.set(TurnDeliveryIdsKey, [ctx.require(ChannelDeliveryKey).deliveryId]);
+      }
+    }
+
     if (runtimeResults !== undefined) {
       if (runtimeResults.acceptedAtMsByCallId !== undefined) {
         ctx.set(RuntimeActionSettlementTimesKey, runtimeResults.acceptedAtMsByCallId);
@@ -289,7 +306,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
     activityCohort.updateActivityRootForDelivery({
       activeTurnId: activeTurnId(initialEmissionState),
       ctx,
-      delivery: rawDelivery,
+      delivery: ignoredActiveDelivery ? undefined : rawDelivery,
       sessionState: durableSession.state,
       taskRootTurnId,
     });
@@ -310,7 +327,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       setChannelContext(ctx, updatedAdapter);
     }
 
-    if (delivery !== undefined && resolved === undefined) {
+    if (delivery !== undefined && resolved === undefined && isHarnessBetweenTurns(initialSession)) {
       await contextStorage.run(ctx, () =>
         instrumentation?.instrumentChannelDelivery({
           ctx,
@@ -400,6 +417,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       const modelSession = refreshedSession;
 
       const step = createExecutionNodeStep({
+        steeringSignal: input.steeringSignal,
         abortSignal: input.abortSignal,
         capabilities,
         clearOnly: input.input?.control === "clear",
@@ -427,6 +445,7 @@ async function runSessionStep(input: TurnStepInput): Promise<DurableStepResult> 
       // or the pending batch would re-park and later re-dispatch.
       throwIfTurnAborted(input.abortSignal);
       stepResult = await runModelCallBatch({
+        steeringSignal: input.steeringSignal,
         initialInput: resolved,
         initialSession,
         modelCallsPerStep,

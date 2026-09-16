@@ -71,19 +71,6 @@ export {
 } from "#harness/emission-state.js";
 export type { HarnessEmissionState } from "#harness/emission-state.js";
 
-/** Emits `session.started` once without opening a turn. */
-export async function emitSessionPreamble(
-  emitFn: HarnessEmitFn,
-  state: HarnessEmissionState,
-  runtimeIdentity?: RuntimeIdentity,
-  traceContext?: RuntimeTraceContext,
-): Promise<HarnessEmissionState> {
-  if (!state.sessionStarted) {
-    await emitFn(createSessionStartedEvent({ runtime: runtimeIdentity, trace: traceContext }));
-  }
-  return { ...state, sessionStarted: true };
-}
-
 /**
  * Emits `session.started` (once), `turn.started`, and `message.received` at the
  * beginning of a new turn. Returns updated emission state.
@@ -95,34 +82,38 @@ export async function emitTurnPreamble(
   runtimeIdentity?: RuntimeIdentity,
   traceContext?: RuntimeTraceContext,
 ): Promise<HarnessEmissionState> {
-  const started = await emitSessionPreamble(emitFn, state, runtimeIdentity, traceContext);
   // Steering re-enters an open turn: keep its id and step index and skip the
   // `turn.started` it already emitted.
-  const steering = started.turnId !== "";
-  const turnId = steering ? started.turnId : `turn_${started.sequence}`;
+  const steering = state.turnId !== "";
+  const turnId = steering ? state.turnId : `turn_${state.sequence}`;
+
+  if (!state.sessionStarted) {
+    await emitFn(createSessionStartedEvent({ runtime: runtimeIdentity, trace: traceContext }));
+  }
 
   if (!steering) {
-    await emitFn(
-      createTurnStartedEvent({ sequence: started.sequence, trace: traceContext, turnId }),
-    );
+    await emitFn(createTurnStartedEvent({ sequence: state.sequence, trace: traceContext, turnId }));
   }
 
   if (input.message !== undefined) {
     await emitFn(
       createMessageReceivedEvent({
         message: input.message,
-        sequence: started.sequence,
+        sequence: state.sequence,
         turnId,
       }),
     );
   }
 
-  return {
-    sessionStarted: started.sessionStarted,
-    sequence: started.sequence,
-    stepIndex: steering ? started.stepIndex : 0,
+  const nextState: HarnessEmissionState = {
+    sessionStarted: true,
+    sequence: state.sequence,
+    stepIndex: steering ? state.stepIndex : 0,
     turnId,
   };
+  return steering && state.assistantOutputStarted
+    ? { ...nextState, assistantOutputStarted: true }
+    : nextState;
 }
 
 /**

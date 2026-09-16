@@ -34,6 +34,7 @@ import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js
 import { serializeContext } from "#context/serialize.js";
 import { getPendingCoordinationBatch, setPendingCoordinationBatch } from "#harness/coordination.js";
 import { TurnCancelledError } from "#harness/turn-cancellation.js";
+import { setHarnessEmissionState } from "#harness/emission-state.js";
 import { getPendingAuthorization, setPendingAuthorization } from "#harness/authorization.js";
 import { getProxyInputRequests, upsertProxyInputRequests } from "#harness/proxy-input-requests.js";
 import { appendPendingInputBatch } from "#harness/input-requests.js";
@@ -1016,6 +1017,76 @@ describe("dispatchCoordinationStep", () => {
 });
 
 describe("turnStep", () => {
+  it("resumes an interrupted turn when the channel ignores the correction", async () => {
+    const originalAuth: SessionAuthContext = {
+      attributes: {},
+      authenticator: "test",
+      issuer: "test",
+      principalId: "alice",
+      principalType: "user",
+      subject: "alice",
+    };
+    const correctionAuth = { ...originalAuth, principalId: "bob", subject: "bob" };
+    const adapter: ChannelAdapter = {
+      kind: "ignore-correction",
+      state: { reply: { recipient: "alice" } },
+      deliver: (_payload, adapterCtx) => {
+        expect(adapterCtx.ctx.get(AuthKey)).toEqual(correctionAuth);
+        (adapterCtx.state.reply as { recipient: string }).recipient = "bob";
+        return undefined;
+      },
+    };
+    const bundle = Object.assign({}, createTurnStepTestBundle() as object, {
+      adapterRegistry: { adaptersByKind: new Map([[adapter.kind, adapter]]) },
+    }) as never;
+    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(bundle);
+    const emissionState = { sequence: 0, sessionStarted: true, stepIndex: 1, turnId: "turn_0" };
+    const session = setHarnessEmissionState(
+      createStubSession({ history: [{ role: "user", kind: "user", content: "Original request" }] }),
+      emissionState,
+    );
+    installSessionStoreMocks([session]);
+    const execute = vi.fn(async (current: HarnessSession): Promise<StepResult> => {
+      expect(loadContext().get(AuthKey)).toEqual(originalAuth);
+      expect(loadContext().get(TurnDeliveryIdsKey)).toEqual(["original-delivery"]);
+      expect(loadContext().get(ChannelKey)?.state).toEqual({ reply: { recipient: "alice" } });
+      return { next: { done: true, output: "Original answer" }, session: current };
+    });
+    vi.mocked(createExecutionNodeStep).mockImplementation(() => execute);
+    const ctx = new ContextContainer();
+    ctx.set(AuthKey, originalAuth);
+    ctx.set(TurnDeliveryIdsKey, ["original-delivery"]);
+    ctx.set(BundleKey, bundle);
+    ctx.set(ChannelKey, adapter);
+    ctx.set(ContinuationTokenKey, "ignore-correction");
+    ctx.set(ModeKey, "conversation");
+    ctx.set(SessionIdKey, "sess-test");
+
+    const result = await turnStep({
+      input: {
+        auth: correctionAuth,
+        kind: "deliver",
+        payloads: [{ message: "Ignored correction" }],
+        deliveryMetadata: [
+          {
+            channelKind: adapter.kind,
+            channelName: adapter.kind,
+            deliveryId: "ignored-delivery",
+            payloadIndex: 0,
+          },
+        ],
+      },
+      sessionWritable: createTestWritable(),
+      serializedContext: serializeContext(ctx),
+      sessionState: createStubSessionState({ emissionState }),
+    });
+    expect(result).toMatchObject({ action: "done", output: "Original answer" });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0]?.[0].history).toEqual(session.history);
+    expect(result.sessionState.emissionState.turnId).toBe("turn_0");
+    expect(result.serializedContext[AuthKey.name]).toEqual(originalAuth);
+    expect(result.serializedContext[TurnDeliveryIdsKey.name]).toEqual(["original-delivery"]);
+  });
   it("keeps one task stream open while hiding a scheduled fallback from delivery hooks", async () => {
     const appended: string[] = [];
     const delivered: Array<string | null> = [];
