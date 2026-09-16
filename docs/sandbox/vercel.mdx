@@ -51,10 +51,10 @@ return environment.open({
 });
 ```
 
-Credential transforms inject headers at the network boundary so the secret does not enter the sandbox process. You can call `sandbox.setNetworkPolicy()` later on a dedicated sandbox. A named shared sandbox must use one stable policy for every attached eve session.
+Credential transforms inject headers at the network boundary so the secret does not enter the sandbox process. You can call `sandbox.setNetworkPolicy()` later on the opened session sandbox.
 
 ## Live sandbox options
 
 `open()` also accepts Vercel compute resources, timeout, and Drive mounts. eve owns the persistent sandbox identity and prepared snapshot source.
 
-See the [sandbox overview](/docs/sandbox) for managed workspace, skills, sharing, and custom providers.
+See the [sandbox overview](/docs/sandbox) for managed workspace, skills, parent inheritance, and custom providers.

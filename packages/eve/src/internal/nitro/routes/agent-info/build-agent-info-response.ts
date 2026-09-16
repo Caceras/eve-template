@@ -16,7 +16,6 @@ import {
 } from "#internal/resolve-model-endpoint-status.js";
 import type { ChatGptAuthState } from "#public/models/openai/chatgpt/token-broker.js";
 import type { JsonObject, JsonValue } from "#shared/json.js";
-import { WORKFLOW_TOOL_NAME } from "#shared/workflow-sandbox.js";
 
 export type AgentInfoResponse = AgentInfoResult;
 
@@ -207,15 +206,7 @@ export function buildAgentInfoResponse(
         requiresApproval: tool.requiresApproval,
       })),
     },
-    version: 6,
-    workflow:
-      manifest.workflowTool === undefined
-        ? { enabled: false, toolName: WORKFLOW_TOOL_NAME }
-        : {
-            enabled: true,
-            source: toModuleSource(manifest, manifest.workflowTool),
-            toolName: WORKFLOW_TOOL_NAME,
-          },
+    version: 5,
     workspace: {
       resourceRoot: manifest.workspaceResourceRoot,
       rootEntries: [...manifest.workspaceResourceRoot.rootEntries],

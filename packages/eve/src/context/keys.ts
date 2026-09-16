@@ -21,7 +21,7 @@ import { ContextKey } from "#context/key.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   type SessionInboxAddress,
-} from "#execution/wire/session-inbox-contract.js";
+} from "#execution/session-inbox/address.js";
 import { SESSION_CALLBACK_CONTEXT_KEY_NAME } from "#context/key-names.js";
 import type { InstrumentationChannelDeliveryRef } from "#instrumentation/lifecycle.js";
 import type { UserModelMessage } from "#harness/messages.js";
@@ -78,6 +78,10 @@ export const SessionIdKey = new ContextKey<string>("eve.sessionId");
 export const ConversationIdKey = new ContextKey<string>("eve.conversationId");
 export const SessionInboxKey = new ContextKey<SessionInboxAddress>(SESSION_INBOX_CONTEXT_KEY);
 export const ContinuationTokenKey = new ContextKey<string>("eve.continuationToken");
+/** Every channel continuation address requested for this session, in claim order. */
+export const ContinuationHookTokensKey = new ContextKey<readonly string[]>(
+  "eve.continuationHookTokens",
+);
 export const ChannelRequestIdKey = new ContextKey<string>("eve.channelRequestId");
 /** Parent-verified local client provenance, valid only for the current dev host secret. */
 export interface LocalDevRequestProvenance {
@@ -90,6 +94,8 @@ export const LocalDevRequestKey = new ContextKey<LocalDevRequestProvenance>(
 );
 /** Authored schedule whose dispatch created this session. */
 export const ScheduleIdKey = new ContextKey<string>("eve.scheduleId");
+/** Display title derived from the session's initial input. */
+export const SessionTitleKey = new ContextKey<string>("eve.sessionTitle");
 export const ChannelDeliveryKey = new ContextKey<ChannelDeliveryMetadata>("eve.channelDelivery");
 /** Accepted messages whose response owns the current turn's durable stream events. */
 export const TurnDeliveryIdsKey = new ContextKey<readonly string[]>("eve.turnDeliveryIds");

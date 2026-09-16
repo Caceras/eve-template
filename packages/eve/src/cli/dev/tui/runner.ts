@@ -1,3 +1,4 @@
+import { SteeringStream } from "#cli/dev/tui/steering-stream.js";
 import {
   type ActionResultStreamEvent,
   type ActionsRequestedStreamEvent,
@@ -150,6 +151,7 @@ async function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export type AgentTUIStreamResult = {
+  steer?: (message: string) => Promise<void>;
   events: AsyncIterable<AgentTUIStreamEvent> | ReadableStream<AgentTUIStreamEvent>;
   abort?: () => void;
   /**
@@ -435,7 +437,7 @@ export interface PromptCommandHandler {
 
 type TuiStartup = {
   readonly headerTip: string;
-  finish(): string;
+  finish(): { draft: string; queuedPrompt: string | undefined };
 };
 
 export type EveTUIRunnerOptions = TuiDisplayOptions & {
@@ -532,6 +534,7 @@ export class EveTUIRunner {
   /** Seeds the first prompt's editable buffer. */
   readonly #initialInput?: string;
   readonly #startup?: TuiStartup;
+  #startupPrompt?: string;
   /** Explicit fresh-agent onboarding handoff from `eve init`. */
   readonly #onboard: boolean;
   readonly #onOnboardingStep?: EveTUIRunnerOptions["onOnboardingStep"];
@@ -709,7 +712,7 @@ export class EveTUIRunner {
     if (serverUrl === undefined) {
       this.#reportBeforeFirstPaint();
       if (!this.#onboard) await this.#renderSetupIssues(undefined);
-      return this.#startup?.finish() ?? this.#initialInput;
+      return this.#finishStartup();
     }
 
     let info: AgentInfoResult | undefined;
@@ -731,11 +734,17 @@ export class EveTUIRunner {
         }
       }
     }
-    const initialDraft = this.#startup?.finish() ?? this.#initialInput;
+    const initialDraft = this.#finishStartup();
     this.#reportBeforeFirstPaint();
     const headerInfo = this.#replaceAgentInfo(info);
     if (!this.#onboard) await this.#renderSetupIssues(headerInfo);
     return initialDraft;
+  }
+
+  #finishStartup(): string | undefined {
+    const startup = this.#startup?.finish();
+    this.#startupPrompt = startup?.queuedPrompt;
+    return startup?.draft ?? this.#initialInput;
   }
 
   #replaceAgentInfo(info: AgentInfoResult | undefined): AgentInfoResult | undefined {
@@ -792,6 +801,9 @@ export class EveTUIRunner {
     let followCurrentSession = false;
     let streamWithoutPrompt = false;
     let initialDraft = await this.#renderAgentHeader();
+    if (this.#startupPrompt !== undefined) {
+      prompt = this.#startupPrompt;
+    }
     if (this.#remoteConnection?.current().connection.state === "auth-required") {
       await this.#executeExtensionCommand(
         { type: "extension", name: "vc:login", argument: "" },
@@ -1519,9 +1531,8 @@ export class EveTUIRunner {
 
   /**
    * Requests cooperative cancellation of the streaming turn and retries
-   * while the turn stays live. A key-driven cancel that lands in the dispatch
-   * window — after the turn was sent but before the turn workflow claims its
-   * cancel hook (i.e. before `turn.started` reaches the client) — resolves as a
+   * while the turn stays live. A key-driven cancel that lands before the owner
+   * begins the turn (i.e. before `turn.started` reaches the client) resolves as a
    * benign `no_active_turn` and would otherwise be silently lost, leaving
    * the TUI showing "Cancelling…" while the turn runs to completion.
    * Retrying until the stream reaches its boundary closes that window.
@@ -1583,17 +1594,21 @@ export class EveTUIRunner {
     sourceSession: ClientSession | undefined,
   ): AgentTUIStreamResult {
     const turnState = createTurnState();
+    const steering =
+      sourceSession === undefined ? undefined : new SteeringStream(events, sourceSession);
     return {
+      steer: steering === undefined ? undefined : (message) => steering.send(message),
       abort: () => {
         turnState.aborted = true;
         this.#failedSession = sourceSession;
+        steering?.abort();
         abort();
       },
       cancel: () => {
         void this.#requestTurnCancellation(turnState, sourceSession);
       },
       events: eveEventsToTUIStream({
-        events,
+        events: steering ?? events,
         pendingInputRequests: this.#pendingInputRequests,
         turnState,
         onSubagentCalled: (called) => this.#subagentPump.begin(called),
@@ -2251,6 +2266,7 @@ async function* eveEventsToTUIStream(
         // Recorded so key-driven cancellation can scope its request to the
         // turn the user is watching; a cancel that arrives after the
         // boundary then no-ops instead of hitting the next turn.
+        if (event.data.turnId !== turnState.turnId) visibleTurnCompleted = false;
         turnState.turnId = event.data.turnId;
         break;
 
@@ -2547,7 +2563,7 @@ async function* eveEventsToTUIStream(
         break;
 
       case "turn.cancelled":
-        // A cooperative cancel (`/cancel`, Esc, Ctrl+C, or a steer) — not a failure.
+        // Explicit cooperative cancellation preserves the session.
         // `session.waiting` follows and finishes the stream normally.
         onTurnCancelled?.(event.data.turnId);
         yield* closeOpenParts(textParts, "assistant-complete", stepEpoch);

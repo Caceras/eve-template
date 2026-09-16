@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createFakePrompter } from "#internal/testing/fake-prompter.js";
 import type { SelfModificationSetupOperations } from "#self-modification/setup.js";
-import { headlessAsker, withAnswers } from "#setup/ask.js";
+import { headlessAsker, interactiveAsker, withAnswers } from "#setup/ask.js";
 import type { ProjectResolution } from "#setup/project-resolution.js";
 
 import { integrationSetupEnvironment } from "../shared/environment.js";
@@ -41,15 +41,17 @@ function contexts(
   project: ProjectResolution = { kind: "unresolved" },
 ) {
   const fake = createFakePrompter();
+  const resolveVercelProject = vi.fn(async () => ({ orgId: "team", projectId: "project" }));
   return {
     ...createSetupContexts({
       appRoot: "/project",
       asker: withAnswers(answers)(headlessAsker()),
       environment: integrationSetupEnvironment("authenticated", project),
       prompter: fake.prompter,
-      resolveVercelProject: async () => ({ orgId: "team", projectId: "project" }),
+      resolveVercelProject,
     }),
     note: fake.prompter.note,
+    resolveVercelProject,
   };
 }
 
@@ -66,10 +68,40 @@ describe("self-modification integration setup", () => {
     expect(effects.writeConfig).not.toHaveBeenCalled();
   });
 
+  it("offers deployed and local modes before collecting deployed settings", async () => {
+    const effects = operations();
+    const fake = createFakePrompter({
+      single: (options) => {
+        expect(options).toMatchObject({
+          message: "How should self-modification be enabled?",
+          options: [
+            { value: "deployed", label: "Enable for deployed" },
+            { value: "local", label: "Keep local" },
+          ],
+        });
+        return "local";
+      },
+    });
+    const ctx = createSetupContexts({
+      appRoot: "/project",
+      asker: interactiveAsker(fake.prompter),
+      environment: integrationSetupEnvironment("authenticated", { kind: "unresolved" }),
+      prompter: fake.prompter,
+      resolveVercelProject: async () => ({ orgId: "team", projectId: "project" }),
+    });
+
+    await expect(prepareSelfModificationSetup(ctx.prepare, effects)).resolves.toEqual({
+      kind: "local",
+    });
+    expect(effects.detectGitRepository).not.toHaveBeenCalled();
+    expect(effects.detectChannelNames).not.toHaveBeenCalled();
+  });
+
   it("prepares deployed configuration before applying connector effects", async () => {
     const effects = operations();
     const ctx = contexts(
       {
+        "self-modification-mode": "deployed",
         "self-modification-repository-owner": "acme",
         "self-modification-repository-name": "agents",
         "self-modification-repository-directory": "apps/support",
@@ -84,7 +116,15 @@ describe("self-modification integration setup", () => {
     await expect(applySelfModificationSetup(plan, ctx.apply, effects)).resolves.toMatchObject({
       deploymentRequired: true,
     });
-    expect(effects.attachConnector).toHaveBeenCalledWith("github/selfmod-acme-agents");
+    expect(ctx.resolveVercelProject).toHaveBeenCalledWith("self-modification");
+    expect(effects.findOrCreateConnector).toHaveBeenCalledWith("selfmod-acme-agents", {
+      orgId: "team",
+      projectId: "project",
+    });
+    expect(effects.attachConnector).toHaveBeenCalledWith("github/selfmod-acme-agents", {
+      orgId: "team",
+      projectId: "project",
+    });
     expect(effects.writeConfig).toHaveBeenCalledWith(
       expect.stringContaining('repository: "github.com/acme/agents"'),
     );
@@ -101,9 +141,10 @@ describe("self-modification integration setup", () => {
     );
   });
 
-  it("omits Vercel authorization when no Vercel backend is configured", async () => {
+  it("resolves a Vercel project before configuring deployed self-modification", async () => {
     const effects = operations();
     const ctx = contexts({
+      "self-modification-mode": "deployed",
       "self-modification-repository-owner": "acme",
       "self-modification-repository-name": "agents",
       "self-modification-repository-directory": "apps/support",
@@ -114,17 +155,8 @@ describe("self-modification integration setup", () => {
     const plan = await prepareSelfModificationSetup(ctx.prepare, effects);
     await applySelfModificationSetup(plan, ctx.apply, effects);
 
-    expect(effects.writeConfig).toHaveBeenCalledWith(expect.not.stringContaining('case "http"'));
-    expect(effects.writeConfig).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "switch (channel.kind) {\n        default:\n          // Add another branch when you add a trusted channel.",
-      ),
-    );
-    expect(ctx.note).toHaveBeenCalledWith(
-      expect.stringContaining("configure `deployed.authorize`"),
-      "Next steps",
-      { tone: "success" },
-    );
+    expect(ctx.resolveVercelProject).toHaveBeenCalledWith("self-modification");
+    expect(effects.writeConfig).toHaveBeenCalledWith(expect.stringContaining('case "http"'));
   });
 
   it("registers the production setup separately from local setup", () => {

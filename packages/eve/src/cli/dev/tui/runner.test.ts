@@ -2032,7 +2032,7 @@ describe("EveTUIRunner initial input", () => {
     const client = stubClient();
     vi.spyOn(client, "info").mockReturnValue(info.promise);
     const startup = {
-      finish: vi.fn(() => "typed while loading"),
+      finish: vi.fn(() => ({ draft: "typed while loading", queuedPrompt: undefined })),
       headerTip: "Use the /help command to see every command.",
     };
     const renderer = fakeRenderer();
@@ -2053,6 +2053,37 @@ describe("EveTUIRunner initial input", () => {
     expect(startup.finish).toHaveBeenCalledOnce();
     expect(renderer.readPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ initialDraft: "typed while loading" }),
+    );
+  });
+
+  it("sends startup messages queued while the agent builds", async () => {
+    const client = stubClient();
+    vi.spyOn(client, "info").mockResolvedValue(AGENT_INFO);
+    const session = sessionYielding([{ type: "session.waiting" }]);
+    const startup = {
+      finish: vi.fn(() => ({
+        draft: "still editing",
+        queuedPrompt: "first message\n\nsecond message",
+      })),
+      headerTip: "Use the /help command to see every command.",
+    };
+    const renderer = fakeRenderer();
+    const runner = new EveTUIRunner({
+      session,
+      client,
+      renderer,
+      serverUrl: "http://localhost:3000",
+      startup,
+    });
+
+    await runner.run();
+
+    expect(session.send).toHaveBeenCalledWith(
+      "first message\n\nsecond message",
+      expect.objectContaining({ turnPolicy: "queue" }),
+    );
+    expect(renderer.readPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ initialDraft: "still editing" }),
     );
   });
 
@@ -2387,6 +2418,56 @@ describe("EveTUIRunner failure rendering", () => {
 });
 
 describe("EveTUIRunner reused step indexes", () => {
+  it("renders a follow-up turn carried by the same steering stream", async () => {
+    const prompts: Array<string | undefined> = ["start", undefined];
+    const emitted: AgentTUIStreamEvent[] = [];
+    const session = sessionYielding([
+      { type: "turn.started", data: { sequence: 0, turnId: "turn_0" } },
+      { type: "step.started", data: { sequence: 0, stepIndex: 0, turnId: "turn_0" } },
+      {
+        type: "message.completed",
+        data: {
+          finishReason: "stop",
+          message: "First answer.",
+          sequence: 0,
+          stepIndex: 0,
+          turnId: "turn_0",
+        },
+      },
+      { type: "turn.completed", data: { sequence: 0, turnId: "turn_0" } },
+      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
+      { type: "step.started", data: { sequence: 1, stepIndex: 0, turnId: "turn_1" } },
+      {
+        type: "message.completed",
+        data: {
+          finishReason: "stop",
+          message: "Follow-up answer.",
+          sequence: 1,
+          stepIndex: 0,
+          turnId: "turn_1",
+        },
+      },
+      { type: "turn.completed", data: { sequence: 1, turnId: "turn_1" } },
+      { type: "session.waiting", data: { wait: "next-user-message" } },
+    ]);
+    const renderer: AgentTUIRenderer = {
+      readPrompt: vi.fn(async () => prompts.shift()),
+      renderStream: vi.fn(async (result) => {
+        for await (const event of result.events as AsyncIterable<AgentTUIStreamEvent>) {
+          emitted.push(event);
+        }
+      }),
+    };
+
+    await new EveTUIRunner({ session, renderer, name: "Weather Agent" }).run();
+
+    expect(
+      emitted.flatMap((event) =>
+        event.type === "assistant-complete" && event.text !== undefined ? [event.text] : [],
+      ),
+    ).toEqual(["First answer.", "Follow-up answer."]);
+  });
+
   it("renders the post-subagent message that the harness emits under a reused stepIndex", async () => {
     // Mirrors the real parent stream around a subagent dispatch: the second
     // model call arrives under a fresh `step.started` but the SAME
@@ -4326,8 +4407,7 @@ describe("EveTUIRunner mid-turn message queue", () => {
         gate.resolve();
         return { sessionId: "session_test", status: "accepted" as const };
       }
-      // The first request raced the dispatch window: the turn workflow has
-      // not claimed its cancel hook yet, so the server reports no turn.
+      // The first request arrived before the owner began the turn.
       return { status: "no_active_turn" as const };
     });
     const prompts: Array<string | undefined> = ["hello", undefined];
@@ -4456,7 +4536,7 @@ describe("EveTUIRunner session id reporting", () => {
 });
 
 describe("EveTUIRunner cancelled-turn subagent settling", () => {
-  it("settles subagent sections when the turn is cancelled by a steer", async () => {
+  it("settles subagent sections when the turn is explicitly cancelled", async () => {
     // A child stream that never ends on its own — it only stops when the
     // pump aborts it (the scoped cancellation path under test).
     const client = stubClient();

@@ -14,6 +14,7 @@ import {
   ParentSessionKey,
   SandboxKey,
 } from "#context/keys.js";
+import { ConversationContextKey } from "#shared/conversation-context.js";
 import { ContextContainer } from "#context/container.js";
 import { withContextScope } from "#context/run-step.js";
 import {
@@ -57,7 +58,7 @@ export type DispatchPlanEntry =
 export interface CoordinationDispatchInput {
   readonly callbackBaseUrl?: string;
   readonly workflowToolRunOwner: WorkflowToolRunOwner;
-  readonly parentWritable: WritableStream<Uint8Array>;
+  readonly sessionWritable: WritableStream<Uint8Array>;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }
@@ -82,6 +83,9 @@ export interface PreparedCoordinationDispatch<PlanEntry = DispatchPlanEntry> {
   readonly bundle: CompiledBundle;
   readonly capabilities: Parameters<typeof buildSubagentRunInput>[0]["capabilities"];
   readonly channelMetadata: Parameters<typeof buildSubagentRunInput>[0]["channelMetadata"];
+  readonly inheritedConversation: Parameters<
+    typeof buildSubagentRunInput
+  >[0]["inheritedConversation"];
   /** Number of local children sharing the parent's remaining token quota. */
   readonly fanoutSize: number;
   readonly initiatorAuth: Parameters<typeof buildSubagentRunInput>[0]["initiatorAuth"];
@@ -109,7 +113,7 @@ export async function prepareCoordinationDispatch(input: {
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): Promise<PreparedCoordinationDispatch | undefined> {
-  const durableSession = await readDurableSession(input.sessionState);
+  const durableSession = readDurableSession(input.sessionState);
   const pending = getPendingCoordinationBatch(durableSession.state);
 
   if (pending === undefined) return undefined;
@@ -168,7 +172,7 @@ export async function prepareActionDispatch<PlanEntry>(input: {
     readonly requests: DispatchBatch["requests"];
     readonly session: RuntimeSession;
   }) => readonly PlanEntry[];
-  readonly planSharesSandbox?: (input: {
+  readonly planReusesOwnerSandbox?: (input: {
     readonly bundle: CompiledBundle;
     readonly plan: readonly PlanEntry[];
   }) => boolean;
@@ -200,7 +204,7 @@ export async function prepareActionDispatch<PlanEntry>(input: {
   });
 
   const sandboxSessionId = resolveActiveSandboxSessionId(adapter.state, session.sessionId);
-  if (input.planSharesSandbox?.({ bundle, plan }) === true) {
+  if (input.planReusesOwnerSandbox?.({ bundle, plan }) === true) {
     try {
       const scoped = await withContextScope(ctx, session, async (enrichedSession) => {
         await ctx.require(SandboxKey).get();
@@ -220,6 +224,7 @@ export async function prepareActionDispatch<PlanEntry>(input: {
     bundle,
     capabilities: ctx.get(CapabilitiesKey),
     channelMetadata: ctx.get(ChannelInstrumentationKey),
+    inheritedConversation: ctx.get(ConversationContextKey),
     fanoutSize: input.fanoutSize ?? batch.localFanoutSize ?? 0,
     initiatorAuth: ctx.get(InitiatorAuthKey) ?? null,
     localDevRequest: ctx.get(LocalDevRequestKey),

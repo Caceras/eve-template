@@ -103,6 +103,7 @@ import {
   type ProviderPickerEvent,
 } from "./provider-picker.js";
 import { buildAgentHeader } from "./agent-header.js";
+import { detectMarkdownRendering } from "./markdown.js";
 import {
   EMPTY_LINE,
   PromptHistory,
@@ -288,6 +289,7 @@ export type TerminalRendererOptions = {
   logs?: LogDisplayMode;
   color?: boolean;
   unicode?: boolean;
+  renderMarkdown?: boolean;
   /** The process's diagnostics recorder (log, dump, stats); local sessions only. */
   diagnostics?: DevDiagnostics;
   /** Slash commands available in this local or remote session. */
@@ -367,6 +369,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
   readonly #live: LiveRegion;
   readonly #altScreen: AltScreen;
   readonly #theme: Theme;
+  readonly #renderMarkdown: boolean;
   readonly #tools: TerminalPartDisplayMode;
   readonly #reasoning: TerminalPartDisplayMode;
   readonly #subagents: TerminalPartDisplayMode;
@@ -565,6 +568,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
   readonly #messageQueue = new MessageQueue();
   /** The streaming result's cooperative cancel, available to Esc and Ctrl+C. */
   #requestTurnCancel?: () => void;
+  #sendSteering?: (message: string) => Promise<void>;
   /** Set by the `turn-cancelled` stream event: settle in-flight tool blocks. */
   #turnCancelled = false;
   /** Server session id backing the conversation; named in the parting line. */
@@ -575,7 +579,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
    * the user block can carry its steer/queue gutter arrow.
    */
   #nextSubmittedPromptOrigin?: "steer" | "queue";
-  /** True once this stream's prompt requested cancellation or steering. */
+  /** True once this stream's prompt requested cancellation. */
   #cancelRequestedByUser = false;
   /** The prompt submitted for the streaming turn, for external-cancel recovery. */
   #currentSubmittedPrompt?: string;
@@ -629,6 +633,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
       color: options?.color ?? true,
       unicode: options?.unicode ?? detectUnicode(),
     });
+    this.#renderMarkdown = options?.renderMarkdown ?? detectMarkdownRendering();
     this.#tools = options?.tools ?? "auto-collapsed";
     this.#reasoning = options?.reasoning ?? "auto-collapsed";
     this.#subagents = options?.subagents ?? "auto-collapsed";
@@ -694,19 +699,26 @@ export class TerminalRenderer implements AgentTUIRenderer {
         apply(edited);
         return;
       }
+      if (key.type === "enter" && editor.text.trim().length > 0) {
+        if (this.#messageQueue.enqueue(editor.text)) apply(EMPTY_LINE);
+        return;
+      }
       if (key.type === "ctrl-c") this.#onExitRequest?.();
     };
     this.#attachInput();
   }
 
-  finishStartupDraft(): string {
-    const draft = this.#inputText;
+  finishStartupDraft(): { draft: string; queuedPrompt: string | undefined } {
+    const result = {
+      draft: this.#inputText,
+      queuedPrompt: this.#messageQueue.takePrompt(),
+    };
     this.#detachInput();
     this.#stopCaretBlink();
     this.#inputActive = false;
     this.#startupHeader = undefined;
     this.#promptPlaceholderActive = false;
-    return draft;
+    return result;
   }
 
   async readPrompt(options?: AgentTUISessionOptions): Promise<string> {
@@ -944,6 +956,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
     this.#currentSubmittedPrompt = options?.submittedPrompt;
     this.#messageQueue.beginTurn();
     this.#requestTurnCancel = result.cancel;
+    this.#sendSteering = result.steer;
     this.#totalTokens = undefined;
     this.#promptTokens = undefined;
     this.#assistantOutputTokens = undefined;
@@ -993,6 +1006,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
       this.#resolveStreamInterrupt = undefined;
       if (this.#interrupted) result.abort?.();
       this.#requestTurnCancel = undefined;
+      this.#sendSteering = undefined;
       this.#detachInput();
       this.#stopTicker();
       this.#streamDraftActive = false;
@@ -1455,7 +1469,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
     }
 
     const status = subagentToolStatus(update.status);
-    // Subagents share the session's sandbox, so their reads and writes feed
+    // Subagents reuse the session's sandbox, so their reads and writes feed
     // the same file-content cache and their write blocks diff the same way.
     const presentation =
       update.status === "preparing"
@@ -1565,7 +1579,9 @@ export class TerminalRenderer implements AgentTUIRenderer {
     header.status = "running";
     header.live = true;
     header.updateSeq = ++this.#updateSequence;
+    const wasBackground = this.#backgroundSubagentCallIds.has(update.callId);
     this.#backgroundSubagentCallIds.add(update.callId);
+    if (!wasBackground) this.#moveSubagentCohortToBackgroundTail(update.callId);
     this.#paint();
   }
 
@@ -3227,14 +3243,27 @@ export class TerminalRenderer implements AgentTUIRenderer {
           this.#paint();
           break;
         }
-        // Esc and Ctrl+C drive steering and cancellation: pop the oldest
-        // queued message and cancel the running turn so the runner submits it
-        // as the replacement turn; with nothing queued, cancel immediately.
+        // Send queued input through the active session. With nothing queued,
+        // the same keys request explicit cancellation.
         // Without a cancel capability an empty queue leaves either key inert.
         if (this.#messageQueue.idle && this.#requestTurnCancel === undefined) break;
-        this.#messageQueue.handleEscape();
-        this.#cancelRequestedByUser = true;
-        this.#requestTurnCancel?.();
+        const outcome = this.#messageQueue.handleEscape();
+        if (outcome === "steer") {
+          const send = this.#sendSteering;
+          if (send !== undefined) {
+            const message = this.#messageQueue.takeSteering()!;
+            this.#nextSubmittedPromptOrigin = "steer";
+            this.#addSubmittedPrompt(message);
+            void send(message).catch((error) => {
+              this.#messageQueue.restoreSteering(message);
+              this.#addErrorBlock("Steering failed", toErrorMessage(error));
+              this.#paint();
+            });
+          }
+        } else {
+          this.#cancelRequestedByUser = true;
+          this.#requestTurnCancel?.();
+        }
         this.#paint();
         break;
       }
@@ -3482,6 +3511,18 @@ export class TerminalRenderer implements AgentTUIRenderer {
   #removeBlock(id: string) {
     this.#blocks = this.#blocks.filter((candidate) => candidate.id !== id);
     this.#blockById.delete(id);
+  }
+
+  /**
+   * Background children may outlive several foreground turns. Keep their
+   * mutable cohort at the live edge so it cannot hold those settled turns in
+   * the renderer's leading-prefix commit queue.
+   */
+  #moveSubagentCohortToBackgroundTail(callId: string): void {
+    const cohort = this.#blocks.filter((block) => block.subagentCallId === callId);
+    if (cohort.length === 0) return;
+    this.#blocks = this.#blocks.filter((block) => block.subagentCallId !== callId);
+    this.#blocks.push(...cohort);
   }
 
   #finalizeAllBlocks() {
@@ -4097,6 +4138,7 @@ export class TerminalRenderer implements AgentTUIRenderer {
 
   #renderBlock(block: DisplayBlock, width: number, previous: PreviousBlock | undefined): string[] {
     const context: Parameters<typeof renderBlockLines>[3] = {
+      renderMarkdown: this.#renderMarkdown,
       activityPulse: this.#progressPulseGlyph(
         this.#activityPulseStartedAtMs,
         this.#theme.unicode ? PROGRESS_PULSE_GLYPH : PROGRESS_PULSE_ASCII_GLYPH,

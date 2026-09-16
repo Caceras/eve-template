@@ -71,8 +71,7 @@ export function createTestAgentInfoResult(
     skills: { dynamic: [], static: [] },
     subagents: { local: [], total: 0 },
     tools: { dynamic: [], static: [] },
-    version: 6,
-    workflow: { enabled: false, toolName: "Workflow" },
+    version: 5,
     workspace: { resourceRoot: null, rootEntries: [] },
   };
 }

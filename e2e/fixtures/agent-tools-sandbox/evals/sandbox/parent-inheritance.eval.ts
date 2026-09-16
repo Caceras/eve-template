@@ -16,7 +16,7 @@ export default defineEval({
     parentWrite.expectOk();
 
     const childTurn = await t.send(
-      `Ask the \`shared-sandbox\` subagent with message: ` +
+      `Ask the \`parent-sandbox\` subagent with message: ` +
         `Run the bash command \`cat ${PARENT_PATH} && printf %s ${CHILD_TOKEN} > ${CHILD_PATH}\` ` +
         "and reply with the command output verbatim.",
     );

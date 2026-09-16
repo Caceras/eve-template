@@ -1075,7 +1075,7 @@ describe("createVercelSandbox", () => {
     expect(templateSandbox.delete).not.toHaveBeenCalled();
   });
 
-  it("rebuilds a Vercel template when the named sandbox disappears during prewarm", async () => {
+  it("rebuilds a Vercel template when the provider template sandbox disappears", async () => {
     const staleTemplate = createMockSandbox({ name: "template-key" });
     const freshTemplate = createMockSandbox({ name: "template-key" });
     const missingTemplateError = Object.assign(new Error("Status code 404 is not ok"), {

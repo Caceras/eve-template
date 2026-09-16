@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { defaultEveAudience } from "#eve-channel/audience.js";
 import { createLocalTracesProcessor, resolveLocalTracesContent } from "#tracing/local-traces.js";
 import { localTracePolicy } from "#tracing/local-instrumentation-runtime.js";
+import { resolveTracePolicy } from "#tracing/sampled-trace.js";
 import { localTraces } from "#public/instrumentation/otel.js";
 
 vi.mock("#tracing/local-trace-span-processor.js", () => ({
@@ -29,6 +31,15 @@ function agentSpan(sessionId: string, traceId: string): unknown {
     spanContext: () => ({ traceId }),
   };
 }
+
+const traceContext = (audience: "public" | "private" | "unknown") => ({
+  agentName: "weather",
+  audience,
+  channel: { kind: "http" as const },
+  environment: "development" as const,
+  mode: "conversation" as const,
+  principalType: "user",
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -100,16 +111,31 @@ describe("resolveLocalTracesContent", () => {
 });
 
 describe("localTracePolicy", () => {
-  it.each([
-    ["public", true],
-    ["unknown", true],
-    ["private", false],
-  ] as const)("accepts the %s audience: %s", (audience, accepted) => {
-    expect(
-      localTracePolicy({
-        agentName: "weather",
-        audience,
-      }),
-    ).toBe(accepted);
+  it("records an authenticated development session classified as private", () => {
+    const audience = defaultEveAudience({
+      auth: {
+        attributes: {},
+        authenticator: "vercel-oidc",
+        principalType: "user",
+      },
+      caller: {
+        type: "principal",
+        principal: {
+          attributes: {},
+          authenticator: "vercel-oidc",
+          kind: "user",
+        },
+      },
+      channel: { kind: "http" },
+      environment: "development",
+      mode: "conversation",
+    });
+
+    expect(audience).toBe("private");
+    expect(resolveTracePolicy(localTracePolicy, traceContext(audience))).toEqual({
+      action: "record",
+      recordInputs: true,
+      recordOutputs: true,
+    });
   });
 });

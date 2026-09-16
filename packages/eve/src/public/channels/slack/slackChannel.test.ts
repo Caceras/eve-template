@@ -9,7 +9,6 @@ import type { ChannelFrom, ChannelSource } from "#channel/channel-operations.js"
 import { isHttpRouteDefinition } from "#channel/routes.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { SessionKey } from "#context/keys.js";
-import { sessionInboxWire } from "#execution/wire/session-inbox-encoder.js";
 import {
   mockChannelContext,
   type ObservedChannelDelivery,
@@ -64,6 +63,12 @@ function slackRespondTypeChecks(
 }
 
 void slackRespondTypeChecks;
+
+slackChannel({
+  events: {
+    "input.requested"(_event, _channel, _ctx) {},
+  },
+});
 
 function getAdapter(channel: unknown): ChannelAdapter<any> {
   if (!isCompiledChannel(channel)) {
@@ -163,7 +168,7 @@ function callCompletionHandler(
 
 /**
  * Accessor whose `set` writes are captured so tests can assert on
- * `continuation.rekey` flowing through the SessionHandle. Returns
+ * `continuation.alias` flowing through the SessionHandle. Returns
  * undefined for unset keys (matching the real `ContextContainer`
  * behavior), while seeding the current continuation token so
  * SessionHandle can preserve the runtime namespace.
@@ -428,12 +433,19 @@ describe("slackChannel()", () => {
     expect(channel).toMatchObject({ turnPolicy: "queue" });
   });
 
-  it("projects the durable audience into instrumentation metadata", () => {
+  it("classifies from durable state through the audience hook", () => {
     const adapter = withState(getAdapter(slackChannel()), { audience: "private" });
 
-    expect(adapter.instrumentation?.metadata?.(adapter.state)).toMatchObject({
-      audience: "private",
-    });
+    expect(
+      adapter.instrumentation?.audience?.({
+        auth: null,
+        caller: { type: "anonymous" },
+        channel: { kind: "channel:slack" },
+        environment: "production",
+        mode: "conversation",
+        state: adapter.state,
+      }),
+    ).toBe("private");
   });
 });
 
@@ -710,6 +722,86 @@ describe("slackChannel() default event handlers", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe("https://slack.com/api/assistant.threads.setStatus");
     expect(parseSlackRequestBody(init as RequestInit)).toMatchObject({ status: "" });
+  });
+
+  it("lets an input override delegate selected requests to default delivery", async () => {
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const operation = String(input).split("/").at(-1);
+      if (operation === "conversations.open") {
+        return Response.json({ channel: { id: "D01" }, ok: true });
+      }
+      if (operation === "chat.getPermalink") {
+        return Response.json({ ok: true, permalink: "https://example.slack.com/message" });
+      }
+      if (operation === "chat.postMessage") {
+        return Response.json({ ok: true, ts: "1700000001.000001" });
+      }
+      throw new Error(`Unexpected Slack request: ${String(input)} ${String(init?.body)}`);
+    });
+    const customPrompts: string[] = [];
+    const adapter = withState(
+      getAdapter(
+        slackChannel({
+          approvalChannel: (request) =>
+            request.prompt.startsWith("Sensitive") ? "direct-message" : "thread",
+          credentials: { botToken: "xoxb-test" },
+          events: {
+            async "input.requested"(event, _channel, _ctx, defaultDeliver) {
+              const privateRequests = event.requests.filter((request) =>
+                request.prompt.startsWith("Sensitive"),
+              );
+              customPrompts.push(
+                ...event.requests
+                  .filter((request) => !privateRequests.includes(request))
+                  .map((request) => request.prompt),
+              );
+              await defaultDeliver({ ...event, requests: privateRequests });
+            },
+          },
+        }),
+      ),
+      {
+        ...THREAD_STATE,
+        triggeringMessageTs: "1700000000.000002",
+        triggeringUserId: "U01",
+      },
+    );
+    const ctx = buildAdapterContext(adapter, stubAccessor());
+
+    await callEvent(
+      adapter,
+      makeEvent("input.requested", {
+        requests: [
+          {
+            allowFreeform: true,
+            display: "select",
+            kind: "question",
+            prompt: "Ordinary follow-up",
+            requestId: "ordinary",
+          },
+          {
+            allowFreeform: false,
+            display: "select",
+            kind: "question",
+            options: [{ id: "approve", label: "Approve" }],
+            prompt: "Sensitive review",
+            requestId: "sensitive",
+          },
+        ],
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "t1",
+      }),
+      ctx,
+    );
+
+    expect(customPrompts).toEqual(["Ordinary follow-up"]);
+    const posts = fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith("/chat.postMessage"))
+      .map(([, init]) => parseSlackRequestBody(init as RequestInit));
+    expect(posts.some((body) => body.channel === "D01")).toBe(true);
+    expect(JSON.stringify(posts)).toContain("eve_input:route:C01:1700000000.000001:sensitive");
+    expect(posts.some((body) => JSON.stringify(body).includes("Ordinary follow-up"))).toBe(false);
   });
 
   it("input.requested keeps tool input out of the interactive approval message", async () => {
@@ -1528,7 +1620,7 @@ describe("rebuildSlackContext", () => {
     expect("threadId" in ctx.thread).toBe(false);
   });
 
-  it("auto-anchors state.threadTs and re-keys the session on the first post", async () => {
+  it("auto-anchors state.threadTs and adds an alias for the session on the first post", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true, ts: "1800000000.123456" }), {
         headers: { "content-type": "application/json" },
@@ -1566,7 +1658,7 @@ describe("rebuildSlackContext", () => {
     expect((adapter.state as { threadTs: string | null }).threadTs).toBe("1800000000.123456");
 
     // The anchor moment wrote the new continuation token to context
-    // via `session.continuation.rekey(...)`. The workflow body picks
+    // via `session.continuation.alias(...)`. The workflow body picks
     // this up via `reconcileSessionContinuationToken` after the step.
     const tokenWrites = writes.filter(([key]) => key === "eve.continuationToken");
     expect(tokenWrites).toEqual([["eve.continuationToken", "slack:C01:1800000000.123456"]]);
@@ -1593,7 +1685,7 @@ describe("rebuildSlackContext", () => {
     const secondBody = parseSlackRequestBody(fetchMock.mock.calls[1]![1] as RequestInit);
     expect(secondBody.thread_ts).toBe("1800000000.123456");
 
-    // Once anchored, continuation.rekey does not fire again — the
+    // Once anchored, continuation.alias does not fire again — the
     // raw token is unchanged across subsequent posts.
     const allTokenWrites = writes.filter(([key]) => key === "eve.continuationToken");
     expect(allTokenWrites).toHaveLength(1);
@@ -1889,7 +1981,6 @@ describe("slackChannel() inbound mention pipeline", () => {
       }),
       message: "Imperative follow-up",
       state: {
-        audience: "unknown",
         channelId: "C_BOUND",
         installationTeamId: null,
         teamId: "T01",
@@ -3370,16 +3461,6 @@ describe("slackChannel() HITL interaction pipeline", () => {
       state: {
         approvalResponderUsers: { "slack:T_ACTOR:U_APPROVER": "U_APPROVER" },
       },
-    });
-    expect(
-      sessionInboxWire.encode(
-        { kind: "send", payload: { inputResponses: input.inputResponses } },
-        { version: 1 },
-      ),
-    ).toMatchObject({
-      kind: "deliver",
-      payloads: [{ inputResponses: [{ optionId: "approve", requestId: "approval_abc123" }] }],
-      version: 1,
     });
   });
 

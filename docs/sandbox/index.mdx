@@ -169,7 +169,7 @@ export const AcmeSandbox = defineSandboxProvider<
       },
 
       async open(ctx, source) {
-        const remote = await client.getOrCreate({
+        const remote = await client.open({
           existingId: ctx.instance.kind === "restore" ? ctx.instance.metadata.remoteId : undefined,
           name: ctx.instance.name,
           networkPolicy: ctx.options.networkPolicy,

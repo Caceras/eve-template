@@ -25,18 +25,19 @@ export const sandboxProvider: FrameworkContextProvider<SandboxAccess> = {
     const adapterState = channel?.state as Record<string, unknown> | undefined;
     const parentSandboxState = adapterState?.parentSandboxState as SandboxState | undefined;
     const inheritsParent = registry.sandbox?.definition.kind === "parent";
-    const sharedSandboxSessionId = adapterState?.sandboxSessionId as string | undefined;
-    const sharesSandbox = inheritsParent || sharedSandboxSessionId !== undefined;
-    const sandboxSessionId = sharesSandbox ? (sharedSandboxSessionId ?? sessionId) : sessionId;
+    const ownerSandboxSessionId = adapterState?.sandboxSessionId as string | undefined;
+    const reusesOwnerSandbox = inheritsParent || ownerSandboxSessionId !== undefined;
+    const sandboxSessionId = reusesOwnerSandbox ? (ownerSandboxSessionId ?? sessionId) : sessionId;
 
     return {
       value: await ensureSandboxAccess({
         compiledArtifactsSource: bundle.compiledArtifactsSource,
         nodeId: node.nodeId,
-        ownsSandbox: !sharesSandbox,
+        ownsSandbox: !reusesOwnerSandbox,
         registry,
         sessionId: sandboxSessionId,
-        state: session.sandboxState ?? (sharesSandbox ? parentSandboxState : undefined) ?? null,
+        state:
+          session.sandboxState ?? (reusesOwnerSandbox ? parentSandboxState : undefined) ?? null,
         tags: {
           agent: resolveTagAgentName({ bundle, node }),
           channel: resolveTagChannelKind(channel),

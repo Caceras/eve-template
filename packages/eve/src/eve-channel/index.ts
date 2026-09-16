@@ -1,10 +1,9 @@
+import { handleExpiredLegacyAuthorization } from "#execution/legacy-session/authorization.js";
+import { EVE_ROUTE_PREFIX } from "#protocol/routes.js";
 import type { SessionAuthContext, SessionParent, SessionTraceContext } from "#channel/types.js";
 import type { Session } from "#channel/session.js";
 import { resolveForwardedPrincipal } from "#channel/forwarded-principal.js";
-import {
-  handleConnectionCallbackRequest,
-  handleLegacyConnectionCallbackRequest,
-} from "#execution/connections/callback-route.js";
+import { handleConnectionCallbackRequest } from "#execution/connections/callback-route.js";
 import { handleActivityRequest } from "#execution/activity-route.js";
 import { handleSessionCallbackRequest } from "#subagents/callback-route.js";
 import { handleTaskInputResponseRequest } from "#execution/task-input-response-route.js";
@@ -31,7 +30,6 @@ import {
   EVE_CONNECTION_CALLBACK_ROUTE_PATTERN,
   EVE_HEALTH_ROUTE_PATH,
   EVE_INFO_ROUTE_PATH,
-  EVE_LEGACY_CONNECTION_CALLBACK_ROUTE_PATTERN,
   EVE_SESSION_ROUTE_PATH,
   EVE_SESSION_CANCEL_ROUTE_PATTERN,
   EVE_SESSION_CLEAR_ROUTE_PATTERN,
@@ -59,6 +57,7 @@ import {
   formatTraceContentCeiling,
 } from "#shared/forwarded-trace-policy.js";
 import { routeAuth } from "#public/channels/auth.js";
+import { defaultEveAudience } from "#eve-channel/audience.js";
 import { mergeUploadPolicy } from "#public/channels/upload-policy.js";
 import { defineChannel, DELETE, GET, HEAD, PATCH, POST, PUT } from "#public/definitions/channel.js";
 import {
@@ -104,6 +103,10 @@ export function eveChannel(input: EveChannelInput): EveChannel {
   return defineChannel<undefined, EveEventContext>({
     cors: normalizeEveCors(input.cors),
     turnPolicy: input.turnPolicy,
+    audience: (classifierInput) => {
+      const audience = input.audience ?? defaultEveAudience;
+      return typeof audience === "function" ? audience(classifierInput) : audience;
+    },
     routes: [
       GET(EVE_HEALTH_ROUTE_PATH, async () => healthResponse()),
       HEAD(EVE_HEALTH_ROUTE_PATH, async () => healthResponse()),
@@ -123,10 +126,16 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         return await respond();
       }),
 
+      GET(
+        `${EVE_ROUTE_PREFIX}/connections/:name/callback/:token`,
+        handleExpiredLegacyAuthorization,
+      ),
+      POST(
+        `${EVE_ROUTE_PREFIX}/connections/:name/callback/:token`,
+        handleExpiredLegacyAuthorization,
+      ),
       GET(EVE_CONNECTION_CALLBACK_ROUTE_PATTERN, handleConnectionCallbackRequest),
       POST(EVE_CONNECTION_CALLBACK_ROUTE_PATTERN, handleConnectionCallbackRequest),
-      GET(EVE_LEGACY_CONNECTION_CALLBACK_ROUTE_PATTERN, handleLegacyConnectionCallbackRequest),
-      POST(EVE_LEGACY_CONNECTION_CALLBACK_ROUTE_PATTERN, handleLegacyConnectionCallbackRequest),
       POST(EVE_ACTIVITY_ROUTE_PATTERN, handleActivityRequest),
       POST(EVE_CALLBACK_ROUTE_PATTERN, handleSessionCallbackRequest),
       POST(EVE_TASK_INPUT_ROUTE_PATTERN, handleTaskInputResponseRequest),
@@ -295,6 +304,7 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         try {
           handle = await createSession({
             activityObserver: body.activityObserver,
+            audienceAuth: authResult,
             auth: messageResult.auth,
             capabilities:
               body.capabilities ?? (body.mode === "task" ? undefined : { requestInput: true }),

@@ -1309,6 +1309,54 @@ describe("TerminalRenderer (inline scrollback)", () => {
     renderer.shutdown();
   });
 
+  it("commits completed foreground turns ahead of a live background subagent", async () => {
+    const { screen, renderer } = makeRenderer(48, 8);
+    renderer.renderAgentHeader({ name: "Weather Agent", serverUrl: "http://localhost:3000" });
+    renderer.beginSubagent({ callId: "background", name: "researcher" });
+    // These settled blocks arrive before the parent reports that the child
+    // is background work. Reclassifying the child must release them from its
+    // formerly leading live cohort.
+    renderer.renderNotice("EARLY_SETTLED_FOREGROUND_ONE");
+    renderer.renderNotice("EARLY_SETTLED_FOREGROUND_TWO");
+    renderer.backgroundSubagent({ callId: "background" });
+    renderer.upsertSubagentStep({
+      callId: "background",
+      subagentName: "researcher",
+      sectionKey: 0,
+      reasoning: "",
+      message: "still researching background details",
+      finalized: false,
+    });
+
+    await renderer.renderStream(
+      streamOf([
+        { type: "assistant-complete", id: "answer-1", text: "FIRST_COMPLETED_ANSWER" },
+        { type: "finish" },
+      ]),
+      { continueSession: true, submittedPrompt: "FIRST_COMPLETED_PROMPT" },
+    );
+    await renderer.renderStream(
+      streamOf([
+        { type: "assistant-complete", id: "answer-2", text: "SECOND_COMPLETED_ANSWER" },
+        { type: "finish" },
+      ]),
+      { continueSession: true, submittedPrompt: "SECOND_COMPLETED_PROMPT" },
+    );
+
+    const transcript = screen.snapshot();
+    expect(transcript).toContain("EARLY_SETTLED_FOREGROUND_ONE");
+    expect(transcript).toContain("EARLY_SETTLED_FOREGROUND_TWO");
+    expect(transcript).toContain("FIRST_COMPLETED_PROMPT");
+    expect(transcript).toContain("FIRST_COMPLETED_ANSWER");
+    expect(transcript).toContain("SECOND_COMPLETED_PROMPT");
+    expect(transcript).toContain("SECOND_COMPLETED_ANSWER");
+    expect(transcript).toContain("still researching background details");
+
+    renderer.completeSubagent({ authoritative: true, callId: "background" });
+    expect(screen.snapshot()).not.toContain("hidden while streaming");
+    renderer.shutdown();
+  });
+
   it("keeps parent completion provisional until delayed child output reaches its boundary", async () => {
     const { screen, input, renderer } = makeRenderer();
     renderer.renderAgentHeader({ name: "Weather Agent", serverUrl: "http://localhost:3000" });
@@ -2031,7 +2079,7 @@ describe("TerminalRenderer (inline scrollback)", () => {
     renderer.shutdown();
   });
 
-  it("pops the oldest queued message on Esc, cancels the turn, and stages the steer prompt", async () => {
+  it("sends the oldest queued message on Esc without cancelling the turn", async () => {
     const { screen, input, renderer } = makeRenderer();
     const escape = async () => {
       input.send("\x1b");
@@ -2039,9 +2087,11 @@ describe("TerminalRenderer (inline scrollback)", () => {
     };
     let streamController: ReadableStreamDefaultController<AgentTUIStreamEvent> | undefined;
     const cancel = vi.fn();
+    const steer = vi.fn(async () => {});
     const rendering = renderer.renderStream(
       {
         cancel,
+        steer,
         events: new ReadableStream<AgentTUIStreamEvent>({
           start(controller) {
             streamController = controller;
@@ -2063,18 +2113,16 @@ describe("TerminalRenderer (inline scrollback)", () => {
     });
 
     await escape();
-    expect(cancel).toHaveBeenCalledTimes(1);
-    expect(screen.snapshot()).toContain("Steering — cancelling the running turn…");
-    expect(screen.snapshot()).toContain("1/5 still queued");
+    expect(cancel).not.toHaveBeenCalled();
+    expect(steer).toHaveBeenCalledWith("go north");
+    expect(screen.snapshot()).toContain("Queue 1/5");
 
     // The server settles the cancelled turn and the stream reaches its boundary.
-    streamController?.enqueue({ type: "turn-cancelled" });
+    streamController?.enqueue({ type: "finish" });
     streamController?.close();
     await rendering;
-    expect(screen.snapshot()).toContain("Cancelled");
 
     // The popped message steers; the remaining one stays queued behind it.
-    expect(renderer.takeQueuedPrompt()).toBe("go north");
     expect(renderer.takeQueuedPrompt()).toBe("go south");
     renderer.shutdown();
   });
@@ -2178,7 +2226,7 @@ describe("TerminalRenderer (inline scrollback)", () => {
     renderer.shutdown();
   });
 
-  it("marks drained prompts with the provenance arrow — above for steer, below for queue", async () => {
+  it("marks steered and queued prompts with their provenance arrow", async () => {
     const { screen, input, renderer } = makeRenderer();
     const escape = async () => {
       input.send("\x1b");
@@ -2195,7 +2243,7 @@ describe("TerminalRenderer (inline scrollback)", () => {
     let streamController: ReadableStreamDefaultController<AgentTUIStreamEvent> | undefined;
     const first = renderer.renderStream(
       {
-        cancel: vi.fn(),
+        steer: vi.fn(async () => {}),
         events: new ReadableStream<AgentTUIStreamEvent>({
           start(controller) {
             streamController = controller;
@@ -2210,16 +2258,11 @@ describe("TerminalRenderer (inline scrollback)", () => {
     input.type("go north");
     input.enter();
     await escape();
-    streamController?.enqueue({ type: "turn-cancelled" });
+    streamController?.enqueue({ type: "finish" });
     streamController?.close();
     await first;
 
-    const steered = renderer.takeQueuedPrompt();
-    expect(steered).toBe("go north");
-    await renderer.renderStream(
-      { events: closedStream() },
-      { submittedPrompt: steered, continueSession: true },
-    );
+    expect(renderer.takeQueuedPrompt()).toBeUndefined();
     let lines = screen.snapshot().split("\n");
     const steerIndex = lines.findIndex((line) => line.includes("│ go north"));
     expect(lines[steerIndex - 1]?.trim()).toBe("↑");
@@ -2377,7 +2420,7 @@ describe("TerminalRenderer (inline scrollback)", () => {
     renderer.shutdown();
   });
 
-  it("keeps an editable startup draft inert and hands it to the first prompt", async () => {
+  it("queues startup messages until the agent is ready", async () => {
     const screen = new MockScreen({ columns: 80, rows: 30 });
     const input = new MockUserInput();
     const requestStop = vi.fn();
@@ -2403,14 +2446,28 @@ describe("TerminalRenderer (inline scrollback)", () => {
 
     input.type(" tomorrow");
     input.enter();
-    expect(screen.snapshot()).toContain("weather tomorrow");
+    expect(screen.snapshot()).toContain("Queue 1/5");
+    expect(screen.snapshot()).toContain("└ weather tomorrow");
+    expect(screen.snapshot()).not.toContain("❯ weather tomorrow");
 
-    const draft = startupRenderer.finishStartupDraft();
-    expect(draft).toBe("weather tomorrow");
-    const prompt = startupRenderer.readPrompt({ initialDraft: draft });
+    input.type("and next week");
     input.enter();
-    await expect(prompt).resolves.toBe("weather tomorrow");
-    expect(requestStop).not.toHaveBeenCalled();
+    expect(screen.snapshot()).toContain("Queue 2/5");
+    expect(screen.snapshot()).toContain("│ weather tomorrow");
+    expect(screen.snapshot()).toContain("└ and next week");
+
+    const startup = startupRenderer.finishStartupDraft();
+    expect(startup).toEqual({
+      draft: "",
+      queuedPrompt: "weather tomorrow\n\nand next week",
+    });
+
+    const prompt = startupRenderer.readPrompt();
+    expect(screen.snapshot()).not.toContain("Queue 1/5");
+    input.ctrlC();
+    input.ctrlC();
+    await expect(prompt).rejects.toThrow();
+    expect(requestStop).toHaveBeenCalledOnce();
     startupRenderer.shutdown();
   });
 
