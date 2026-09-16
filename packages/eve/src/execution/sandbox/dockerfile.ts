@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { access, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
 import type { DockerCli } from "#execution/sandbox/bindings/docker-cli.js";
@@ -23,7 +23,7 @@ export async function materializeSandboxDockerfile(input: {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
-  const paths = await input.files.glob("**/*");
+  const paths = await input.files.list();
   const hash = createHash("sha256");
   const contents = await Promise.all(
     paths.map(async (path) => ({ content: await input.files.read(path), path })),
@@ -32,17 +32,33 @@ export async function materializeSandboxDockerfile(input: {
     hash.update(file.path).update("\0").update(file.content).update("\0");
   const contentHash = hash.digest("hex");
   const contextPath = join(input.storagePath, "dockerfiles", contentHash);
-  await rm(contextPath, { force: true, recursive: true });
+  try {
+    await access(join(contextPath, "Dockerfile"));
+    return { contentHash, contextPath, path: join(contextPath, "Dockerfile") };
+  } catch {}
+  const temporaryPath = `${contextPath}.${randomUUID()}.tmp`;
   await Promise.all(
     contents.map(async (file) => {
-      const target = join(contextPath, file.path);
+      const target = join(temporaryPath, file.path);
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, file.content);
     }),
   );
   if (!paths.includes("Dockerfile")) {
-    await mkdir(contextPath, { recursive: true });
-    await writeFile(join(contextPath, "Dockerfile"), content);
+    await mkdir(temporaryPath, { recursive: true });
+    await writeFile(join(temporaryPath, "Dockerfile"), content);
+  }
+  await mkdir(dirname(contextPath), { recursive: true });
+  try {
+    await rename(temporaryPath, contextPath);
+  } catch (error) {
+    try {
+      await access(join(contextPath, "Dockerfile"));
+    } catch {
+      throw error;
+    }
+  } finally {
+    await rm(temporaryPath, { force: true, recursive: true });
   }
   return { contentHash, contextPath, path: join(contextPath, "Dockerfile") };
 }

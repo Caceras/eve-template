@@ -32,6 +32,13 @@ export interface SandboxProviderResources {
   readonly workspace?: SandboxProviderResourceTree;
 }
 
+export function sandboxProviderResourceIdentity(resources: SandboxProviderResources): object {
+  return {
+    skills: resources.skills?.key,
+    workspace: resources.workspace?.key,
+  };
+}
+
 export interface SandboxProviderTargetFile {
   readonly content: string | Uint8Array;
   readonly path: string;
@@ -82,7 +89,7 @@ export function isSandboxPreparedArtifactRecord(
 }
 
 export interface SandboxProviderFiles {
-  glob(pattern: string): Promise<readonly string[]>;
+  list(): Promise<readonly string[]>;
   read(path: string): Promise<Uint8Array>;
   readText(path: string): Promise<string>;
 }

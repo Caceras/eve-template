@@ -16,10 +16,7 @@ export function createSandboxProviderFiles(root: string): SandboxProviderFiles {
   }
 
   return {
-    async glob(pattern) {
-      if (pattern !== "**/*") {
-        throw new Error(`Unsupported sandbox provider file glob: ${pattern}`);
-      }
+    async list() {
       const entries = await readdir(resolvedRoot, { recursive: true, withFileTypes: true }).catch(
         (error: unknown) => {
           if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];

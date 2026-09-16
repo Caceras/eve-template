@@ -21,6 +21,7 @@ import type {
 } from "#public/sandbox/microsandbox-sandbox.js";
 import {
   isSandboxPreparedArtifactRecord,
+  sandboxProviderResourceIdentity,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
 } from "#shared/sandbox-provider.js";
@@ -55,7 +56,7 @@ export function createMicrosandboxSandboxProvider(
         dockerfile: dockerfile?.contentHash,
         optionsHash,
         prepare: createOptions.prepare,
-        resources: context.resources.source,
+        resources: sandboxProviderResourceIdentity(context.resources),
         version: 1,
       }).slice(0, 24);
       try {

@@ -21,36 +21,6 @@ const RUNTIME_SANDBOX_CONTRACT_VERSION = 9;
 /**
  * Input for deriving the stable runtime keys used for one sandbox definition.
  */
-interface CreateRuntimeSandboxKeysInput {
-  readonly providerName: string;
-  readonly configurationHash?: string;
-  readonly environmentConfigurationHash?: string;
-  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly nodeId: string;
-  readonly sessionId: string;
-  readonly sourceId: string;
-  readonly templatePlan: RuntimeSandboxTemplatePlan;
-}
-
-/**
- * Creates the stable runtime template and session keys for one sandbox
- * definition under the current artifact source and backend.
- *
- * Both keys derive from one {@link RuntimeSandboxKeyParts} value, so the
- * coupling holds by construction: the session key rotates exactly when
- * the template content rotates.
- */
-export async function createRuntimeSandboxKeys(input: CreateRuntimeSandboxKeysInput): Promise<{
-  readonly sessionKey: string;
-  readonly templateKey: string | null;
-}> {
-  const parts = await deriveRuntimeSandboxKeyParts(input);
-  return {
-    sessionKey: buildRuntimeSandboxSessionKey(input, parts),
-    templateKey: buildRuntimeSandboxTemplateKey(input, parts),
-  };
-}
-
 /**
  * Creates the stable reusable template key for one sandbox definition,
  * or `null` when the sandbox should start from a fresh backend runtime.
@@ -67,7 +37,7 @@ export async function createRuntimeSandboxTemplateKey(input: {
   readonly nodeId: string;
   readonly sourceId: string;
   readonly templatePlan: RuntimeSandboxTemplatePlan;
-}): Promise<string | null> {
+}): Promise<string> {
   return buildRuntimeSandboxTemplateKey(input, await deriveRuntimeSandboxKeyParts(input));
 }
 
@@ -77,10 +47,9 @@ export async function createRuntimeSandboxTemplateKey(input: {
  * (`null` when the sandbox needs no template).
  */
 interface RuntimeSandboxKeyParts {
-  readonly environmentHash: string;
   readonly metadata: CompileMetadata | null;
   readonly scope: string;
-  readonly templateHash: string | null;
+  readonly templateHash: string;
 }
 
 async function deriveRuntimeSandboxKeyParts(input: {
@@ -101,55 +70,19 @@ async function deriveRuntimeSandboxKeyParts(input: {
       templatePlan: input.templatePlan,
     })}:${input.environmentConfigurationHash ?? input.configurationHash ?? ""}`,
   );
-  const environmentHash = createStableHash(
-    `environment:${input.templatePlan.revisionHash}:${input.templatePlan.contentHash ?? ""}:${input.configurationHash ?? ""}:${input.nodeId}:${input.sourceId}`,
-  );
-  return { environmentHash, metadata, scope, templateHash };
+  return { metadata, scope, templateHash };
 }
 
 function buildRuntimeSandboxTemplateKey(
   input: { readonly providerName: string },
   parts: RuntimeSandboxKeyParts,
-): string | null {
-  if (parts.templateHash === null) {
-    return null;
-  }
-
+): string {
   const templateHash = createStableHash(
     `${resolvePackageVersionForTemplateKey(parts.metadata)}:${RUNTIME_SANDBOX_CONTRACT_VERSION}:${parts.templateHash}`,
   ).slice(0, 20);
 
   return sanitizeRuntimeSandboxKey(
     `eve-sbx-tpl-${input.providerName}-${parts.scope}-${templateHash}`,
-  );
-}
-
-/**
- * Builds the session sandbox key for one sandbox definition.
- *
- * Session keys are pinned per durable session: the scope is stable across
- * deployments so a session reattaches to the same sandbox after a redeploy
- * and keeps its `/workspace` state. The key also folds in the sandbox
- * compiled revision, so changing the sandbox source, a discovered preparation
- * input, or managed resource content rotates the
- * session sandbox onto the new template — unrelated source changes do not.
- * The eve package version deliberately does not participate: upgrading
- * eve must not discard session sandbox state.
- */
-function buildRuntimeSandboxSessionKey(
-  input: { readonly providerName: string; readonly nodeId: string; readonly sessionId: string },
-  parts: RuntimeSandboxKeyParts,
-): string {
-  const version = createStableHash(
-    `${RUNTIME_SANDBOX_CONTRACT_VERSION}:${parts.environmentHash}`,
-  ).slice(0, 12);
-  const nodeScope = sanitizeRuntimeSandboxKey(input.nodeId).slice(0, 16);
-  const logicalName = sanitizeRuntimeSandboxKey(input.sessionId).slice(0, 24);
-  const logicalHash = createStableHash(input.sessionId).slice(0, 16);
-
-  const providerName = sanitizeRuntimeSandboxKey(input.providerName).slice(0, 20);
-  return sanitizeRuntimeSandboxKey(
-    `eve-sbx-ses-${logicalHash}-${providerName}-${parts.scope}-${version}-${nodeScope}-${logicalName}`,
   );
 }
 

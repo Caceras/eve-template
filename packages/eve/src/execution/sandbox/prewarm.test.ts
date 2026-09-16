@@ -113,13 +113,8 @@ describe("prewarmAppSandboxes", () => {
   );
 });
 
-function createMemoryArtifactStore(hasEntries = false): SandboxPreparedArtifactStore {
-  return {
-    async has() {
-      return hasEntries;
-    },
-    async write() {},
-  };
+function createMemoryArtifactStore(): SandboxPreparedArtifactStore {
+  return { async write() {} };
 }
 
 function recordPrewarmInputs(inputs: SandboxProviderPrepareContext[]) {

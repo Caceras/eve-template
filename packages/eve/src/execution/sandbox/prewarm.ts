@@ -25,10 +25,7 @@ import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import type { RuntimeRegisteredSandbox } from "#runtime/sandbox/registry.js";
 import type { SandboxPreparedArtifactEntry } from "#shared/sandbox-prepared-artifacts.js";
 import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
-import {
-  loadSandboxPreparedArtifactsManifest,
-  writeSandboxPreparedArtifactsManifest,
-} from "#runtime/sandbox/prepared-artifacts.js";
+import { writeSandboxPreparedArtifactsManifest } from "#runtime/sandbox/prepared-artifacts.js";
 import { materializeWorkspaceDirectory } from "#runtime/workspace/seed-files.js";
 import { toErrorMessage } from "#shared/errors.js";
 import {
@@ -38,10 +35,6 @@ import {
 import { withSandboxTemplatePrewarmLock } from "./template-prewarm-lock.js";
 
 export interface SandboxPreparedArtifactStore {
-  has(
-    source: RuntimeCompiledArtifactsSource,
-    entries: readonly { readonly providerName: string; readonly templateName: string }[],
-  ): Promise<boolean>;
   write(input: {
     readonly compileDirectoryPath: string;
     readonly entries: readonly SandboxPreparedArtifactEntry[];
@@ -49,14 +42,6 @@ export interface SandboxPreparedArtifactStore {
 }
 
 const diskPreparedArtifactStore: SandboxPreparedArtifactStore = {
-  async has(source, entries) {
-    const manifest = await loadSandboxPreparedArtifactsManifest(source);
-    if (manifest === null) return false;
-    const keys = new Set(
-      manifest.entries.map((entry) => `${entry.providerName}\0${entry.templateName}`),
-    );
-    return entries.every((entry) => keys.has(`${entry.providerName}\0${entry.templateName}`));
-  },
   async write(input) {
     await writeSandboxPreparedArtifactsManifest(input);
   },
@@ -66,7 +51,6 @@ interface PrewarmTarget {
   readonly context: SandboxProviderPrepareContext;
   readonly label: string;
   readonly provider: SandboxProviderRuntime;
-  readonly signature: string;
   readonly templateName: string;
 }
 
@@ -97,9 +81,7 @@ interface PrewarmSandboxesInput {
   readonly graph: ResolvedAgentGraphBundle;
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxProviderPrepareDispatch;
-  readonly onPrewarmSignature?: (signature: string) => void;
   readonly preparedArtifactStore?: SandboxPreparedArtifactStore;
-  readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }
 
 /**
@@ -116,7 +98,6 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
     return;
   }
 
-  const signature = createPrewarmSignature(targets);
   const preparedArtifactStore = input.preparedArtifactStore ?? diskPreparedArtifactStore;
   const dispatch =
     input.dispatch ??
@@ -168,7 +149,6 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
     })),
   });
   input.log?.(`eve: initialized ${formatSandboxTemplateCount(targets.length)}.`);
-  input.onPrewarmSignature?.(signature);
 }
 
 /**
@@ -190,9 +170,7 @@ export async function prewarmAppSandboxes(input: {
   ) => Promise<ResolvedAgentGraphBundle>;
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxProviderPrepareDispatch;
-  readonly onPrewarmSignature?: (signature: string) => void;
   readonly preparedArtifactStore?: SandboxPreparedArtifactStore;
-  readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }): Promise<void> {
   const compiledArtifactsSource =
     input.compiledArtifactsSource ??
@@ -212,9 +190,7 @@ export async function prewarmAppSandboxes(input: {
     dispatch: input.dispatch,
     graph,
     log: input.log,
-    onPrewarmSignature: input.onPrewarmSignature,
     preparedArtifactStore: input.preparedArtifactStore,
-    shouldPrewarmSignature: input.shouldPrewarmSignature,
   });
 }
 
@@ -275,7 +251,6 @@ async function collectPrewarmTargets(input: {
         },
         label: formatLabel(nodeId),
         provider,
-        signature: `${definition.environment.provider}:${nodeId}:${templateKey}`,
         templateName: templateKey,
       });
     }),
@@ -344,13 +319,6 @@ function collectNodeSandboxes(graph: ResolvedAgentGraphBundle): readonly NodeSan
 
 function formatLabel(nodeId: string): string {
   return nodeId === ROOT_RUNTIME_AGENT_NODE_ID ? "root" : nodeId;
-}
-
-function createPrewarmSignature(targets: readonly PrewarmTarget[]): string {
-  return targets
-    .map((target) => target.signature)
-    .sort()
-    .join("\n");
 }
 
 function formatSandboxTemplateCount(count: number): string {

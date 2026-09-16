@@ -154,7 +154,7 @@ export const AcmeSandbox = defineSandboxProvider<
     return {
       async prepare(ctx) {
         const temporary = await client.createTemporary({
-          files: await ctx.files.glob("**/*"),
+          files: await ctx.files.list(),
           resources: ctx.resources,
         });
         const sandbox = adaptAcmeSandbox(temporary);

@@ -10,7 +10,7 @@ import {
   getRuntimeCompiledArtifactsSandboxAppRoot,
   type RuntimeCompiledArtifactsSource,
 } from "#runtime/compiled-artifacts-source.js";
-import { createRuntimeSandboxKeys } from "#runtime/sandbox/keys.js";
+import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import { loadSandboxPreparedArtifact } from "#runtime/sandbox/prepared-artifacts.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
@@ -68,7 +68,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
   async function open(
     provider: SandboxProviderRuntime,
     options: object | undefined,
-    configurationHash: string,
     environment: object,
     environmentConfigurationHash: string,
     session: SandboxProviderSessionContext["session"],
@@ -90,28 +89,23 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
 
     const workspaceResourceRoot =
       inherited?.workspaceResourceRoot ?? registered.workspaceResourceRoot;
-    const keys = await createRuntimeSandboxKeys({
+    const templateKey = await createRuntimeSandboxTemplateKey({
       compiledArtifactsSource: input.compiledArtifactsSource,
-      configurationHash,
-      environmentConfigurationHash,
+      configurationHash: environmentConfigurationHash,
       nodeId: inherited?.nodeId ?? input.nodeId,
       providerName: provider.providerName,
-      sessionId: input.sessionId,
       sourceId: definition.sourceId,
       templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
     });
-    if (keys.templateKey === null) {
-      throw new Error(`Sandbox provider "${provider.providerName}" has no prepared artifact key.`);
-    }
     const artifact = await loadSandboxPreparedArtifact({
       compiledArtifactsSource: input.compiledArtifactsSource,
       providerName: provider.providerName,
-      templateName: keys.templateKey,
+      templateName: templateKey,
     });
     if (artifact === undefined) {
       throw new SandboxTemplateNotProvisionedError({
         providerName: provider.providerName,
-        templateKey: keys.templateKey,
+        templateKey,
       });
     }
 
@@ -173,7 +167,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       await open(
         getSandboxEnvironmentRuntime(definition.environment),
         undefined,
-        configurationHash,
         definition.environment,
         configurationHash,
         session,
@@ -182,21 +175,8 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       try {
         const selected = await runWithSandboxConstructorRuntime(
           {
-            open: ({
-              configurationHash,
-              environment,
-              environmentConfigurationHash,
-              options,
-              provider,
-            }) =>
-              open(
-                provider,
-                options,
-                configurationHash,
-                environment,
-                environmentConfigurationHash,
-                session,
-              ),
+            open: ({ environment, environmentConfigurationHash, options, provider }) =>
+              open(provider, options, environment, environmentConfigurationHash, session),
           },
           async () => definition.selector({ session }),
         );

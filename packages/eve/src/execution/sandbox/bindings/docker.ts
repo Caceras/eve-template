@@ -39,6 +39,7 @@ import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { createSandboxProviderIdentity } from "#execution/sandbox/provider-identity.js";
 import {
   isSandboxPreparedArtifactRecord,
+  sandboxProviderResourceIdentity,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
   type SandboxProviderSessionContext,
@@ -185,7 +186,7 @@ export function createDockerSandboxProvider(
         dockerfile: dockerfile?.contentHash,
         optionsHash,
         prepare: authoredOptions.prepare,
-        resources: context.resources.source,
+        resources: sandboxProviderResourceIdentity(context.resources),
         version: 1,
       }).slice(0, 24);
       const templateReferenceInput = { optionsHash, templateKey };

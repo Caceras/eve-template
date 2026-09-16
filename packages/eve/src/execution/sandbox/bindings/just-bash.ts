@@ -30,6 +30,7 @@ import type { JustBashSandboxCreateOptions } from "#public/sandbox/just-bash-san
 import {
   isSandboxPreparedArtifactRecord,
   providerResourceTargetFiles,
+  sandboxProviderResourceIdentity,
   type SandboxPreparedArtifact,
   type SandboxProviderImplementation,
   type SandboxProviderSessionContext,
@@ -47,16 +48,20 @@ export function createJustBashSandboxProvider(
 ): SandboxProviderImplementation<undefined, JustBashPreparedArtifact, JustBashSessionState> {
   const options = authoredOptions ?? {};
   const autoInstall = options.autoInstall ?? true;
-  const templateIdentity = createSandboxProviderIdentity({
+  const environmentIdentity = {
     autoInstall,
     customCommands: options.customCommands,
     filesystem: options.filesystem,
     prepare: options.prepare,
     version: 1,
-  }).slice(0, 24);
+  };
 
   return {
     async prepare(context) {
+      const templateIdentity = createSandboxProviderIdentity({
+        ...environmentIdentity,
+        resources: sandboxProviderResourceIdentity(context.resources),
+      }).slice(0, 24);
       const templateRootPath = resolveTemplateRootPath(context.storagePath, templateIdentity);
       if (await pathExists(templateRootPath)) {
         await touchDirectory(templateRootPath);

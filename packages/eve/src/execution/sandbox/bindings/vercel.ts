@@ -15,6 +15,7 @@ import type {
 } from "#shared/sandbox-session.js";
 import {
   isSandboxPreparedArtifactRecord,
+  sandboxProviderResourceIdentity,
   providerResourceTargetFiles,
   type SandboxPreparedArtifact,
   type SandboxProviderHandle,
@@ -170,7 +171,7 @@ export function createVercelSandbox(
       const templateKey = `eve-sbx-tpl-vercel-${createSandboxProviderIdentity({
         createOptions: vercelIdentityOptions(createOptions),
         prepare: input.prepare,
-        resources: context.resources.source,
+        resources: sandboxProviderResourceIdentity(context.resources),
         version: 1,
       }).slice(0, 32)}`;
       try {

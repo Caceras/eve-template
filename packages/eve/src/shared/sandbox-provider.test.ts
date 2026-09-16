@@ -61,7 +61,7 @@ describe("defineSandboxProvider", () => {
     const environment = provider.environment({ image: "node:24" });
     const implementation = getSandboxEnvironmentRuntime(environment).implementation;
     const artifact = await implementation.prepare({
-      files: { glob: async () => [], read: async () => new Uint8Array(), readText: async () => "" },
+      files: { list: async () => [], read: async () => new Uint8Array(), readText: async () => "" },
       host: {
         loadOptionalPackage: async ({ importModule }) => await importModule(),
         resolveProjectPath: (path) => path,

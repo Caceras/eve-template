@@ -9,13 +9,7 @@ import { createDiskRuntimeCompiledArtifactsSource } from "#runtime/compiled-arti
 
 const mocks = vi.hoisted(() => ({
   prewarmAppSandboxes:
-    vi.fn<
-      (input: {
-        readonly log?: (message: string) => void;
-        readonly onPrewarmSignature?: (signature: string) => void;
-        readonly shouldPrewarmSignature?: (signature: string) => boolean;
-      }) => Promise<void>
-    >(),
+    vi.fn<(input: { readonly log?: (message: string) => void }) => Promise<void>>(),
 }));
 
 vi.mock("#execution/sandbox/prewarm.js", () => ({
@@ -194,34 +188,6 @@ describe("development sandbox prewarm coordination", () => {
 
     expect(firstLogs).toEqual(['eve: built sandbox template "root" on backend "docker".']);
     expect(secondLogs).toEqual([]);
-  });
-
-  it("skips completed prewarm work when the sandbox signature is unchanged", async () => {
-    const appRoot = "/tmp/eve-signature-app";
-    const compiledArtifactsSource = createDiskRuntimeCompiledArtifactsSource(appRoot);
-    let prewarmCount = 0;
-    mocks.prewarmAppSandboxes.mockImplementation(async (input) => {
-      if (input.shouldPrewarmSignature?.("signature-a") === false) {
-        return;
-      }
-      prewarmCount += 1;
-      input.onPrewarmSignature?.("signature-a");
-    });
-
-    startDevelopmentSandboxPrewarmInBackground({
-      appRoot,
-      compiledArtifactsSource,
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    startDevelopmentSandboxPrewarmInBackground({
-      appRoot,
-      compiledArtifactsSource,
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(prewarmCount).toBe(1);
   });
 });
 

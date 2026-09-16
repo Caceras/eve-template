@@ -17,7 +17,6 @@ interface DevelopmentPrewarmRecord {
 
 const pendingDevelopmentPrewarms = new Map<string, DevelopmentPrewarmRecord>();
 const retainedDevelopmentPrewarmLogs = new Map<string, readonly string[]>();
-const completedDevelopmentPrewarmSignatures = new Map<string, string>();
 
 export async function prewarmDevelopmentSandboxes(input: {
   readonly appRoot: string;
@@ -48,16 +47,10 @@ export function startDevelopmentSandboxPrewarmInBackground(input: {
   for (const key of keys) {
     retainedDevelopmentPrewarmLogs.delete(key);
   }
-  const signatureCacheKey = resolvePrewarmSignatureCacheKey(input);
   const promise = prewarmAppSandboxes({
     appRoot: input.appRoot,
     compiledArtifactsSource: input.compiledArtifactsSource,
     log: (message) => recordPrewarmLog(record, message, input.log),
-    onPrewarmSignature: (signature) => {
-      completedDevelopmentPrewarmSignatures.set(signatureCacheKey, signature);
-    },
-    shouldPrewarmSignature: (signature) =>
-      completedDevelopmentPrewarmSignatures.get(signatureCacheKey) !== signature,
   });
   record.promise = promise;
   registerPrewarmAliases(keys, record);
@@ -152,13 +145,6 @@ function resolvePrewarmKeys(input: {
     keys.add(sandboxAppRoot);
   }
   return [...keys];
-}
-
-function resolvePrewarmSignatureCacheKey(input: {
-  readonly appRoot: string;
-  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-}): string {
-  return getRuntimeCompiledArtifactsSandboxAppRoot(input.compiledArtifactsSource) ?? input.appRoot;
 }
 
 function findPendingPrewarm(keys: readonly string[]): DevelopmentPrewarmRecord | undefined {
