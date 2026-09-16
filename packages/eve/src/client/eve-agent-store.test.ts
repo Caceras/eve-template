@@ -191,6 +191,113 @@ afterEach(() => {
 });
 
 describe("EveAgentStore prewarming", () => {
+  it("reports a standalone creation failure and allows another prewarm", async () => {
+    const error = new Error("create failed");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(startedResponse());
+    const onError = vi.fn();
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+    store.setCallbacks({ onError });
+
+    await expect(store.prewarm()).rejects.toBe(error);
+    expect(store.snapshot.status).toBe("error");
+    expect(store.snapshot.error).toBe(error);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+
+    await store.prewarm();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(store.snapshot.session?.sessionId).toBe("session_1");
+    expect(store.snapshot.status).toBe("ready");
+    expect(store.snapshot.error).toBeUndefined();
+  });
+
+  it("rejects prewarm when the first send it joined fails to create a session", async () => {
+    const accepted = Promise.withResolvers<Response>();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(accepted.promise);
+    const onError = vi.fn();
+    const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+    store.setCallbacks({ onError });
+    const error = new Error("create failed");
+
+    const send = store.send({ message: "Hello" });
+    const prewarm = expect(store.prewarm()).rejects.toBe(error);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    accepted.reject(error);
+    await Promise.all([send, prewarm]);
+
+    expect(store.snapshot.session).toBeUndefined();
+    expect(store.snapshot.status).toBe("error");
+    expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+  });
+
+  it.each([false, true])(
+    "retries a waiting send after prewarm fails (send fails: %s)",
+    async (sendFails) => {
+      const accepted = Promise.withResolvers<Response>();
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(accepted.promise);
+      const sendError = new Error("send failed");
+      if (sendFails) fetchMock.mockRejectedValueOnce(sendError);
+      else
+        fetchMock
+          .mockResolvedValueOnce(startedResponse())
+          .mockResolvedValueOnce(streamResponse(turnEvents()));
+      const onError = vi.fn();
+      const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+      store.setCallbacks({ onError });
+      const prewarmError = new Error("prewarm failed");
+
+      const prewarm = expect(store.prewarm()).rejects.toBe(prewarmError);
+      const send = store.send({ message: "Hello" });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      accepted.reject(prewarmError);
+      await Promise.all([prewarm, send]);
+
+      expect(fetchMock.mock.calls[1]![0]).toBe("/eve/v1/session");
+      expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toMatchObject({
+        message: "Hello",
+      });
+      if (sendFails) {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(onError).toHaveBeenCalledExactlyOnceWith(sendError);
+        expect(store.snapshot.error).toBe(sendError);
+        expect(store.snapshot.status).toBe("error");
+      } else {
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(onError).not.toHaveBeenCalled();
+        expect(store.snapshot.error).toBeUndefined();
+        expect(store.snapshot.status).toBe("ready");
+        expect(store.snapshot.session?.sessionId).toBe("session_1");
+      }
+    },
+  );
+
+  it.each(["reset", "detach"] as const)(
+    "does not retry a waiting send after %s",
+    async (action) => {
+      const accepted = Promise.withResolvers<Response>();
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(accepted.promise);
+      const onError = vi.fn();
+      const store = new EveAgentStore({ reducer: defaultMessageReducer() });
+      store.setCallbacks({ onError });
+      const error = new Error("prewarm failed");
+
+      const prewarm = expect(store.prewarm()).rejects.toBe(error);
+      const send = store.send({ message: "Hello" });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      if (action === "reset") store.reset();
+      else detachEveAgentStore(store);
+      accepted.reject(error);
+      await Promise.all([prewarm, send]);
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(onError).not.toHaveBeenCalled();
+      expect(store.snapshot.session).toBeUndefined();
+      expect(store.snapshot.status).toBe("ready");
+    },
+  );
+
   it("shares one creation request without starting a turn", async () => {
     const accepted = Promise.withResolvers<Response>();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValue(accepted.promise);

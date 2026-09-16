@@ -34,7 +34,7 @@ export interface EveAgentStoreSnapshot<TData> {
 }
 
 /**
- * Hooks invoked while the store processes a turn. The observation callbacks
+ * Hooks invoked during session creation and turn processing. The observation callbacks
  * do not alter execution; `prepareSend` may replace the outbound turn payload.
  */
 export interface EveAgentStoreCallbacks<TData> {

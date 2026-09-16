@@ -124,7 +124,11 @@ export class EveAgentStore<TData> {
     if (this.#session !== undefined || this.#externalSession) return Promise.resolve();
     if (this.#prewarmPromise !== undefined) return this.#prewarmPromise;
     if (this.#activeTurn !== undefined) {
-      return this.#activeTurn.response.then(() => {});
+      return this.#activeTurn.response.then((response) => {
+        if (response === undefined) {
+          throw this.#error ?? new DOMException("Session creation was aborted.", "AbortError");
+        }
+      });
     }
     const client = this.#client;
     if (client === undefined) {
@@ -142,7 +146,7 @@ export class EveAgentStore<TData> {
         this.#callbacks.onSessionChange?.(created.session.state);
         this.#publish();
       } catch (error) {
-        if (generation === this.#prewarmGeneration) {
+        if (generation === this.#prewarmGeneration && this.#activeTurn === undefined) {
           this.#error = toError(error);
           this.#status = "error";
           this.#callbacks.onError?.(this.#error);
@@ -489,10 +493,9 @@ export class EveAgentStore<TData> {
     input: SendTurnPayload<TOutput>,
   ): Promise<Awaited<ReturnType<ClientSession["send"]>>> {
     if (this.#session === undefined && this.#prewarmPromise !== undefined) {
-      await this.#prewarmPromise;
-      if (this.#session === undefined) {
-        throw new DOMException("Session prewarming was discarded.", "AbortError");
-      }
+      // A failed speculative create must not prevent the user's message from being sent.
+      await this.#prewarmPromise.catch(() => {});
+      input.signal?.throwIfAborted();
     }
     if (this.#session === undefined) return await this.#createFirstTurn(input);
     if (input.inputResponses === undefined) {

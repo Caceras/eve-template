@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { Client } from "#client/client.js";
+import type { CreatedClientSession, CreatedIdleClientSession } from "#client/sessions.js";
+import type { SendTurnInput } from "#client/types.js";
 import { EVE_MESSAGE_STREAM_VERSION, EVE_STREAM_VERSION_HEADER } from "#protocol/message.js";
 
 afterEach(() => {
@@ -19,7 +21,9 @@ describe("Client.sessions", () => {
     });
     const client = new Client({ host: "https://eve.test" });
 
-    const { session } = await client.sessions.create();
+    const created = await client.sessions.create();
+    expectTypeOf(created).toEqualTypeOf<CreatedIdleClientSession>();
+    const { session } = created;
 
     expect(requests).toHaveLength(1);
     expect(new URL(requests[0]!.url).pathname).toBe("/eve/v1/session");
@@ -101,7 +105,10 @@ describe("Client.sessions", () => {
       });
     const client = new Client({ host: "https://eve.test" });
 
-    const { response, session } = await client.sessions.create({ message: "hello" });
+    const input: SendTurnInput<{ answer: string }> = { message: "hello" };
+    const created = await client.sessions.create(input);
+    expectTypeOf(created).toEqualTypeOf<CreatedClientSession<{ answer: string }>>();
+    const { response, session } = created;
     await response.result();
 
     expect(new URL(requests[0]!.url).pathname).toBe("/eve/v1/session");
