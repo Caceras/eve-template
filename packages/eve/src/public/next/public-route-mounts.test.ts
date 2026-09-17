@@ -25,12 +25,12 @@ describe("eve Next.js public route mounts", () => {
   it("prefixes named-agent paths while preserving the service request path", () => {
     expect(
       createEvePublicRouteMounts({
-        publicRoutePrefix: "/eve/agents/support",
+        publicRoutePrefix: "/eve/support",
         publicRoutes: ["/.well-known/ucp"],
       }),
     ).toEqual([
       {
-        publicPath: "/eve/agents/support/.well-known/ucp",
+        publicPath: "/eve/support/.well-known/ucp",
         routePath: "/.well-known/ucp",
       },
     ]);

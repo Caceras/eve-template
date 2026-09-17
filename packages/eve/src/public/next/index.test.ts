@@ -359,7 +359,7 @@ describe("withEve", () => {
         },
         {
           destination: "https://agent.example.com/_eve_internal/billing/.well-known/ucp",
-          source: "/eve/agents/billing/.well-known/ucp",
+          source: "/eve/billing/.well-known/ucp",
         },
       ]),
     );
@@ -370,7 +370,7 @@ describe("withEve", () => {
           buildCommand: "pnpm build:billing-agent",
           publicRouteMounts: [
             {
-              publicPath: "/eve/agents/billing/.well-known/ucp",
+              publicPath: "/eve/billing/.well-known/ucp",
               routePath: "/.well-known/ucp",
             },
           ],

@@ -338,15 +338,34 @@ function assertValidAgentName(name: string): void {
 }
 
 function assertValidWithEveOptions(options: WithEveOptions): void {
-  if (options.agents === undefined) return;
+  if (options.agents === undefined) {
+    createEvePublicRouteMounts({
+      publicRoutePrefix: "",
+      publicRoutes: options.publicRoutes ?? [],
+    });
+    return;
+  }
   if (options.eveRoot !== undefined) {
     throw new Error("withEve cannot combine eveRoot with agents. Use one configuration form.");
+  }
+  if (options.publicRoutes !== undefined) {
+    throw new Error(
+      "withEve cannot combine top-level publicRoutes with agents. Register routes on each named agent.",
+    );
   }
   const agentNames = Object.keys(options.agents);
   if (agentNames.length === 0) {
     throw new Error("withEve agents must contain at least one named eve agent.");
   }
-  for (const name of agentNames) assertValidAgentName(name);
+  for (const name of agentNames) {
+    assertValidAgentName(name);
+    const config = options.agents[name];
+    const agentConfig = typeof config === "string" ? undefined : config;
+    createEvePublicRouteMounts({
+      publicRoutePrefix: createNamedAgentRoutePrefix(name),
+      publicRoutes: agentConfig?.publicRoutes ?? [],
+    });
+  }
 }
 
 function createDefaultBuildCommand(input: { readonly agentRoot: string }): string {
@@ -400,12 +419,6 @@ async function normalizeAgentsConfig(
         servicePrefix: servicePrefixBase,
       },
     ];
-  }
-
-  if (options.publicRoutes !== undefined) {
-    throw new Error(
-      "withEve cannot combine top-level publicRoutes with agents. Register routes on each named agent.",
-    );
   }
 
   const entries = Object.entries(options.agents);
