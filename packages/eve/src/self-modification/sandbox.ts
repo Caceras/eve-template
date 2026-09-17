@@ -1,4 +1,8 @@
-import { defineSandbox, type SandboxSelector } from "#public/definitions/sandbox.js";
+import {
+  defineSandbox,
+  type RuntimeSandboxSession,
+  type SandboxSelectorContext,
+} from "#public/definitions/sandbox.js";
 import { JustBashSandbox } from "#sandbox/providers/just-bash.js";
 import { MicrosandboxSandbox } from "#sandbox/providers/microsandbox.js";
 import { SANDBOX_PROVIDER_PROBES, type DefaultSandboxProbes } from "#sandbox/providers/default.js";
@@ -16,6 +20,10 @@ export interface SelfModificationSandboxOptions {
   readonly config?: SelfModificationConfig;
 }
 
+export interface SelfModificationSandbox {
+  (context: SandboxSelectorContext): Promise<RuntimeSandboxSession> | RuntimeSandboxSession;
+}
+
 type Probes = Pick<DefaultSandboxProbes, "isDeployedOnVercel" | "isMicrosandboxSupported">;
 type DeployedSelfModificationEnvironment =
   | ReturnType<typeof MicrosandboxSandbox.environment>
@@ -23,7 +31,7 @@ type DeployedSelfModificationEnvironment =
 
 export function defineSelfModificationSandbox(
   options: SelfModificationSandboxOptions = {},
-): SandboxSelector {
+): SelfModificationSandbox {
   const config = resolveSelfModificationConfig(options.config);
   const mode = resolveSelfModificationMode(config);
   if (mode !== "deployed") {
