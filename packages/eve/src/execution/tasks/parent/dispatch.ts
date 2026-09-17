@@ -7,7 +7,7 @@ import {
   readTaskView,
 } from "#execution/tasks/parent/control-shared.js";
 import type { BackgroundTask } from "#execution/tasks/parent/delegate.js";
-import { sendTaskCommand } from "#execution/tasks/parent/run-parent.js";
+import { sendTaskCommand, waitForTerminalTaskView } from "#execution/tasks/parent/run-parent.js";
 import { wakeTaskParentStep } from "#execution/tasks/child/steps.js";
 import { sessionCommandHookToken } from "#execution/session-inbox/address.js";
 import {
@@ -18,9 +18,6 @@ import type { RuntimeActionResult, RuntimeToolCallActionRequest } from "#shared/
 import type { SessionTaskIndexEntry } from "#tasks/session-index.js";
 import { isTerminalTaskStatus, type TaskView } from "#tasks/types.js";
 import { TASK_CANCEL_TOOL_NAME, TASK_TOOL_NAMES } from "#tools/framework/task-contract.js";
-
-const CANCEL_COMMIT_POLL_ATTEMPTS = 10;
-const CANCEL_COMMIT_POLL_DELAY_MS = 250;
 
 export function isTaskControlAction(action: RuntimeToolCallActionRequest): boolean {
   return action.kind === "tool-call" && TASK_TOOL_NAMES.has(action.toolName);
@@ -80,16 +77,11 @@ export async function cancelOwnedTask(input: {
     command: { kind: "cancel" },
     taskInboxToken: input.entry.taskInboxToken,
   });
-  let view = await readTaskView(input.entry);
-  for (
-    let attempt = 0;
-    attempt < CANCEL_COMMIT_POLL_ATTEMPTS && !isTerminalTaskStatus(view.status);
-    attempt += 1
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, CANCEL_COMMIT_POLL_DELAY_MS));
-    view = await readTaskView(input.entry);
-  }
-  if (!isTerminalTaskStatus(view.status)) {
+  const view =
+    delivery === "delivered"
+      ? await waitForTerminalTaskView(input.entry.taskRunId)
+      : await readTaskView(input.entry);
+  if (view === undefined || !isTerminalTaskStatus(view.status)) {
     throw new Error(`Task "${input.entry.taskId}" did not commit cancellation before timeout.`);
   }
   if (view.status !== "cancelled") return view;

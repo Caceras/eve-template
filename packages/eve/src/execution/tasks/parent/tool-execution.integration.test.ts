@@ -3,11 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityObserverConfig } from "#channel/types.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { ActivityObserverKey, SessionKey, type SessionAuth } from "#context/keys.js";
-import {
-  sendTaskCommand,
-  startTaskRun,
-  waitForTaskCommandOwner,
-} from "#execution/tasks/parent/run-parent.js";
+import { sendTaskCommand, startTaskRun } from "#execution/tasks/parent/run-parent.js";
 import {
   backgroundToolExecutionProvider,
   readRetainedBackgroundToolResult,
@@ -26,7 +22,6 @@ vi.mock("#execution/tools/subagent/steer.js", () => ({ steerBackgroundAgent: vi.
 vi.mock("#execution/tasks/parent/run-parent.js", () => ({
   sendTaskCommand: vi.fn(async () => "delivered"),
   startTaskRun: vi.fn(),
-  waitForTaskCommandOwner: vi.fn(),
 }));
 
 const identity = { id: "agent-1", name: "research", nodeId: "subagents/research" };
@@ -124,8 +119,7 @@ describe("background subagent steering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(steerBackgroundAgent).mockResolvedValue(undefined);
-    vi.mocked(startTaskRun).mockResolvedValue(undefined as never);
-    vi.mocked(waitForTaskCommandOwner).mockResolvedValue({ runId: "steering-task-run" } as never);
+    vi.mocked(startTaskRun).mockResolvedValue({ runId: "steering-task-run" } as never);
   });
 
   it("steers the existing child without replacing its task, claim, or receipt", async () => {
@@ -143,7 +137,6 @@ describe("background subagent steering", () => {
     expect(getAgentHandleStore(session.state)?.handles).toEqual([handle]);
     expect(getSessionTaskIndex(session.state)).toEqual([entry]);
     expect(startTaskRun).not.toHaveBeenCalled();
-    expect(waitForTaskCommandOwner).not.toHaveBeenCalled();
     expect(sendTaskCommand).not.toHaveBeenCalled();
   });
 

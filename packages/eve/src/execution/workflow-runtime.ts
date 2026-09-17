@@ -142,6 +142,7 @@ export function createWorkflowRuntime(config: {
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly dynamicSubagentAgentConfig?: DynamicSubagentAgentConfig;
   readonly nodeId?: string;
+  readonly acknowledgeStartup?: boolean;
 }): Runtime {
   return {
     async createSession(input: RunInput): Promise<RunHandle> {
@@ -216,6 +217,7 @@ export function createWorkflowRuntime(config: {
         ownerDeploymentId: await resolveCurrentWorkflowDeploymentId(),
         serializedContext,
       };
+      if (config.acknowledgeStartup === true) workflowInput.acknowledgeStartup = true;
       const taskId = input.taskId ?? input.callback?.taskId;
       if (input.limits !== undefined) workflowInput.limits = input.limits;
       if (taskId !== undefined) workflowInput.taskId = taskId;
@@ -492,6 +494,7 @@ export async function waitForCommandHookOwner(token: string): Promise<WorkflowHo
 
 async function waitForHookRelease(token: string, ownerRunId: string): Promise<void> {
   const deadline = Date.now() + COMMAND_HOOK_READY_TIMEOUT_MS;
+  let delayMs = 20;
   while (true) {
     try {
       const owner = normalizeWorkflowHook(await getHookByToken(token));
@@ -504,7 +507,10 @@ async function waitForHookRelease(token: string, ownerRunId: string): Promise<vo
     if (Date.now() >= deadline) {
       throw new Error(`Timed out waiting for session "${ownerRunId}" to release inbox "${token}".`);
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(delayMs, Math.max(0, deadline - Date.now()))),
+    );
+    delayMs = Math.min(delayMs * 2, 250);
   }
 }
 

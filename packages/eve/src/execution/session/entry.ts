@@ -8,6 +8,7 @@ import type { DurableCompiledArtifactsSource } from "#runtime/durable-compiled-a
 import { resolveInitialTurnCallerStep } from "#subagents/parent-notification.js";
 import { normalizeSerializableError } from "#execution/workflow-errors.js";
 import { createSessionStep } from "#execution/create-session-step.js";
+import { publishWorkflowStartedStep } from "#execution/workflow-started-step.js";
 import { isHookConflictError } from "#execution/hook-ownership.js";
 import { createSessionInbox, type SessionInboxHandle } from "#execution/session-inbox/inbox.js";
 import { sessionHookTokens } from "#execution/session/hook-tokens.js";
@@ -111,6 +112,13 @@ async function bootInitialOwner(
     if (stableClaim.status === "rejected") throw stableClaim.reason;
     if (aliasClaim.status === "rejected") {
       if (!isHookConflictError(aliasClaim.reason)) throw aliasClaim.reason;
+      if (input.acknowledgeStartup === true) {
+        if (typeof aliasClaim.reason.conflictingRunId !== "string") throw aliasClaim.reason;
+        await publishWorkflowStartedStep({
+          runId: aliasClaim.reason.conflictingRunId,
+          continuationToken,
+        });
+      }
       if (
         input.activityCollectorRunId !== undefined ||
         input.continuationConflictCommand !== undefined
@@ -123,6 +131,9 @@ async function bootInitialOwner(
       }
       await inbox.dispose();
       return undefined;
+    }
+    if (input.acknowledgeStartup === true) {
+      await publishWorkflowStartedStep({ runId: sessionId, sessionId });
     }
     return {
       inbox,

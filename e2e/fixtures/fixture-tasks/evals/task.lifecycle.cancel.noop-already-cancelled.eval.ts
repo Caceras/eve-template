@@ -4,7 +4,6 @@ import {
   requireBackgroundTaskId,
   requireTaskView,
   sendAndFollowQueuedTurn,
-  waitForTaskInput,
   waitForTaskStatus,
 } from "./shared.js";
 import { defineTaskEval } from "./task-transition.js";
@@ -16,7 +15,6 @@ export default defineTaskEval({
     primary: "task.lifecycle.cancel.noop-already-cancelled",
     setup: [
       "task.dispatch.start.accepted-acknowledged",
-      "task.input.require.accepted-valid-batch",
       "task.lifecycle.cancel.accepted-nonterminal",
     ],
     dimensions: { transport: "local", parentPhase: "active" },
@@ -31,8 +29,8 @@ export default defineTaskEval({
     });
     const taskId = requireBackgroundTaskId(started);
 
-    const blocked = await waitForTaskInput(t, t, "release");
-    const cancelled = await sendAndFollowQueuedTurn(t, "TASK-CANCEL-NOW", blocked.session);
+    // Cancellation must work as soon as dispatch returns, before any input-required notification.
+    const cancelled = await sendAndFollowQueuedTurn(t, "TASK-CANCEL-NOW");
     cancelled.turn.expectOk();
     cancelled.turn.calledTool("task_cancel", { input: { taskIds: [taskId] } });
     const cancelledCall = cancelled.turn.toolCalls.find((call) => call.name === "task_cancel");

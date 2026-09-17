@@ -11,7 +11,6 @@ import {
   sendTaskCommand,
   sendTaskCommandToOwner,
   startTaskRun,
-  waitForTaskCommandOwner,
 } from "#execution/tasks/parent/run-parent.js";
 import { sessionCommandHookToken } from "#execution/session-inbox/address.js";
 import type { JsonValue } from "#shared/json.js";
@@ -92,13 +91,12 @@ export async function beginBackgroundTask(input: {
   readonly session: HarnessSession;
 }): Promise<BackgroundTask> {
   const task = prepareBackgroundTask(input);
-  await startTaskRun({
+  const owner = await startTaskRun({
     activityObserver: input.activityObserver,
     taskInboxToken: task.taskInboxToken,
     initialView: { metadata: task.metadata, status: "working", taskId: task.taskId },
     parentContinuationToken: sessionCommandHookToken(input.session.sessionId),
   });
-  const owner = await waitForTaskCommandOwner({ taskInboxToken: task.taskInboxToken });
   return { ...task, taskRunId: owner.runId };
 }
 
@@ -116,7 +114,6 @@ export async function acknowledgeDelegatedTasksStep(input: {
     const owner = await sendTaskCommandToOwner({
       command: { kind: "ready" },
       taskInboxToken: task.taskInboxToken,
-      retryUnreachable: { attempts: 20, delayMs: 250 },
     });
     if (owner !== undefined) continue;
     const view = await readLatestTaskView({ taskRunId: task.taskRunId });
@@ -133,6 +130,5 @@ export async function rejectDelegatedDispatch(input: {
   await sendTaskCommand({
     command: { data: input.error, kind: "reject-dispatch" },
     taskInboxToken: input.task.taskInboxToken,
-    retryUnreachable: { attempts: 20, delayMs: 250 },
   });
 }

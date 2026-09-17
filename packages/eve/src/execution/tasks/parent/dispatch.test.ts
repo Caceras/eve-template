@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cancelOwnedTask, isTaskControlAction } from "#execution/tasks/parent/dispatch.js";
-import { readLatestTaskView, sendTaskCommand } from "#execution/tasks/parent/run-parent.js";
+import {
+  readLatestTaskView,
+  sendTaskCommand,
+  waitForTerminalTaskView,
+} from "#execution/tasks/parent/run-parent.js";
 import { cancelWorkflowToolRun } from "#execution/tools/workflow/cancel.js";
 import { resumeSessionInbox } from "#execution/session-inbox/resume.js";
 
@@ -13,13 +17,14 @@ const { cancelRun, getRun } = vi.hoisted(() => ({
 vi.mock("#execution/tasks/parent/run-parent.js", () => ({
   readLatestTaskView: vi.fn(),
   sendTaskCommand: vi.fn(),
+  waitForTerminalTaskView: vi.fn(),
 }));
 vi.mock("#execution/tools/workflow/cancel.js", () => ({ cancelWorkflowToolRun: vi.fn() }));
 vi.mock("#execution/session-inbox/resume.js", () => ({ resumeSessionInbox: vi.fn() }));
 vi.mock("#internal/workflow/runtime.js", () => ({
   cancelRun,
   getRun,
-  getWorld: vi.fn(() => ({})),
+  getWorld: vi.fn(() => ({ runs: { get: getRun } })),
 }));
 
 const entry = {
@@ -37,7 +42,10 @@ describe("task cancellation", () => {
     vi.resetAllMocks();
     vi.useFakeTimers();
     vi.mocked(sendTaskCommand).mockResolvedValue("delivered");
-    getRun.mockReturnValue({ status: Promise.resolve("completed") });
+    getRun.mockResolvedValue({ status: "completed" });
+    vi.mocked(waitForTerminalTaskView).mockImplementation(
+      async () => await readLatestTaskView({ taskRunId: "task-run" }),
+    );
   });
 
   afterEach(() => {
@@ -64,6 +72,29 @@ describe("task cancellation", () => {
     );
     expect(cancelRun).not.toHaveBeenCalled();
     expect(resumeSessionInbox).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel child work before the streamed terminal view arrives", async () => {
+    let resolve!: (view: never) => void;
+    vi.mocked(waitForTerminalTaskView).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const cancelled = cancelOwnedTask({ entry });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancelWorkflowToolRun).not.toHaveBeenCalled();
+    expect(readLatestTaskView).not.toHaveBeenCalled();
+    resolve({ metadata: entry.metadata, status: "cancelled", taskId: entry.taskId } as never);
+    await cancelled;
+    expect(waitForTerminalTaskView).toHaveBeenCalledExactlyOnceWith("task-run");
+    expect(cancelWorkflowToolRun).toHaveBeenCalledOnce();
+  });
+
+  it("reports a missing cancellation commit without stopping child work", async () => {
+    vi.mocked(waitForTerminalTaskView).mockResolvedValue(undefined);
+    await expect(cancelOwnedTask({ entry })).rejects.toThrow("did not commit cancellation");
+    expect(cancelWorkflowToolRun).not.toHaveBeenCalled();
   });
 
   it("does not reinterpret an unknown executor binding", async () => {
@@ -128,13 +159,13 @@ describe("task cancellation", () => {
       status: "cancelled",
       taskId: entry.taskId,
     });
-    getRun.mockReturnValue({ status: Promise.resolve("running") });
+    getRun.mockResolvedValue({ status: "running" });
 
     const cancelled = cancelOwnedTask({ entry });
     await vi.runAllTimersAsync();
     await cancelled;
 
-    expect(cancelRun).toHaveBeenCalledWith({}, "task-run", {
+    expect(cancelRun).toHaveBeenCalledWith({ runs: { get: getRun } }, "task-run", {
       cancelReason: "Task task-1 was cancelled.",
     });
   });
@@ -142,7 +173,7 @@ describe("task cancellation", () => {
   it("preserves the committed parent notification when cancellation stops a slow task run", async () => {
     const view = { metadata: entry.metadata, status: "cancelled", taskId: entry.taskId } as const;
     vi.mocked(readLatestTaskView).mockResolvedValue(view);
-    getRun.mockReturnValue({ status: Promise.resolve("running") });
+    getRun.mockResolvedValue({ status: "running" });
     const session = { sessionId: "parent-session" } as Parameters<
       typeof cancelOwnedTask
     >[0]["session"];
@@ -171,7 +202,7 @@ describe("task cancellation", () => {
   it("retries the parent notification after the cancelled task inbox is gone", async () => {
     const view = { metadata: entry.metadata, status: "cancelled", taskId: entry.taskId } as const;
     vi.mocked(readLatestTaskView).mockResolvedValue(view);
-    getRun.mockReturnValue({ status: Promise.resolve("running") });
+    getRun.mockResolvedValue({ status: "running" });
     vi.mocked(resumeSessionInbox).mockRejectedValueOnce(new Error("temporary delivery failure"));
     const session = { sessionId: "parent-session" } as Parameters<
       typeof cancelOwnedTask
@@ -182,7 +213,7 @@ describe("task cancellation", () => {
     await failed;
 
     vi.mocked(sendTaskCommand).mockResolvedValue("unreachable");
-    getRun.mockReturnValue({ status: Promise.resolve("cancelled") });
+    getRun.mockResolvedValue({ status: "cancelled" });
     await expect(cancelOwnedTask({ entry, session })).resolves.toEqual(view);
     expect(cancelRun).toHaveBeenCalledTimes(1);
     expect(cancelWorkflowToolRun).toHaveBeenCalledTimes(2);

@@ -394,6 +394,61 @@ describe("createWorkflowRuntime command dispatch", () => {
     ).rejects.toBe(failure);
   });
 
+  it("backs off reset reads, preserves successor identity, and keeps the 30-second deadline", async () => {
+    vi.useFakeTimers();
+    resumeHookMock.mockResolvedValue({
+      runId: "successor",
+      token: "alias",
+      metadata: { sessionId: "original" },
+    });
+    getHookByTokenMock.mockResolvedValue({ runId: "successor" });
+    try {
+      const reset = buildRuntime().dispatchContinuation({
+        command: { kind: "reset" },
+        continuationToken: "alias",
+      });
+      const failure = expect(reset).rejects.toThrow("Timed out waiting for session");
+      await vi.advanceTimersByTimeAsync(30_000);
+      await failure;
+      expect(getHookByTokenMock.mock.calls.length).toBeLessThan(250);
+      expect(getHookByTokenMock).toHaveBeenCalledWith(
+        sessionInboxHookToken(sessionCommandHookToken("original")),
+      );
+      expect(getHookByTokenMock).toHaveBeenCalledWith(sessionInboxHookToken("alias"));
+      await vi.runAllTimersAsync();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("finishes reset when both addresses release without requiring a new lifecycle signal", async () => {
+    vi.useFakeTimers();
+    resumeHookMock.mockResolvedValue({
+      runId: "successor",
+      token: "alias",
+      metadata: { sessionId: "original" },
+    });
+    let released = false;
+    getHookByTokenMock.mockImplementation(async (token: string) => {
+      if (released) throw new HookNotFoundError(token);
+      return { runId: "successor" };
+    });
+    try {
+      const reset = buildRuntime().dispatchContinuation({
+        command: { kind: "reset" },
+        continuationToken: "alias",
+      });
+      await vi.advanceTimersByTimeAsync(300);
+      released = true;
+      await vi.advanceTimersByTimeAsync(250);
+      await expect(reset).resolves.toEqual({ previousSessionId: "original", status: "reset" });
+      expect(getHookByTokenMock).toHaveBeenCalledTimes(12);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("waits for reset to release the stable command inbox", async () => {
     const { HookNotFoundError } = await import("#compiled/@workflow/errors/index.js");
     resumeHookMock.mockResolvedValue(currentSessionHook("eve:token", "session-1"));
@@ -792,6 +847,28 @@ describe("createWorkflowRuntime#createSession", () => {
 
     expect(getHookByTokenMock).not.toHaveBeenCalled();
     expect(cancelRunMock).not.toHaveBeenCalled();
+  });
+
+  it("requests a startup signal only for callers that need ownership", async () => {
+    const compiledArtifactsSource = {} as RuntimeCompiledArtifactsSource;
+    mockBundleAndRun(compiledArtifactsSource);
+    startMock.mockResolvedValue({ runId: "candidate" });
+    await createWorkflowRuntime({
+      compiledArtifactsSource,
+      acknowledgeStartup: true,
+    }).createSession({
+      adapter: { kind: "http", state: {} },
+      auth: null,
+      continuationToken: "subagent:child",
+      input: { message: "hello" },
+      mode: "conversation",
+    });
+    expect(startMock).toHaveBeenCalledWith(
+      workflowEntryReference,
+      [expect.objectContaining({ acknowledgeStartup: true })],
+      expect.any(Object),
+    );
+    expect(getHookByTokenMock).not.toHaveBeenCalled();
   });
 
   it("serializes the selected dynamic subagent config for the child workflow", async () => {

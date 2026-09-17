@@ -44,7 +44,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("#compiled/@workflow/core/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("#compiled/@workflow/core/index.js")>()),
   createHook: mocks.createHook,
+  getWorkflowMetadata: () => ({ workflowRunId: "task-run" }),
 }));
+vi.mock("#execution/workflow-started-step.js", () => ({ publishWorkflowStartedStep: vi.fn() }));
 vi.mock("#execution/hook-ownership.js", () => ({
   claimHookOwnership: mocks.claimHookOwnership,
   isHookConflictError: () => false,

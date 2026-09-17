@@ -1,4 +1,6 @@
-import { createHook } from "#compiled/@workflow/core/index.js";
+import { createHook, getWorkflowMetadata } from "#compiled/@workflow/core/index.js";
+
+import { publishWorkflowStartedStep } from "#execution/workflow-started-step.js";
 
 import type { ActivityObserverConfig } from "#channel/types.js";
 import { claimHookOwnership, isHookConflictError } from "#execution/hook-ownership.js";
@@ -102,10 +104,14 @@ export async function taskRunWorkflow(input: TaskRunWorkflowInput): Promise<void
   try {
     await claimHookOwnership(commands);
   } catch (error) {
-    if (isHookConflictError(error)) return;
+    if (isHookConflictError(error) && typeof error.conflictingRunId === "string") {
+      await publishWorkflowStartedStep({ runId: error.conflictingRunId });
+      return;
+    }
     throw error;
   }
 
+  await publishWorkflowStartedStep({ runId: getWorkflowMetadata().workflowRunId });
   await appendTaskViewStep({ activityObserver: input.activityObserver, view });
   while (true) {
     // Hook persistence does not mean the owner has consumed every report yet.

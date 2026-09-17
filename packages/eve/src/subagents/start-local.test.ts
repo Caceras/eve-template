@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createWorkflowRuntime, waitForCommandHookOwner } from "#execution/workflow-runtime.js";
+import { createWorkflowRuntime } from "#execution/workflow-runtime.js";
+import { readWorkflowStarted } from "#execution/workflow-started.js";
 import { startLocalSubagent } from "#subagents/start-local.js";
 import { buildSubagentRunInput } from "#subagents/tool.js";
 
@@ -8,8 +9,8 @@ const createSessionMock = vi.fn();
 
 vi.mock("#execution/workflow-runtime.js", () => ({
   createWorkflowRuntime: vi.fn(() => ({ createSession: createSessionMock })),
-  waitForCommandHookOwner: vi.fn(),
 }));
+vi.mock("#execution/workflow-started.js", () => ({ readWorkflowStarted: vi.fn() }));
 vi.mock("#subagents/tool.js", () => ({
   buildSubagentRunInput: vi.fn(),
 }));
@@ -24,7 +25,10 @@ beforeEach(() => {
     childContinuationToken: "child-token",
     runInput: {} as never,
   });
-  vi.mocked(waitForCommandHookOwner).mockResolvedValue({ runId: "winning-session" });
+  vi.mocked(readWorkflowStarted).mockResolvedValue({
+    runId: "successor-run",
+    sessionId: "winning-session",
+  });
 });
 
 describe("startLocalSubagent", () => {
@@ -58,7 +62,10 @@ describe("startLocalSubagent", () => {
       source: { description: "Research", type: "local" },
     });
 
-    expect(createWorkflowRuntime).toHaveBeenCalledOnce();
+    expect(createWorkflowRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledgeStartup: true }),
+    );
+    expect(readWorkflowStarted).toHaveBeenCalledWith("candidate-session");
     expect(outcome).toMatchObject({
       address: {
         continuationToken: "child-token",

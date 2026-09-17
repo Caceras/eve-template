@@ -3,11 +3,13 @@ import { isTaskWorkflowTargetGone } from "#execution/tasks/workflow-target.js";
 import {
   startWorkflowOnCurrentDeployment,
   taskRunWorkflowReference,
-  waitForCommandHookOwner,
 } from "#execution/workflow-runtime.js";
+import { readWorkflowStarted } from "#execution/workflow-started.js";
+import { readWorkflowStream } from "#execution/workflow-stream.js";
 import { getRun, resumeHook } from "#internal/workflow/runtime.js";
 import {
   TASK_VIEW_STREAM_NAMESPACE,
+  isTerminalTaskStatus,
   type TaskCommand,
   type TaskCommandHookPayload,
   type TaskRunInboundPayload,
@@ -28,31 +30,28 @@ const TASK_VIEW_READ_TIMEOUT_MS = 10_000;
  */
 
 /** Starts the durable run owning one task's lifecycle. */
-export async function startTaskRun(input: TaskRunWorkflowInput): Promise<void> {
-  await startWorkflowOnCurrentDeployment(taskRunWorkflowReference, [input]);
+export async function startTaskRun(
+  input: TaskRunWorkflowInput,
+): Promise<{ readonly runId: string }> {
+  const run = await startWorkflowOnCurrentDeployment(taskRunWorkflowReference, [input]);
+  return await readWorkflowStarted(run.runId);
 }
 
-/** Resolves the task run that won ownership of one replay-stable command token. */
-export async function waitForTaskCommandOwner(input: {
-  readonly taskInboxToken: string;
-}): Promise<{ readonly runId: string }> {
-  return await waitForCommandHookOwner(input.taskInboxToken);
+/** Waits on the existing task view stream instead of repeatedly reopening its tail. */
+export async function waitForTerminalTaskView(taskRunId: string): Promise<TaskView | undefined> {
+  return await readWorkflowStream<TaskView>({
+    runId: taskRunId,
+    namespace: TASK_VIEW_STREAM_NAMESPACE,
+    startIndex: -1,
+    timeoutMs: 2_500,
+    accept: (view) => isTerminalTaskStatus(view.status),
+  });
 }
 
-/**
- * Submits one command to a task run.
- *
- * `unreachable` means the hook is not resumable — either the run
- * already finished and disposed it (the task is terminal; read the
- * final view) or, right after creation, the freshly started run has
- * not registered it yet. Senders racing that startup window pass
- * `retryUnreachable`; senders addressing an established task treat
- * `unreachable` as the terminal signal.
- */
+/** Submits a command after startup; an unreachable inbox has already retired. */
 export async function sendTaskCommand(input: {
   readonly command: TaskCommand;
   readonly taskInboxToken: string;
-  readonly retryUnreachable?: { readonly attempts: number; readonly delayMs: number };
 }): Promise<"delivered" | "unreachable"> {
   return (await sendTaskCommandToOwner(input)) === undefined ? "unreachable" : "delivered";
 }
@@ -61,31 +60,22 @@ export async function sendTaskCommand(input: {
 export async function sendTaskCommandToOwner(input: {
   readonly command: TaskCommand;
   readonly taskInboxToken: string;
-  readonly retryUnreachable?: { readonly attempts: number; readonly delayMs: number };
 }): Promise<{ readonly runId: string } | undefined> {
   const payload: TaskCommandHookPayload = { command: input.command, kind: "task-command" };
-  const attempts = Math.max(1, input.retryUnreachable?.attempts ?? 1);
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const owner = await resumeHook(input.taskInboxToken, payload);
-      if (
-        typeof owner !== "object" ||
-        owner === null ||
-        !("runId" in owner) ||
-        typeof owner.runId !== "string"
-      ) {
-        throw new Error(`Task inbox hook "${input.taskInboxToken}" returned no owner run id.`);
-      }
-      return { runId: owner.runId };
-    } catch (error) {
-      if (!isTaskWorkflowTargetGone(error)) {
-        throw error;
-      }
-      if (attempt + 1 >= attempts) {
-        return undefined;
-      }
-      await new Promise((resolve) => setTimeout(resolve, input.retryUnreachable?.delayMs ?? 250));
+  try {
+    const owner = await resumeHook(input.taskInboxToken, payload);
+    if (
+      typeof owner !== "object" ||
+      owner === null ||
+      !("runId" in owner) ||
+      typeof owner.runId !== "string"
+    ) {
+      throw new Error(`Task inbox hook "${input.taskInboxToken}" returned no owner run id.`);
     }
+    return { runId: owner.runId };
+  } catch (error) {
+    if (!isTaskWorkflowTargetGone(error)) throw error;
+    return undefined;
   }
 }
 
