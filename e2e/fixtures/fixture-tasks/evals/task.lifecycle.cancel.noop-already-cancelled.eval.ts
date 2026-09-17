@@ -30,7 +30,7 @@ export default defineTaskEval({
     const taskId = requireBackgroundTaskId(started);
 
     // Cancellation must work as soon as dispatch returns, before any input-required notification.
-    const cancelled = await sendAndFollowQueuedTurn(t, "TASK-CANCEL-NOW");
+    const cancelled = await sendAndFollowQueuedTurn(t, "TASK-CANCEL-NOW", started.session);
     cancelled.turn.expectOk();
     cancelled.turn.calledTool("task_cancel", { input: { taskIds: [taskId] } });
     const cancelledCall = cancelled.turn.toolCalls.find((call) => call.name === "task_cancel");

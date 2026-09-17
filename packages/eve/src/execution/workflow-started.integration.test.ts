@@ -37,13 +37,19 @@ describe("workflow startup acknowledgement", () => {
     });
   });
 
-  it("returns the winning public session to concurrent subagent candidates", async () => {
+  it.each([
+    {
+      mode: "with an initial message",
+      input: { message: "Alice is checking that her conversation is ready." },
+    },
+    { mode: "before a prewarmed session receives its first message", input: {} },
+  ])("returns the winning public session $mode", async ({ input: sessionInput }) => {
     const runtime = await createTestRuntime({ agent: { name: "session-startup" } });
     await runtime.run(async () => {
       const input = {
         acknowledgeStartup: true,
         kind: "initial",
-        input: { message: "Alice is checking that her conversation is ready." },
+        input: sessionInput,
         ownerDeploymentId: await (await getWorld()).getDeploymentId(),
         serializedContext: {
           "eve.auth": null,
