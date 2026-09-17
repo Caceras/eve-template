@@ -167,10 +167,10 @@ describe("Docker provider prewarm", () => {
     expect(findCall(calls, (args) => args[0] === "build")?.args).toEqual([
       "build",
       "--file",
-      expect.stringMatching(/\/dockerfiles\/[a-f0-9]{64}\/Dockerfile$/u),
+      expect.stringMatching(/[\\/]dockerfiles[\\/][a-f0-9]{64}[\\/]Dockerfile$/u),
       "--tag",
       expect.stringMatching(/^eve-sandbox-dockerfile:/),
-      expect.stringMatching(/\/dockerfiles\/[a-f0-9]{64}$/u),
+      expect.stringMatching(/[\\/]dockerfiles[\\/][a-f0-9]{64}$/u),
     ]);
     expect(findCall(calls, (args) => args[0] === "pull")).toBeUndefined();
     expect(findCall(calls, (args) => args[0] === "run")?.args).toContainEqual(
