@@ -304,7 +304,12 @@ async function loadGraphFromArtifacts(input: {
 async function resolveAuthoredAgentRoot(appRoot: string, nodeId: string): Promise<string> {
   const path =
     nodeId === ROOT_RUNTIME_AGENT_NODE_ID ? join(appRoot, "agent") : join(appRoot, "agent", nodeId);
-  return (await stat(path)).isDirectory() ? path : dirname(path);
+  try {
+    return (await stat(path)).isDirectory() ? path : dirname(path);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return path;
+    throw error;
+  }
 }
 
 function collectNodeSandboxes(graph: ResolvedAgentGraphBundle): readonly NodeSandbox[] {
