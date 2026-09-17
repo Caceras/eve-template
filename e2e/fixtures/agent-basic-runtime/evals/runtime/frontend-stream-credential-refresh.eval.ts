@@ -8,9 +8,8 @@ export default defineEval({
     const session = await t.session();
     const host = `https://${crypto.randomUUID()}.invalid`;
     const originalFetch = globalThis.fetch;
-    const reconnected = Promise.withResolvers<string | null>();
-    let disconnect: (() => void) | undefined;
-    let refreshed = false;
+    const reconnectAuthorization = Promise.withResolvers<string | null>();
+    let disconnectStream: (() => void) | undefined;
     const store = new EveAgentStore({
       host,
       initialSession: session.state,
@@ -21,41 +20,45 @@ export default defineEval({
     globalThis.fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.origin !== host) return originalFetch(input, init);
-      const isStream = url.pathname.endsWith("/stream");
-      if (isStream && refreshed) {
-        reconnected.resolve(new Headers(init?.headers).get("authorization"));
-      }
       const response = await t.target.fetch(`${url.pathname}${url.search}`, init);
-      if (isStream && response.ok && response.body !== null && !refreshed) {
-        const transport = new TransformStream<Uint8Array, Uint8Array>({
-          start(controller) {
-            disconnect = () => controller.terminate();
-          },
-        });
-        return new Response(response.body.pipeThrough(transport), response);
+      if (!url.pathname.endsWith("/stream") || !response.ok || response.body === null) {
+        return response;
       }
-      if (init?.method === "POST" && refreshed && response.ok) disconnect?.();
-      return response;
+      if (disconnectStream !== undefined) {
+        reconnectAuthorization.resolve(new Headers(init?.headers).get("authorization"));
+        return response;
+      }
+      const transport = new TransformStream<Uint8Array, Uint8Array>({
+        start(controller) {
+          disconnectStream = () => controller.terminate();
+        },
+      });
+      return new Response(response.body.pipeThrough(transport), response);
     };
 
     try {
+      // Synthetic fixture tokens make the outgoing credential easy to recognize.
       await store.send({
         message: "Reply with first.",
         headers: { authorization: "Bearer old" },
         signal: t.signal,
       });
       await t.require(store.snapshot.error, equals(undefined));
+      // The fixture reporter needs a turn consumed through the eval driver.
       const firstTurn = await t.target.watchTurn(session.sessionId).result();
       firstTurn.expectOk();
-      if (disconnect === undefined) throw new Error("The first turn never opened its stream.");
-      refreshed = true;
+
       await store.send({
         message: "Reply with second.",
         headers: { authorization: "Bearer fresh" },
         signal: t.signal,
       });
       await t.require(store.snapshot.error, equals(undefined));
-      await t.require(await reconnected.promise, equals("Bearer fresh"));
+
+      if (disconnectStream === undefined)
+        throw new Error("The first turn never opened its stream.");
+      disconnectStream();
+      await t.require(await reconnectAuthorization.promise, equals("Bearer fresh"));
     } finally {
       store.reset();
       globalThis.fetch = originalFetch;
