@@ -45,6 +45,8 @@ export default defineEval({
         signal: t.signal,
       });
       await t.require(store.snapshot.error, equals(undefined));
+      const firstTurn = await t.target.watchTurn(session.sessionId).result();
+      firstTurn.expectOk();
       if (disconnect === undefined) throw new Error("The first turn never opened its stream.");
       refreshed = true;
       await store.send({
