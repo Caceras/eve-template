@@ -574,6 +574,6 @@ test("package integration depends only on the build while root tests avoid concu
   assert.deepEqual(config.tasks["test:integration"].dependsOn, ["eve#build"]);
   assert.equal(
     pkg.scripts["test:integration"],
-    "turbo run test:integration --filter=eve && turbo run test:integration --filter='!eve'",
+    'turbo run test:integration --filter=eve && turbo run test:integration --filter="!eve"',
   );
 });
