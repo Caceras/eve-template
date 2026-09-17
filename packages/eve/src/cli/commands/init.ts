@@ -1,5 +1,5 @@
 import { mkdtemp, readdir, rename, rm } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import pc from "#compiled/picocolors/index.js";
@@ -15,7 +15,7 @@ import { formatElapsed } from "#cli/format-elapsed.js";
 import { startCliLiveRow } from "#cli/ui/live-row.js";
 import { createLogger, isLogLevelEnabled } from "#internal/logging.js";
 import { DEFAULT_AGENT_MODEL_ID } from "#shared/default-agent-model.js";
-import { formatNodeEngineOverrideWarning, type NodeEngineOverride } from "#setup/node-engine.js";
+import type { NodeEngineOverride } from "#setup/node-engine.js";
 import {
   detectInvokingPackageManager,
   detectPackageManager,
@@ -43,7 +43,7 @@ import {
   type EvePackageContract,
 } from "#setup/scaffold/create/project.js";
 
-import { initAgentDevHandoff, initAgentReplPrompt } from "./agent-instructions.js";
+import { initAgentDevHandoff } from "./agent-instructions.js";
 import {
   installProgressDetail,
   INSTALL_OUTPUT_FALLBACK_LINES,
@@ -58,13 +58,15 @@ import {
   type InitCommandOptions,
 } from "./init-agent-workspace.js";
 import { initAgentReadySummary } from "./agent-instructions.js";
+import { tryInitializeGit } from "./init-git.js";
+import { InitTargetError } from "./init-telemetry.js";
 import {
-  cleanupFreshInitTarget,
-  workspaceFailureNote,
-  type InitFailurePolicy,
-} from "./init-recovery.js";
-import { tryInitializeGit, type GitInitResult } from "./init-git.js";
-import { selectInitHandoff, spawnCodingAgentRepl, type InitHandoff } from "./init-repl.js";
+  reportExistingProjectChanges,
+  type InitResult,
+  type PreparedInitProject,
+} from "./init-project.js";
+import { cleanupFreshInitTarget, workspaceFailureNote } from "./init-recovery.js";
+import { hasInteractiveTerminal } from "./preconditions.js";
 import { resolveInitTarget } from "./init-target.js";
 
 export type { InitCliLogger, InitCommandOptions } from "./init-agent-workspace.js";
@@ -78,8 +80,7 @@ export interface InitCommandDependencies {
   now: () => number;
   runPackageManagerInstall: typeof runPackageManagerInstall;
   scaffoldBaseProject: typeof scaffoldBaseProject;
-  selectInitHandoff: typeof selectInitHandoff;
-  spawnCodingAgentRepl: typeof spawnCodingAgentRepl;
+  hasInteractiveTerminal: typeof hasInteractiveTerminal;
   spawnPackageManager: typeof spawnPackageManager;
   tryInitializeGit: typeof tryInitializeGit;
   validateModelSlug: typeof validateModelSlug;
@@ -94,8 +95,7 @@ const defaultDependencies: InitCommandDependencies = {
   now: () => performance.now(),
   runPackageManagerInstall,
   scaffoldBaseProject,
-  selectInitHandoff,
-  spawnCodingAgentRepl,
+  hasInteractiveTerminal,
   spawnPackageManager,
   tryInitializeGit,
   validateModelSlug,
@@ -261,73 +261,11 @@ async function scaffoldProject(
   }
 }
 
-type PreparedInitProject =
-  | {
-      configurationFilesChanged: string[];
-      dependenciesAdded: string[];
-      failurePolicy: "preserve";
-      filesWritten: string[];
-      kind: "added";
-      nodeEngineOverride?: NodeEngineOverride;
-      packageManager: PackageManagerKind;
-      projectPath: string;
-    }
-  | {
-      failurePolicy: InitFailurePolicy;
-      kind: "created";
-      packageManager: PackageManagerKind;
-      preservedTargetEntries: readonly string[];
-      projectPath: string;
-      retryCommand: string;
-      workspaceMember: boolean;
-      workspaceRootMutations: WorkspaceRootMutation[];
-    };
-
 type InitTerminalTracker = (
   step: EveCliSetupStep,
   result: EveCliSetupTerminalResult,
   failureCode?: EveCliSetupFailureCode,
 ) => void;
-
-type InitResult = {
-  agentElapsedMs: number;
-  agentLaunched: boolean;
-  installElapsedMs: number;
-  packageManager: PackageManagerKind;
-  projectPath: string;
-} & (
-  | {
-      configurationFilesChanged: string[];
-      dependenciesAdded: string[];
-      filesWritten: string[];
-      kind: "added";
-      nodeEngineOverride?: NodeEngineOverride;
-    }
-  | {
-      gitResult: GitInitResult;
-      kind: "created";
-      workspaceRootMutations: WorkspaceRootMutation[];
-    }
-);
-
-function reportExistingProjectChanges(
-  logger: InitCliLogger,
-  project: Extract<PreparedInitProject, { kind: "added" }>,
-): void {
-  logger.log("Updated existing project:");
-  for (const path of project.filesWritten) {
-    logger.log(`  Created ${relative(project.projectPath, path).replaceAll("\\", "/")}`);
-  }
-  if (project.dependenciesAdded.length > 0) {
-    logger.log(`  Added dependencies: ${project.dependenciesAdded.join(", ")}`);
-  }
-  for (const path of project.configurationFilesChanged) {
-    logger.log(`  Updated ${path}`);
-  }
-  if (project.nodeEngineOverride !== undefined) {
-    logger.log(pc.yellow(`  ⚠ ${formatNodeEngineOverrideWarning(project.nodeEngineOverride)}`));
-  }
-}
 
 async function runInitSteps(input: {
   dependencies: InitCommandDependencies;
@@ -335,15 +273,24 @@ async function runInitSteps(input: {
   options: InitCommandOptions;
   parentDirectory: string;
   target: string | undefined;
+  agentLaunched: boolean;
   trackStep?: (step: EveCliSetupStep) => void;
   trackTerminal?: InitTerminalTracker;
 }): Promise<InitResult> {
-  const { dependencies, logger, options, parentDirectory, target, trackStep, trackTerminal } =
-    input;
+  const {
+    agentLaunched,
+    dependencies,
+    logger,
+    options,
+    parentDirectory,
+    target,
+    trackStep,
+    trackTerminal,
+  } = input;
   const debug = isLogLevelEnabled("debug");
-  const agentLaunched = await dependencies.isCodingAgentLaunch();
   const initTarget = await resolveInitTarget({ parentDirectory, target });
   const evePackage = resolveInitEvePackageOverride();
+  const selfModificationEnabled = false;
 
   let progress = startCliLiveRow(logger);
   let activeInitStep: EveCliSetupStep = "scaffold";
@@ -526,10 +473,17 @@ async function runInitSteps(input: {
         agentLaunched,
         gitResult: await dependencies.tryInitializeGit(project.projectPath),
         installElapsedMs,
+        selfModificationEnabled,
       };
     }
 
-    return { ...project, agentElapsedMs, agentLaunched, installElapsedMs };
+    return {
+      ...project,
+      agentElapsedMs,
+      agentLaunched,
+      installElapsedMs,
+      selfModificationEnabled,
+    };
   } catch (error) {
     trackTerminal?.(
       activeInitStep,
@@ -552,23 +506,24 @@ export async function runInitCommand(
   trackTerminal?: InitTerminalTracker,
 ): Promise<void> {
   trackStep?.("resolve_target");
-  if (
-    await addAgentsToWorkspace(
-      logger,
-      parentDirectory,
-      target,
-      options,
-      dependencies.validateModelSlug,
-    )
-  ) {
-    trackStep?.("handoff");
-    trackTerminal?.("handoff", "completed");
-    return;
-  }
-
   let result: InitResult;
   try {
+    if (
+      await addAgentsToWorkspace(
+        logger,
+        parentDirectory,
+        target,
+        options,
+        dependencies.validateModelSlug,
+      )
+    ) {
+      trackStep?.("handoff");
+      trackTerminal?.("handoff", "completed");
+      return;
+    }
+
     result = await runInitSteps({
+      agentLaunched: await dependencies.isCodingAgentLaunch(),
       dependencies,
       logger,
       options,
@@ -581,6 +536,9 @@ export async function runInitCommand(
     if (error instanceof WizardCancelledError) {
       trackTerminal?.("resolve_target", "cancelled");
       return;
+    }
+    if (error instanceof InitTargetError) {
+      trackTerminal?.("resolve_target", "error", error.failureCode);
     }
     throw error;
   }
@@ -601,6 +559,9 @@ export async function runInitCommand(
   logger.log(
     `${pc.green("✓")} Installed dependencies ${pc.dim(`in ${formatElapsed(result.installElapsedMs)}`)}`,
   );
+  if (result.selfModificationEnabled) {
+    logger.log(`${pc.green("✓")} Enabled self-modification`);
+  }
 
   if (result.kind === "created" && result.gitResult.kind === "failed") {
     logger.error(
@@ -634,33 +595,8 @@ export async function runInitCommand(
     return;
   }
 
-  let handoff: InitHandoff;
-  try {
-    handoff = await dependencies.selectInitHandoff({ agentName: basename(result.projectPath) });
-  } catch (error) {
-    if (error instanceof WizardCancelledError) return;
-    throw error;
-  }
-  if (handoff === "exit") return;
-  if (handoff !== "eve-dev") {
-    logger.log(pc.dim(`$ ${handoff}`));
-    if (
-      !(await dependencies.spawnCodingAgentRepl({
-        command: handoff,
-        cwd: result.projectPath,
-        prompt: initAgentReplPrompt({ devCommand: agentDevCommand }),
-        // A `.cmd`/`.bat` shim can't take the multi-line prompt on its command
-        // line, so print it for the user to paste once the REPL opens.
-        onPromptUnseeded: (prompt) => {
-          logger.log(
-            pc.yellow(`Could not seed ${handoff} automatically. Paste this prompt into it:`),
-          );
-          logger.log(prompt);
-        },
-      }))
-    ) {
-      throw new Error(`Coding-agent REPL exited unsuccessfully in "${result.projectPath}".`);
-    }
+  if (!dependencies.hasInteractiveTerminal()) {
+    logger.log(agentHandoff);
     return;
   }
 

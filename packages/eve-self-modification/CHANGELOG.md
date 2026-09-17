@@ -1,5 +1,24 @@
 # @eve/self-modification
 
+## 0.0.13
+
+### Patch Changes
+
+- c3952cf: Allow the compatibility package to forward imports to any eve release at or above 0.54.0.
+
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [f60c64b]
+- Updated dependencies [84c9604]
+- Updated dependencies [dea8cd8]
+- Updated dependencies [47bd3d7]
+- Updated dependencies [6d0485b]
+- Updated dependencies [9381078]
+- Updated dependencies [879d4e5]
+  - eve@0.54.0
+
 ## 0.0.11
 
 ### Patch Changes

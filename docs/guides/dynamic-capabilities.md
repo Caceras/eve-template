@@ -68,21 +68,33 @@ availability depends on the caller, tenant, environment, or a feature flag.
 Return the child definition to configure and expose it. Return `null` to omit
 it from the parent's model-visible tools.
 
+The example below exposes a finance subagent to enterprise callers and gives
+it the model that the parent would use at that point:
+
 ```ts title="agent/subagents/finance/agent.ts"
 import { defineAgent, defineDynamic } from "eve";
 
 export default defineDynamic({
   events: {
-    "session.started": (_event, ctx) =>
-      ctx.session.auth.current?.attributes.plan === "enterprise"
-        ? defineAgent({
-            description: "Analyze financial and accounting data.",
-            model: "openai/gpt-5.5",
-          })
-        : null,
+    "session.started": (_event, ctx) => {
+      if (ctx.session.auth.current?.attributes.plan !== "enterprise") {
+        return null;
+      }
+
+      return defineAgent({
+        description: "Analyze financial and accounting data.",
+        model: ctx.model ? ctx.model.id : "openai/gpt-5.5-mini",
+      });
+    },
   },
 });
 ```
+
+`ctx.model` is the parent's effective model when the resolver runs. In this
+example, this dynamic subagent uses the parent's effective model when it is
+available falls back to `openai/gpt-5.5-mini` if the parent has not selected
+one yet. The returned child config snapshots the model ID; a later parent
+model change does not retarget the child.
 
 eve always compiles the subagent's filesystem resources, including its
 instructions, tools, skills, connections, sandbox, and nested subagents. It
@@ -124,9 +136,9 @@ shadows the session selection for that turn, including when the turn handler
 returns `null`. If a resolver throws or returns an invalid definition, eve logs the
 failure and omits the subagent.
 
-The resolved set applies to local and remote direct delegation. Background subagents are not
-exposed inside the model-authored `Workflow` tool. eve
-also checks availability again before starting the child, so a stale or
+The resolved set applies to local and remote direct delegation. An authored workflow tool can
+also call a selected subagent through `ctx.agent`. A generated program can call it through the
+provided `workflow` tool. eve checks availability again before starting the child, so a stale or
 manually constructed call fails with `SUBAGENT_UNAVAILABLE`. Treat conditional
 availability as capability composition, not as the only authorization
 boundary: sensitive child tools still need their own authorization and
@@ -166,7 +178,7 @@ export default defineDynamic({
             description: `${account.label} (${account.accountId})`,
             instanceKey: account.accountId,
             auth: {
-              principalType: "user",
+              credentialOwner: "user",
               getToken: ({ principal }) => mintAccountToken(principal, account),
             },
           }),
@@ -320,6 +332,10 @@ A dynamic connection, tool, or skill whose name matches an **authored** one **ov
 | `step.started`    | Before each model call                                | That model call                 |
 
 ¹ Workflow recovery can redeliver a resolver event, so keep resolvers idempotent. Replaying a parked callback does not depend on running the resolver again — except for the one-shot rebind described under [Identity and redeploys](#identity-and-redeploys).
+
+At `turn.started`, model, tool, skill, and subagent resolvers receive the visible conversation history and incoming message in `ctx.messages`, oldest first. Request context is included, and history projection still applies. Read these messages from the handler's second argument; the event itself contains turn metadata. Instruction resolvers use the separate snapshot described under [Dynamic instructions](#dynamic-instructions).
+
+This also applies while a session-limit prompt keeps the incoming message queued and when authorization completes. Authorization callbacks without new or queued input receive the visible history. When memory recall runs, its results appear in the projected snapshot before incoming input.
 
 ### Execution order
 
