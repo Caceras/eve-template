@@ -1,6 +1,7 @@
 import { buildAdapterContext } from "#channel/adapter-context.js";
 import { callAdapterEventHandler } from "#channel/adapter.js";
 import { dispatchStreamEventHooks } from "#context/hook-lifecycle.js";
+import { TurnDeliveryIdsKey } from "#context/keys.js";
 import { withContextScope } from "#context/run-step.js";
 import { deserializeContext, serializeContext } from "#context/serialize.js";
 import { setChannelContext } from "#execution/channel-context.js";
@@ -25,12 +26,14 @@ import {
   getProxyInputRequests,
   hasProxyInputRequests,
 } from "#harness/proxy-input-requests.js";
-import { abandonRunningAgentTurns } from "#harness/handles/transitions.js";
-import { clearPendingRuntimeActionBatch } from "#harness/runtime-actions.js";
-import { clearToolRuns } from "#harness/tool-runs.js";
+import {
+  abandonAgentInvocationOwners,
+  abandonRunningAgentTurns,
+} from "#subagents/handles/transitions.js";
+import { clearPendingCoordinationBatch } from "#harness/coordination.js";
+import { clearWorkflowToolRuns, getWorkflowToolRuns } from "#harness/workflow-tool-runs.js";
 import { bindSessionInstrumentation } from "#instrumentation/runtime.js";
 import { getTurnUsageState, toUsage } from "#harness/turn-tag-state.js";
-import { clearPendingWorkflowInterrupt } from "#harness/workflow-interrupt-state.js";
 import {
   encodeMessageStreamEvent,
   type UnstampedMessageStreamEvent,
@@ -48,18 +51,18 @@ export interface CancelledTurnSettleResult {
 
 /**
  * Settles one cancelled turn: emits `turn.cancelled` → `session.waiting`,
- * drops pending runtime-action state, and persists the between-turns
- * session. Runs in the *driver* run, whose wake sources exclude the
+ * drops pending coordination state, and persists the between-turns
+ * session. Runs in the owner, whose wake sources exclude the
  * cancel hook, so a queued cancel wake cannot re-dispatch it.
  */
 export async function settleCancelledTurnStep(input: {
-  readonly parentWritable: WritableStream<Uint8Array>;
+  readonly sessionWritable: WritableStream<Uint8Array>;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): Promise<CancelledTurnSettleResult> {
   "use step";
 
-  const durableSession = await readDurableSession(input.sessionState);
+  const durableSession = readDurableSession(input.sessionState);
   const ctx = await deserializeContext(input.serializedContext);
   const adapter = ctx.require(ChannelKey);
   const adapterCtx = buildAdapterContext(adapter, ctx);
@@ -94,14 +97,14 @@ export async function settleCancelledTurnStep(input: {
     !stoppedAtDescendantLimit;
 
   if (!alreadyEpilogued) {
-    const writer = input.parentWritable.getWriter();
+    const writer = input.sessionWritable.getWriter();
     try {
       const scoped = await withContextScope(ctx, session, async (enrichedSession) => {
         const baseEmit = async (event: UnstampedMessageStreamEvent): Promise<void> => {
           const transformed = await callAdapterEventHandler(adapter, event, adapterCtx);
           setChannelContext(ctx, { ...adapter, state: { ...adapterCtx.state } });
           // Stamp once: the persisted chunk and the hooks must agree on the id.
-          const stamped = stampMessageStreamEvent(transformed);
+          const stamped = stampMessageStreamEvent(transformed, ctx.get(TurnDeliveryIdsKey));
           await writer.write(encodeMessageStreamEvent(stamped));
           void observeSessionActivity({ ctx, event: stamped, sessionId: session.sessionId });
           await dispatchStreamEventHooks({
@@ -135,18 +138,23 @@ export async function settleCancelledTurnStep(input: {
   // violation holds, so the next delivery gets a fresh prompt instead of
   // queueing forever behind a stale one.
   //
-  // `abandonRunningAgentTurns`: `cancelDescendantTurnsStep` already ran and
-  // the cancelled turn's inbox is gone, so a child settlement can never
-  // reach this store again. This is the last write that can move those
-  // handles out of `running`.
+  // Descendant cancellation already ran and the cancelled turn's inbox is
+  // gone, so a child settlement can never reach this store again. This is the
+  // last write that can park turn-owned `running` and workflow-owned `claimed`
+  // handles.
+  const workflowToolRuns = getWorkflowToolRuns(session.state);
+  session = abandonAgentInvocationOwners(
+    session,
+    new Set(workflowToolRuns.map((run) => run.runId)),
+  );
   const cancelledSession = reconcileSessionContinuationToken(
     ctx,
     setHarnessEmissionState(
       clearPendingSessionLimitPrompt(
         clearAllProxyInputRequests(
-          clearPendingWorkflowInterrupt(
-            clearPendingRuntimeActionBatch(
-              clearToolRuns(abandonRunningAgentTurns({ ...session, outputSchema: undefined })),
+          clearPendingCoordinationBatch(
+            clearWorkflowToolRuns(
+              abandonRunningAgentTurns({ ...session, outputSchema: undefined }),
             ),
           ),
         ),

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Client, type MessageStreamEvent } from "#client/index.js";
 import { stampTestEvent } from "#internal/testing/events.js";
-import type { UnstampedMessageStreamEvent, SubagentCalledStreamEvent } from "#protocol/message.js";
+import {
+  EVE_MESSAGE_STREAM_VERSION,
+  EVE_STREAM_VERSION_HEADER,
+  type SubagentCalledStreamEvent,
+  type UnstampedMessageStreamEvent,
+} from "#protocol/message.js";
 
 import { SubagentPump, type SubagentView } from "./subagent-pump.js";
 
@@ -45,12 +50,15 @@ function pushableChildStream() {
               "abort",
               () => {
                 aborted = true;
-                nextController.close();
+                nextController.error(signal.reason);
               },
               { once: true },
             );
           },
         }),
+        {
+          headers: { [EVE_STREAM_VERSION_HEADER]: EVE_MESSAGE_STREAM_VERSION },
+        },
       );
     },
     get aborted() {
@@ -83,6 +91,9 @@ function responseOf(events: readonly MessageStreamEvent[]): Response {
         controller.close();
       },
     }),
+    {
+      headers: { [EVE_STREAM_VERSION_HEADER]: EVE_MESSAGE_STREAM_VERSION },
+    },
   );
 }
 
@@ -92,7 +103,6 @@ function reasoningEvent(delta: string, index = 0): MessageStreamEvent {
       type: "reasoning.appended",
       data: {
         reasoningDelta: delta,
-        reasoningSoFar: delta,
         sequence: 2,
         stepIndex: 0,
         turnId: "child-turn",
@@ -272,6 +282,51 @@ describe("SubagentPump background receipts", () => {
 });
 
 describe("SubagentPump child stream transport", () => {
+  it.each([
+    boundaryEvent(0),
+    stampTestEvent({ type: "session.completed" } as UnstampedMessageStreamEvent, 0),
+    failedBoundaryEvent(0),
+  ])("aborts a cloned open child stream at $type", async (boundary) => {
+    const client = new Client({ host: "http://localhost:3000" });
+    const view = fakeView();
+    const tracingError = vi.fn();
+    let signal: AbortSignal | undefined;
+    let closeStream = () => {};
+    let tracingDone: Promise<unknown> | undefined;
+    const fetch = vi.spyOn(client, "fetch").mockImplementation(async (_path, init) => {
+      signal = init?.signal ?? undefined;
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            closeStream = () => controller.error(new DOMException("Aborted", "AbortError"));
+            signal?.addEventListener("abort", closeStream, { once: true });
+            controller.enqueue(new TextEncoder().encode(`${JSON.stringify(boundary)}\n`));
+          },
+        }),
+        { headers: { [EVE_STREAM_VERSION_HEADER]: EVE_MESSAGE_STREAM_VERSION } },
+      );
+      tracingDone = response.clone().text().catch(tracingError);
+      return response;
+    });
+    const pump = new SubagentPump({ client, view, formatActionResultError: () => "failed" });
+
+    try {
+      pump.begin(subagentCalled("call-1"));
+      await vi.waitFor(() =>
+        expect(view.complete).toHaveBeenCalledWith({ authoritative: true, callId: "call-1" }),
+      );
+      await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+      await tracingDone;
+
+      expect(tracingError).toHaveBeenCalledWith(expect.objectContaining({ name: "AbortError" }));
+      expect(fetch).toHaveBeenCalledOnce();
+    } finally {
+      closeStream();
+      pump.abortAll();
+      await tracingDone;
+    }
+  });
+
   it("resumes from the prior cursor when a conversation subagent is called again", async () => {
     const client = new Client({ host: "http://localhost:3000" });
     const fetch = vi

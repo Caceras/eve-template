@@ -13,6 +13,11 @@ interface RegistryItem {
   dependencies?: string[];
   envVars?: Record<string, string>;
   files?: RegistryFile[];
+  meta?: {
+    eve?: {
+      setup?: { package?: string; bin?: string; args?: string[] };
+    };
+  };
 }
 
 interface Registry {
@@ -46,7 +51,47 @@ for (const item of items) {
   }
   await access(join(docsRoot, expectedPath));
 
-  if (slug === "supermemory") {
+  if (slug === "file") {
+    const setup = item.meta?.eve?.setup;
+    if (
+      setup?.package !== "eve" ||
+      setup.bin !== "eve" ||
+      JSON.stringify(setup.args) !== JSON.stringify(["integration", "setup", "file-memory"])
+    ) {
+      throw new Error(
+        'Registry item "memory/file" must declare the trusted file-memory setup flow.',
+      );
+    }
+  } else if (slug === "upstash-agentkit") {
+    if (
+      !item.dependencies?.includes("@upstash/agentkit-eve") ||
+      !item.dependencies.includes("@upstash/redis")
+    ) {
+      throw new Error(
+        'Registry item "memory/upstash-agentkit" must depend on @upstash/agentkit-eve and @upstash/redis.',
+      );
+    }
+    if (
+      !("UPSTASH_REDIS_REST_URL" in (item.envVars ?? {})) ||
+      !("UPSTASH_REDIS_REST_TOKEN" in (item.envVars ?? {}))
+    ) {
+      throw new Error(
+        'Registry item "memory/upstash-agentkit" must declare UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN as environment variables.',
+      );
+    }
+  } else if (slug === "arcana") {
+    if (!item.dependencies?.includes("@kybernesis/arcana")) {
+      throw new Error('Registry item "memory/arcana" must depend on @kybernesis/arcana.');
+    }
+    if (
+      !("ARCANA_API_KEY" in (item.envVars ?? {})) ||
+      !("ARCANA_WORKSPACE" in (item.envVars ?? {}))
+    ) {
+      throw new Error(
+        'Registry item "memory/arcana" must declare ARCANA_API_KEY and ARCANA_WORKSPACE as environment variables.',
+      );
+    }
+  } else if (slug === "supermemory") {
     if (!item.dependencies?.includes("@supermemory/eve")) {
       throw new Error('Registry item "memory/supermemory" must depend on @supermemory/eve.');
     }

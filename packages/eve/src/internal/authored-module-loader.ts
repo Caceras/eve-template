@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import type { CompiledAgentManifest } from "#compiler/manifest.js";
 import { createCompiledModuleMapSource } from "#compiler/module-map.js";
 import { createAuthoredAssetImportPlugin } from "#internal/authored-asset-import-plugin.js";
+import { authoredModuleConditions } from "#internal/authored-module-conditions.js";
 import { createAuthoredModuleBundleError } from "#internal/authored-module-bundle.js";
 import { createAuthoredModuleEvaluationError } from "#internal/authored-module-evaluation-error.js";
 import { createAuthoredPackageTsConfigPathsPlugin } from "#internal/authored-package-tsconfig-paths.js";
@@ -31,6 +32,7 @@ import {
   buildWithNitroRolldown,
 } from "#internal/bundler/nitro-rolldown.js";
 import { createNodeEsmCompatBannerPlugin } from "#internal/node-esm-compat-banner.js";
+import type { AuthoredWorkflowModules } from "#internal/workflow-bundle/builder-support.js";
 import { prepareAuthoredWorkflowDirectives } from "#internal/workflow-bundle/authored-workflow-directives.js";
 import { createDynamicCapabilityTransformPlugin } from "#internal/workflow-bundle/dynamic-capability-transform-plugin.js";
 import {
@@ -208,7 +210,10 @@ export async function bundleExtensionDistributionGraph(input: {
   readonly entries: readonly ExtensionDistributionGraphEntry[];
   readonly packageRoot: string;
   readonly runtimeDependencies: readonly string[];
-}): Promise<ReadonlyMap<string, string>> {
+}): Promise<{
+  readonly files: ReadonlyMap<string, string>;
+  readonly imports: readonly string[];
+}> {
   const plugins = [
     createAuthoredDirectiveGuardPlugin(),
     createAuthoredRelativeExtensionResolverPlugin({ extensions: RESOLVE_EXTENSIONS }),
@@ -246,12 +251,14 @@ export async function bundleExtensionDistributionGraph(input: {
     });
 
     const files = new Map<string, string>();
+    const imports = new Set<string>();
     for (const item of result.output) {
       if (item.type === "chunk") {
         files.set(item.fileName, removeRolldownModuleRegionComments(item.code));
+        for (const specifier of [...item.imports, ...item.dynamicImports]) imports.add(specifier);
       }
     }
-    return files;
+    return { files, imports: [...imports] };
   } catch (error) {
     throw createAuthoredModuleBundleError(input.packageRoot, error);
   }
@@ -263,6 +270,7 @@ export async function bundleExtensionDistributionGraph(input: {
  * entry.
  */
 export interface AuthoredModuleMapBundle {
+  readonly authoredWorkflowModules: AuthoredWorkflowModules;
   readonly code: string;
   /** Fingerprint of the sources that also feed the driver and step registry; a change rebuilds the host. */
   readonly workflowSourceFingerprint: string | undefined;
@@ -329,7 +337,7 @@ export async function bundleAuthoredModuleMapForGeneration(input: {
       platform: "node",
       plugins,
       resolve: {
-        conditionNames: ["eve-source"],
+        conditionNames: authoredModuleConditions(),
         extensions: [...RESOLVE_EXTENSIONS],
       },
       tsconfig: resolveAuthoredTsConfigPath(packageRoot),
@@ -340,6 +348,7 @@ export async function bundleAuthoredModuleMapForGeneration(input: {
       },
     });
     return {
+      authoredWorkflowModules: workflowSources.modules(),
       code: removeRolldownModuleRegionComments(chunk.code),
       workflowSourceFingerprint: workflowSources.fingerprint(),
     };
@@ -396,6 +405,13 @@ class AuthoredWorkflowSourceRecorder {
           imports.set(id, [...info.importedIds, ...info.dynamicallyImportedIds]);
         }
       },
+    };
+  }
+
+  modules(): AuthoredWorkflowModules {
+    return {
+      directiveModules: [...this.#directiveModules].sort(),
+      workflowModules: [...this.#workflowFunctions.keys()].sort(),
     };
   }
 
@@ -528,7 +544,7 @@ async function buildAuthoredModuleBundle(
       platform: "node",
       plugins,
       resolve: {
-        conditionNames: ["eve-source"],
+        conditionNames: authoredModuleConditions(),
         extensions: [...RESOLVE_EXTENSIONS],
       },
       tsconfig: tsconfigPath,
@@ -637,7 +653,7 @@ function createInFlightModuleLoadKey(
   return `${modulePath}\0${externalDependencies.join("\0")}\0${options.extensionScopeNamespace ?? ""}`;
 }
 
-function resolveAuthoredTsConfigPath(packageRoot: string): string | false {
+export function resolveAuthoredTsConfigPath(packageRoot: string): string | false {
   for (const fileName of ["tsconfig.json", "jsconfig.json"]) {
     const path = join(packageRoot, fileName);
     if (existsSync(path)) {

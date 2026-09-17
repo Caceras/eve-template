@@ -327,10 +327,11 @@ export const INTEGRATIONS: readonly IntegrationEntry[] = [
     surfaces: { scaffoldable: false, registry: true, gallery: true },
   },
   {
-    slug: "upstash-agentkit",
-    name: "Upstash AgentKit",
-    kind: "extension",
-    tagline: "Add long-term memory, Redis Search, and durable chat history with Upstash Redis.",
+    slug: "file",
+    name: "File memory",
+    kind: "memory",
+    tagline:
+      "Store durable per-principal memory in a private Vercel Blob store provisioned for the agent.",
     surfaces: { scaffoldable: false, registry: true, gallery: true },
   },
   {
@@ -342,11 +343,19 @@ export const INTEGRATIONS: readonly IntegrationEntry[] = [
     surfaces: { scaffoldable: false, registry: true, gallery: true },
   },
   {
+    slug: "upstash-agentkit",
+    name: "Upstash AgentKit",
+    kind: "memory",
+    tagline:
+      "Give your agents ranked recall and automatic capture on Upstash Redis, or a Redis backend for file memory.",
+    surfaces: { scaffoldable: false, registry: true, gallery: true },
+  },
+  {
     slug: "arcana",
     name: "Kybernesis Arcana",
-    kind: "extension",
+    kind: "memory",
     tagline:
-      "Give your agent workspace-scoped long-term memory with recall, storage, and brain notes.",
+      "Give your agents workspace-scoped long-term memory with automatic recall and deliberate storage.",
     surfaces: { scaffoldable: false, registry: true, gallery: true },
   },
   {

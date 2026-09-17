@@ -1,5 +1,109 @@
 # @eve/self-modification
 
+## 0.0.13
+
+### Patch Changes
+
+- c3952cf: Allow the compatibility package to forward imports to any eve release at or above 0.54.0.
+
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [f60c64b]
+- Updated dependencies [84c9604]
+- Updated dependencies [dea8cd8]
+- Updated dependencies [47bd3d7]
+- Updated dependencies [6d0485b]
+- Updated dependencies [9381078]
+- Updated dependencies [879d4e5]
+  - eve@0.54.0
+
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [0f8caf4]
+- Updated dependencies [7090a95]
+- Updated dependencies [67ee820]
+- Updated dependencies [8c1430c]
+- Updated dependencies [2b2ad19]
+- Updated dependencies [86e13ff]
+  - eve@0.53.0
+
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [97090d6]
+- Updated dependencies [b3e4b73]
+- Updated dependencies [248d1b1]
+- Updated dependencies [3dd8300]
+- Updated dependencies [e82b889]
+- Updated dependencies [6e35923]
+- Updated dependencies [2c2c552]
+- Updated dependencies [a37938d]
+- Updated dependencies [7db230f]
+- Updated dependencies [abc130e]
+- Updated dependencies [62f076c]
+- Updated dependencies [31666f8]
+- Updated dependencies [62f076c]
+- Updated dependencies [b736b40]
+- Updated dependencies [16c7f24]
+  - eve@0.52.0
+
+## 0.0.9
+
+### Patch Changes
+
+- 8da8d37: Publish a compatibility package that forwards existing `@eve/self-modification` imports to the implementation bundled with eve.
+- Updated dependencies [38fd8d9]
+- Updated dependencies [9d0df26]
+- Updated dependencies [98f45ea]
+- Updated dependencies [3b73073]
+- Updated dependencies [4ee6715]
+- Updated dependencies [9091777]
+- Updated dependencies [73aec25]
+- Updated dependencies [98f45ea]
+- Updated dependencies [30a6325]
+- Updated dependencies [1909295]
+- Updated dependencies [0ca3ef7]
+- Updated dependencies [d594b94]
+- Updated dependencies [a6e72c4]
+- Updated dependencies [0e2e10d]
+- Updated dependencies [30a6325]
+- Updated dependencies [9de667a]
+- Updated dependencies [e83e50e]
+- Updated dependencies [00cc672]
+  - eve@0.51.1
+
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [fc123f4]
+- Updated dependencies [b03290a]
+- Updated dependencies [6e630b4]
+- Updated dependencies [ecf0b6a]
+- Updated dependencies [4c45d2f]
+- Updated dependencies [bad0813]
+- Updated dependencies [f9b760a]
+- Updated dependencies [aae2631]
+- Updated dependencies [3cccd71]
+- Updated dependencies [29b9056]
+  - eve@0.51.0
+
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [5b90f3d]
+- Updated dependencies [884cba8]
+- Updated dependencies [2b52714]
+- Updated dependencies [70c8a2e]
+- Updated dependencies [ffcd817]
+  - eve@0.50.0
+
 ## 0.0.6
 
 ### Patch Changes

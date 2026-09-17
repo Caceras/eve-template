@@ -21,7 +21,13 @@ import type {
 import { DEFAULT_TURN_POLICY } from "#channel/types.js";
 import { serializeUrlFilePartsInMessage } from "#channel/send-input.js";
 import type { SessionAuth } from "#context/keys.js";
-import { AuthKey, ContinuationTokenKey, InitiatorAuthKey, SessionIdKey } from "#context/keys.js";
+import {
+  AuthKey,
+  ContinuationHookTokensKey,
+  ContinuationTokenKey,
+  InitiatorAuthKey,
+  SessionIdKey,
+} from "#context/keys.js";
 import {
   type InputResponse,
   parseInputResponses,
@@ -44,8 +50,12 @@ export interface Session {
     inputResponses: StrictInputResponses<TResponses>,
     options: SessionRespondOptions,
   ): Promise<SessionSendCommandResult>;
-  /** Requests cancellation of this exact session's active turn or one owned task. */
-  cancel(options?: { taskId?: string; turnId?: string }): Promise<CancelTurnResult>;
+  /** Requests cancellation of this exact session's active turn and optionally its owned tasks. */
+  cancel(options?: {
+    taskId?: string;
+    tasks?: boolean;
+    turnId?: string;
+  }): Promise<CancelTurnResult>;
   /** Queues compaction on this exact session ID. */
   compact(): Promise<CompactSessionResult>;
   /** Queues a context clear on this exact session ID. */
@@ -66,7 +76,11 @@ interface SessionDeliveryOptions {
 }
 
 /** Options for sending a message through a fixed session handle. */
-export type SessionSendOptions = SessionDeliveryOptions & { readonly turnPolicy?: TurnPolicy };
+export type SessionSendOptions = SessionDeliveryOptions & {
+  /** Initial workflow title for a prewarmed session. */
+  readonly title?: string;
+  readonly turnPolicy?: TurnPolicy;
+};
 
 /** Options for answering pending input requests through a fixed session handle. */
 export type SessionRespondOptions = SessionDeliveryOptions;
@@ -75,15 +89,16 @@ export type SessionRespondOptions = SessionDeliveryOptions;
  * Live handle to the current session, exposed on `ctx.session` to
  * `deliver` and event handlers. The framework hydrates the read-only
  * fields from the active context at step start. A write through
- * `continuation.rekey()` updates the context so the
- * runtime can re-key the parked workflow hook at the next step boundary.
+ * `continuation.alias()` selects a new current address and records it so the
+ * runtime can add its hook to the session inbox at the next step boundary.
+ * Previously claimed addresses remain active.
  */
 export interface SessionHandle {
   readonly id: string;
   readonly auth: SessionAuth;
   readonly continuation?: {
     readonly token: string;
-    rekey(rawToken: string): void;
+    alias(rawToken: string): void;
   };
 }
 
@@ -111,6 +126,7 @@ export function createSession(
         payload,
         requestId: metadata.requestId,
         turnPolicy: options.turnPolicy ?? metadata.turnPolicy ?? DEFAULT_TURN_POLICY,
+        title: options.title,
       };
       return await runtime.dispatchSession({
         command: caller === undefined ? commandWithoutCaller : { ...commandWithoutCaller, caller },
@@ -143,11 +159,14 @@ export function createSession(
         sessionId: id,
       });
     },
-    async cancel(options?: { taskId?: string; turnId?: string }) {
-      return await runtime.dispatchSession({
-        command: { kind: "cancel", taskId: options?.taskId, turnId: options?.turnId },
-        sessionId: id,
-      });
+    async cancel(options?: { taskId?: string; tasks?: boolean; turnId?: string }) {
+      const command: { kind: "cancel"; taskId?: string; tasks?: boolean; turnId?: string } = {
+        kind: "cancel",
+      };
+      if (options?.taskId !== undefined) command.taskId = options.taskId;
+      if (options?.tasks !== undefined) command.tasks = options.tasks;
+      if (options?.turnId !== undefined) command.turnId = options.turnId;
+      return await runtime.dispatchSession({ command, sessionId: id });
     },
     async compact() {
       return await runtime.dispatchSession({ command: { kind: "compact" }, sessionId: id });
@@ -212,9 +231,14 @@ export function buildSessionHandle(accessor: ContextAccessor): SessionHandle {
       if (currentToken === undefined || currentToken.length === 0) return undefined;
       return {
         token: toChannelLocalContinuationToken(currentToken),
-        rekey(rawToken: string): void {
+        alias(rawToken: string): void {
+          if (rawToken.length === 0) throw new Error("A session alias requires a nonempty token.");
           const token = namespaceContinuationToken(currentToken, rawToken);
           if (currentToken === token) return;
+          accessor.set(ContinuationHookTokensKey, (claimed) => {
+            const tokens = claimed ?? [currentToken];
+            return tokens.includes(token) ? tokens : [...tokens, token];
+          });
           accessor.set(ContinuationTokenKey, token);
         },
       };

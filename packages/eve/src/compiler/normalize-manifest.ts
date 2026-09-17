@@ -20,7 +20,6 @@ import {
   type CompiledSandboxDefinition,
   type CompiledSubagentNode,
   type CompiledToolDefinition,
-  type CompiledWorkflowToolDefinition,
   createCompiledAgentManifest,
   createCompiledAgentNodeManifest,
   createCompiledAgentResources,
@@ -37,9 +36,15 @@ import { compileAgentConfig } from "#compiler/normalize-agent-config.js";
 import { compileChannelDefinition } from "#compiler/normalize-channel.js";
 import { compileConnectionDefinition } from "#compiler/normalize-connection.js";
 import {
+  applyDefaultToolPolicy,
+  assertFrameworkToolPolicy,
+} from "#compiler/default-tool-policy.js";
+import {
   loadModuleBackedDefinition,
   type ManifestCompileContext,
 } from "#compiler/normalize-helpers.js";
+import { resolveWorkspaceSubagentDefinition } from "#compiler/resolve-workspace-subagent.js";
+import { workspaceSubagentName } from "#public/definitions/workspace-agent.js";
 import { compileHookEntry } from "#compiler/normalize-hook.js";
 import { compileInstructionsEntry } from "#compiler/normalize-instructions.js";
 import { compileMemoryDefinition, deriveMemorySlot } from "#compiler/normalize-memory.js";
@@ -63,7 +68,6 @@ import {
   assertApplicationOverlayCanApplyToAllNodes,
   assertNonExtensionSpecialTool,
   assertRootOnlyConfig,
-  assertRootOwnedSpecialTool,
   assertUniqueBy,
   assertUniqueRegistryIds,
   compileExtensionMounts,
@@ -71,6 +75,7 @@ import {
   expectSubagentDescription,
   mergeExternalDependencies,
   collectSelectedSourceIds,
+  withDiagnosticsSummary,
   withExtensionNamespace,
 } from "#compiler/normalize-manifest-helpers.js";
 import { summarizeCompilerDiagnostics, type CompilerDiagnostic } from "#compiler/diagnostics.js";
@@ -138,28 +143,8 @@ export async function compileAgentManifest(
     owner: { kind: "application" },
   });
 
-  const allNodeManifests = [root.manifest, ...root.descendants.map((node) => node.agent)];
-  const backgroundTool = allNodeManifests
-    .flatMap((node) => node.tools)
-    .find((tool) => tool.execution === "background");
-  if (backgroundTool !== undefined && root.manifest.config.experimental?.tasks !== true) {
-    throw new Error(
-      `Background tool "${backgroundTool.name}" requires experimental.tasks: true in the root agent config.`,
-    );
-  }
-
   const diagnosticsSummary = summarizeCompilerDiagnostics(diagnostics);
-  const subagents: CompiledSubagentNode[] = root.descendants.map((subagent) =>
-    subagent.configResolver === undefined
-      ? {
-          ...subagent,
-          agent: { ...subagent.agent, diagnosticsSummary },
-        }
-      : {
-          ...subagent,
-          agent: { ...subagent.agent, diagnosticsSummary },
-        },
-  );
+  const subagents = withDiagnosticsSummary(root.descendants, diagnosticsSummary);
   return createCompiledAgentManifest({
     ...root.manifest,
     diagnosticsSummary,
@@ -193,6 +178,7 @@ class AgentGraphCompiler {
       source: phaseOne.selectedConfig.source,
     });
     assertRootOnlyConfig(config, input.isRoot, input.manifest.agentId);
+    applyDefaultToolPolicy(phaseOne, config);
 
     const externalDependencies = mergeExternalDependencies(
       input.inheritedExternalDependencies,
@@ -259,6 +245,16 @@ class AgentGraphCompiler {
       );
 
       if (normalized.kind === "remote") {
+        const workspaceName = workspaceSubagentName(phaseOne.selectedConfig.definition);
+        const remoteDefinition =
+          workspaceName === undefined
+            ? normalized
+            : await resolveWorkspaceSubagentDefinition({
+                definition: normalized,
+                name: workspaceName,
+                registries: this.registries,
+                source,
+              });
         assertRemoteAgentDefinitionHasNoLocalPackageEntries(source);
         const sourceId = phaseOne.selectedConfig.source.sourceId;
         phaseOne.evaluation.setBindings({ [sourceId]: phaseOne.selectedConfig.binding });
@@ -270,7 +266,7 @@ class AgentGraphCompiler {
         remoteAgents.push(
           createCompiledRemoteAgent({
             binding,
-            definition: normalized,
+            definition: remoteDefinition,
             nodeId,
             owner: projected.owner,
             parentNodeId: input.nodeId,
@@ -290,6 +286,7 @@ class AgentGraphCompiler {
           source: phaseOne.selectedConfig.source,
         });
         assertRootOnlyConfig(config, false, source.manifest.agentId);
+        applyDefaultToolPolicy(phaseOne, config);
       } else {
         dynamicBuildDependencies = normalized.build?.externalDependencies;
       }
@@ -500,7 +497,6 @@ class AgentGraphCompiler {
     const channels: CompiledChannelDefinition[] = [];
     let sandbox: CompiledSandboxDefinition | undefined;
     let instrumentation: ModuleSourceRef | undefined;
-    let workflowTool: CompiledWorkflowToolDefinition | undefined;
     const selectedSourceIds = collectSelectedSourceIds(state.composed);
     const loadNamespace = state.evaluation.loadNamespace;
 
@@ -612,6 +608,7 @@ class AgentGraphCompiler {
             binding: binding!,
             loadNamespace,
           });
+          assertFrameworkToolPolicy(candidate, result);
           if (result.kind === "disabled") {
             state.composed = disableComposedCandidate({ candidate, composed: state.composed });
             delete state.bindings[candidate.sourceId];
@@ -624,9 +621,6 @@ class AgentGraphCompiler {
           } else if (result.kind === "dynamic-tool") {
             dynamicTools.push(withExtensionNamespace(result.definition, candidate.owner));
             state.evaluation.requireRuntimeEntry(candidate.sourceId);
-          } else if (result.kind === "workflow-tool") {
-            assertRootOwnedSpecialTool(candidate as AgentModuleCandidate, "Workflow");
-            workflowTool = { ...entry.source, maxSubagents: result.maxSubagents };
           } else {
             assertNonExtensionSpecialTool(candidate as AgentModuleCandidate, "Web search");
             tools.push(result.definition);
@@ -692,7 +686,6 @@ class AgentGraphCompiler {
       skills,
       sourceComposition: state.composed.composition,
       tools,
-      workflowTool,
     });
   }
 }

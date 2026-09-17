@@ -13,9 +13,9 @@ import type { EveEvalContext } from "eve/evals";
 // each redeploy repoints the alias, so the runner's client — and the durable
 // session it drives — lands on the new deployment without any URL swap.
 //
-// Each inbound request stamps the exact deployment that accepted it. The
-// parked driver dispatches that request's turn to the stamped deployment, so
-// repointing the alias adopts new code without resolving a "latest" sentinel.
+// Each inbound request stamps the exact deployment that accepted it. An idle
+// parked session hands ownership to that deployment before executing the turn,
+// so repointing the alias adopts new code without a "latest" lookup.
 //
 // Timeline under test:
 //   t0  session A writes a file into its sandbox workspace
@@ -88,6 +88,7 @@ export default defineEval({
         `Run the bash command \`printf %s ${FILE_TOKEN} > ${FILE_PATH}\`. ` +
           "Reply with the single word: done.",
       );
+      const session = write.session;
       write.expectOk();
       write.calledTool("bash");
 
@@ -100,7 +101,7 @@ export default defineEval({
       await waitForAliasToServe(t, INSTRUCTIONS_MARKER);
 
       // t2: the same session reattaches to the same sandbox.
-      const persist = await t.send(
+      const persist = await session.send(
         `Run the bash command \`cat ${FILE_PATH}\` and reply with the file contents verbatim.`,
       );
       persist.expectOk();
@@ -115,7 +116,7 @@ export default defineEval({
 
       // t3: the next request is accepted by the new deployment. Its changed
       // sandbox resources rotate the versioned key, so the old file is absent.
-      const probe = await t.send(
+      const probe = await session.send(
         `Run the bash command \`test -f ${FILE_PATH} && echo present || echo absent\` ` +
           "and reply with the command output verbatim.",
       );
@@ -125,7 +126,7 @@ export default defineEval({
 
       // t4: a fresh session adopts the new deployment — the added skill is
       // advertised and usable.
-      const adopted = t.newSession();
+      const adopted = await t.session();
       const skill = await adopted.send(
         `Load the \`${SKILL_NAME}\` skill and follow its instructions exactly.`,
       );
@@ -155,17 +156,30 @@ async function deployToAlias(t: EveEvalContext, alias: string, phase: string): P
 
   const tokenArgs =
     process.env.VERCEL_TOKEN === undefined ? [] : ["--token", process.env.VERCEL_TOKEN];
-  const modelArgs =
-    process.env.EVE_E2E_MODEL === undefined
+  const deploymentEnvArgs = [
+    ...(process.env.EVE_E2E_MODEL === undefined
       ? []
-      : ["--env", `EVE_E2E_MODEL=${process.env.EVE_E2E_MODEL}`];
+      : ["--env", `EVE_E2E_MODEL=${process.env.EVE_E2E_MODEL}`]),
+    ...(process.env.EVE_SANDBOX_IMAGE_TAG === undefined
+      ? []
+      : ["--env", `EVE_SANDBOX_IMAGE_TAG=${process.env.EVE_SANDBOX_IMAGE_TAG}`]),
+  ];
   // vc alias does not infer the team from the project link the way deploy
   // does, so pass the scope explicitly.
   const scopeArgs =
     process.env.VERCEL_ORG_ID === undefined ? [] : ["--scope", process.env.VERCEL_ORG_ID];
   const deploy = await execFileAsync(
     "pnpm",
-    ["exec", "vc", "deploy", "--prebuilt", "--yes", "--target=preview", ...modelArgs, ...tokenArgs],
+    [
+      "exec",
+      "vc",
+      "deploy",
+      "--prebuilt",
+      "--yes",
+      "--target=preview",
+      ...deploymentEnvArgs,
+      ...tokenArgs,
+    ],
     EXEC_OPTIONS,
   );
   const deploymentUrl = deploy.stdout.trim().split("\n").at(-1)?.trim();
@@ -189,17 +203,28 @@ async function deployToAlias(t: EveEvalContext, alias: string, phase: string): P
 async function waitForAliasToServe(t: EveEvalContext, marker: string): Promise<void> {
   const deadline = Date.now() + 120_000;
   let consecutiveMatches = 0;
+  let lastStatus = "transport error";
+  let lastMarkerMatch = false;
   while (Date.now() < deadline) {
-    const response = await t.target.fetch("/eve/v1/info", { cache: "no-store" });
-    if (response.ok && JSON.stringify(await response.json()).includes(marker)) {
-      consecutiveMatches += 1;
-      if (consecutiveMatches >= ALIAS_SETTLE_MATCHES) {
-        return;
+    try {
+      const response = await t.target.fetch("/eve/v1/info", { cache: "no-store" });
+      lastStatus = String(response.status);
+      lastMarkerMatch = response.ok && JSON.stringify(await response.json()).includes(marker);
+      if (lastMarkerMatch) {
+        consecutiveMatches += 1;
+        if (consecutiveMatches >= ALIAS_SETTLE_MATCHES) {
+          return;
+        }
+      } else {
+        consecutiveMatches = 0;
       }
-    } else {
+    } catch {
       consecutiveMatches = 0;
     }
     await t.sleep(1_000);
   }
-  throw new Error(`Timed out waiting for the alias to serve a deployment containing ${marker}.`);
+  throw new Error(
+    `Timed out waiting for alias ${new URL(t.target.url).host} to serve marker ${marker}; ` +
+      `last status=${lastStatus}, marker matched=${lastMarkerMatch}, consecutive matches=${consecutiveMatches}.`,
+  );
 }

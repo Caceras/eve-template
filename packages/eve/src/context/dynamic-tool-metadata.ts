@@ -4,13 +4,14 @@ import type { DurableDynamicToolCallbacks } from "#tools/durable-callbacks.js";
 interface DynamicToolMetadataBase {
   readonly name: string;
   readonly description: string;
+  readonly execution?: "background";
   readonly inputSchema: JsonObject;
   readonly outputSchema?: JsonObject;
   readonly resolverSlug: string;
   readonly entryKey: string;
 }
 
-/** Current schema: callback identity is the surrounding tool name and phase. */
+/** Callback identity is supplied by the surrounding session, scope, and resolver metadata. */
 export interface CurrentDynamicToolMetadata extends DynamicToolMetadataBase {
   readonly callbacks: DurableDynamicToolCallbacks;
 }

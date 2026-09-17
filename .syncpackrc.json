@@ -20,7 +20,7 @@
     {
       "label": "Separately published eve packages accept compatible eve patch releases",
       "dependencies": ["eve"],
-      "packages": ["@eve/buzz-acp-adapter", "@eve/self-modification"],
+      "packages": ["@eve/buzz-acp-adapter"],
       "dependencyTypes": ["prod"],
       "pinVersion": "workspace:^"
     },

@@ -2,6 +2,10 @@ import type { SubagentInputRequestHookPayload } from "#channel/types.js";
 import type { HarnessSession, SessionStateMap } from "#harness/types.js";
 import type { InputRequestKind } from "#shared/input.js";
 import { isLoopbackHostname } from "#shared/network-address.js";
+import {
+  isSessionInboxAddress,
+  type SessionInboxAddress,
+} from "#execution/session-inbox/address.js";
 
 const PROXY_INPUT_REQUESTS_KEY = "eve.runtime.proxyInputRequests";
 
@@ -25,6 +29,7 @@ export interface ProxyInputRequest {
   /** Batch semantics are optional so sessions written before this field remain routable. */
   readonly batch?: ProxyInputRequestBatch;
   readonly childContinuationToken: string;
+  readonly childSessionInbox?: SessionInboxAddress;
   /** Child-local id restored before forwarding a namespaced task response. */
   readonly childRequestId?: string;
   /** Trusted parent-derived capability URL for a remote task child. */
@@ -131,10 +136,10 @@ export function clearProxyInputRequestsForChild(
 }
 
 /** Removes every proxy route the predicate selects. */
-export function clearProxyInputRequestsWhere(
-  session: HarnessSession,
+export function clearProxyInputRequestsWhere<T extends { readonly state?: SessionStateMap }>(
+  session: T,
   select: (route: ProxyInputRequest) => boolean,
-): HarnessSession {
+): T {
   const current = readMap(session.state);
   const next: Record<string, ProxyInputRequest> = {};
   let changed = false;
@@ -170,10 +175,10 @@ export function retireProxyInputRequests<T extends { readonly state?: SessionSta
 }
 
 /** Removes every proxy route owned by one durable task. */
-export function clearProxyInputRequestsForTask(
-  session: HarnessSession,
+export function clearProxyInputRequestsForTask<T extends { readonly state?: SessionStateMap }>(
+  session: T,
   taskId: string,
-): HarnessSession {
+): T {
   return clearProxyInputRequestsWhere(session, (route) => route.taskId === taskId);
 }
 
@@ -205,6 +210,7 @@ export function toProxyInputRequestEntries(
   return payload.event.requests.map((request) => {
     const route: {
       readonly childContinuationToken: string;
+      childSessionInbox?: SessionInboxAddress;
       childResponseUrl?: string;
       readonly kind: InputRequestKind;
       taskId?: string;
@@ -214,6 +220,9 @@ export function toProxyInputRequestEntries(
       kind: request.kind,
     };
     if (taskId !== undefined) route.taskId = taskId;
+    if (payload.childSessionInbox?.sessionId === payload.childSessionId) {
+      route.childSessionInbox = payload.childSessionInbox;
+    }
 
     return [request.requestId, route] as const;
   });
@@ -286,10 +295,14 @@ function parseProxyInputRequest(value: unknown, requestId: string): ProxyInputRe
   const batch = "batch" in value ? parseProxyInputRequestBatch(value.batch) : undefined;
   const answerHook = "answerHook" in value ? parseAnswerHookRoute(value.answerHook) : undefined;
   if ("answerHook" in value && answerHook === undefined) return undefined;
+  const childSessionInbox = "childSessionInbox" in value ? value.childSessionInbox : undefined;
+  if (childSessionInbox !== undefined && !isSessionInboxAddress(childSessionInbox))
+    return undefined;
   const request: {
     answerHook?: AnswerHookRoute;
     batch?: ProxyInputRequestBatch;
     readonly childContinuationToken: string;
+    childSessionInbox?: SessionInboxAddress;
     childRequestId?: string;
     childResponseUrl?: string;
     readonly kind: InputRequestKind;
@@ -299,6 +312,7 @@ function parseProxyInputRequest(value: unknown, requestId: string): ProxyInputRe
     kind: value.kind,
   };
   if (answerHook !== undefined) request.answerHook = answerHook;
+  if (childSessionInbox !== undefined) request.childSessionInbox = childSessionInbox;
   if (batch !== undefined && batch.requestIds.includes(requestId)) request.batch = batch;
   if (typeof childRequestId === "string") request.childRequestId = childRequestId;
   if (typeof childResponseUrl === "string") request.childResponseUrl = childResponseUrl;

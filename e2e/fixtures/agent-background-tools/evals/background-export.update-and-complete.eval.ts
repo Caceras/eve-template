@@ -6,9 +6,10 @@ const RESULT = "EXPORT-COMPLETE";
 
 export default defineEval({
   description:
-    "An authored background defineTool posts one task update then completes; the parent sees both.",
+    "An authored background defineTool yields state and progress, explicitly posts a message, then completes; the parent sees both.",
   async test(t) {
     const started = await t.send("BACKGROUND-EXPORT-START");
+    const conversation = started.session;
     started.expectOk();
     started.calledTool("export");
 
@@ -16,11 +17,11 @@ export default defineEval({
     const taskId = readTaskId(receipt.output);
     if (taskId === undefined) throw new Error("export receipt is missing taskId.");
 
-    const sessionId = t.sessionId;
+    const sessionId = conversation.sessionId;
     if (sessionId === undefined) throw new Error("Eval has no parent session id.");
 
     const updateLive = t.target.watchTurn(sessionId, {
-      startIndex: requireStreamIndex(t, "update wait"),
+      startIndex: requireStreamIndex(started.session, "update wait"),
     });
     const updateTurn = await updateLive.result();
     updateTurn.expectOk();
@@ -32,11 +33,9 @@ export default defineEval({
           events.some(
             (event) =>
               event.type === "message.received" &&
-              messageText(event.data.message).includes(
-                `Background task ${taskId} (export) update: ${PROGRESS}`,
-              ),
+              messageText(event.data.message).includes(`Export ${taskId}: ${PROGRESS}`),
           ),
-        "parent receives the executor update with task identity",
+        "parent receives the authored message with task identity",
       ),
     );
 

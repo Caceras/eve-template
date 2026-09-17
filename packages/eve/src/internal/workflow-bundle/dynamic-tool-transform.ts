@@ -2,7 +2,7 @@
  * Stamps callbacks passed to authored `defineTool()` calls with durable replay
  * descriptors. Each callback body is hoisted into a module-suffix function and
  * the live callback is stamped with that function plus the lexical values its
- * body references; identity `(toolName, phase)` is assigned at resolve time.
+ * body references; the session, scope, and resolver bind its identity at resolve time.
  */
 
 import { parseWithNitroRolldownAst } from "#internal/bundler/nitro-rolldown.js";
@@ -13,8 +13,30 @@ import {
   walkNode,
 } from "#internal/workflow-bundle/dynamic-tool-ast-references.js";
 
-type CallbackPhase = "approvalRequest" | "approvalResponse" | "execute" | "toModelOutput";
-type CallbackPropertyName = "approval" | "execute" | "request" | "response" | "toModelOutput";
+type CallbackPhase =
+  | "labelComplete"
+  | "labelDelta"
+  | "labelStart"
+  | "approvalKey"
+  | "approvalRequest"
+  | "approvalResponse"
+  | "execute"
+  | "toModelOutput"
+  | "inputSchema"
+  | "outputSchema";
+type CallbackPropertyName =
+  | "approvalKey"
+  | "label"
+  | "approval"
+  | "execute"
+  | "start"
+  | "request"
+  | "response"
+  | "complete"
+  | "delta"
+  | "toModelOutput"
+  | "inputSchema"
+  | "outputSchema";
 
 interface CallbackInfo {
   readonly body: string;
@@ -45,14 +67,18 @@ export async function transformDynamicToolExecute(
   source: string,
   workflowFunctions: ReadonlySet<string> = NO_WORKFLOW_FUNCTIONS,
 ): Promise<{ code: string } | null> {
-  if (!source.includes("defineTool")) return null;
+  if (!source.includes("defineTool") && !source.includes("defineWorkflowTool")) return null;
 
   const ast = (await parseWithNitroRolldownAst(filename, source)) as AstNode;
   const defineToolAliases = findDefineToolAliases(ast);
   if (defineToolAliases.size === 0) return null;
 
   const callbacks: CallbackInfo[] = [];
-  walkForCallbacks(source, ast, callbacks, [], { defineToolAliases, workflowFunctions });
+  walkForCallbacks(source, ast, callbacks, [], {
+    defineToolAliases,
+    workflowFunctions,
+    durableSchemaAliases: findDefineToolAliases(ast, ["defineDurableSchema"]),
+  });
   return callbacks.length === 0 ? null : applyTransform(source, callbacks);
 }
 
@@ -60,6 +86,7 @@ const NO_WORKFLOW_FUNCTIONS: ReadonlySet<string> = new Set();
 
 interface WalkContext {
   readonly defineToolAliases: ReadonlySet<string>;
+  readonly durableSchemaAliases: ReadonlySet<string>;
   /**
    * Top-level `"use workflow"` functions the directive transform already
    * hoisted and stubbed. A tool whose `execute` is one never runs as a
@@ -71,7 +98,10 @@ interface WalkContext {
 // Keep the old export name for backward compatibility with the plugin.
 export { transformDynamicToolExecute as transformDynamicToolAwait };
 
-function findDefineToolAliases(ast: AstNode): ReadonlySet<string> {
+function findDefineToolAliases(
+  ast: AstNode,
+  names: readonly string[] = ["defineTool", "defineWorkflowTool"],
+): ReadonlySet<string> {
   const aliases = new Set<string>();
   walkNode(ast, (node) => {
     if (node.type !== "ImportDeclaration") return true;
@@ -80,9 +110,12 @@ function findDefineToolAliases(ast: AstNode): ReadonlySet<string> {
       return false;
     }
     for (const specifier of node.specifiers ?? []) {
+      if (specifier.type === "ImportNamespaceSpecifier" && specifier.local?.name) {
+        for (const name of names) aliases.add(`${specifier.local.name}.${name}`);
+      }
       if (
         specifier.type === "ImportSpecifier" &&
-        (specifier.imported?.name ?? specifier.imported?.value) === "defineTool" &&
+        names.includes(String(specifier.imported?.name ?? specifier.imported?.value)) &&
         specifier.local?.name
       ) {
         aliases.add(specifier.local.name);
@@ -91,6 +124,13 @@ function findDefineToolAliases(ast: AstNode): ReadonlySet<string> {
     return false;
   });
   return aliases;
+}
+
+function readDefinerName(callee: AstNode | undefined): string | undefined {
+  if (callee?.type === "Identifier") return callee.name;
+  if (callee?.type !== "MemberExpression" || callee.object?.type !== "Identifier") return undefined;
+  const property = callee.computed ? callee.property?.value : callee.property?.name;
+  return typeof property === "string" ? `${callee.object.name}.${property}` : undefined;
 }
 
 function walkForCallbacks(
@@ -118,9 +158,7 @@ function walkForCallbacks(
 
   if (
     node.type === "CallExpression" &&
-    node.callee?.type === "Identifier" &&
-    node.callee.name !== undefined &&
-    context.defineToolAliases.has(node.callee.name) &&
+    context.defineToolAliases.has(readDefinerName(node.callee) ?? "") &&
     node.arguments?.length === 1 &&
     node.arguments[0]?.type === "ObjectExpression"
   ) {
@@ -163,12 +201,81 @@ function collectToolCallbacks(
   }
   collectCallbackProperty(
     source,
+    findProperty(tool, "approvalKey"),
+    "approvalKey",
+    "approvalKey",
+    results,
+    nestedScopes,
+  );
+  const label = findProperty(tool, "label");
+  const labelValue = label?.value as AstNode | undefined;
+  if (labelValue?.type === "ObjectExpression") {
+    collectCallbackProperty(
+      source,
+      findProperty(labelValue, "start"),
+      "labelStart",
+      "start",
+      results,
+      nestedScopes,
+    );
+    collectCallbackProperty(
+      source,
+      findProperty(labelValue, "complete"),
+      "labelComplete",
+      "complete",
+      results,
+      nestedScopes,
+    );
+    collectCallbackProperty(
+      source,
+      findProperty(labelValue, "delta"),
+      "labelDelta",
+      "delta",
+      results,
+      nestedScopes,
+    );
+  }
+  collectCallbackProperty(
+    source,
     findProperty(tool, "toModelOutput"),
     "toModelOutput",
     "toModelOutput",
     results,
     nestedScopes,
   );
+
+  for (const propertyName of ["inputSchema", "outputSchema"] as const) {
+    const property = findProperty(tool, propertyName);
+    const value = property?.value as AstNode | undefined;
+    if (
+      property?.start === undefined ||
+      property.end === undefined ||
+      value?.start === undefined ||
+      value.end === undefined
+    )
+      continue;
+    // JSON Schema literals are already durable data and need no factory.
+    if (value.type === "ObjectExpression" && !findProperty(value, "~standard")) continue;
+    if (
+      value.type === "CallExpression" &&
+      (value.callee?.name === "__eveDefineDurableSchema" ||
+        context.durableSchemaAliases.has(readDefinerName(value.callee) ?? ""))
+    )
+      continue;
+    results.push({
+      body: `{ return ${source.slice(value.start, value.end)}; }`,
+      bodyNode: value,
+      isAsync: false,
+      isGenerator: false,
+      isReference: false,
+      nestedScopes,
+      params: "",
+      phase: propertyName,
+      propertyName,
+      propEnd: property.end,
+      propStart: property.start,
+    });
+  }
 
   const approval = findProperty(tool, "approval");
   const approvalValue = approval?.value as AstNode | undefined;
@@ -278,7 +385,10 @@ function applyTransform(source: string, callbacks: readonly CallbackInfo[]): { c
     );
 
     const wrapper = createLiveWrapper(callback, hoistedName, closure);
-    const stamped = `__eveStampDynamicCallback(${wrapper}, ${hoistedName}, ${closure})`;
+    const stamped =
+      callback.phase === "inputSchema" || callback.phase === "outputSchema"
+        ? `__eveDefineDurableSchema({ schema: ${hoistedName}, closure: ${closure} })`
+        : `__eveStampDynamicCallback(${wrapper}, ${hoistedName}, ${closure})`;
     replacements.push({
       end: callback.propEnd,
       start: callback.propStart,
@@ -292,6 +402,11 @@ function applyTransform(source: string, callbacks: readonly CallbackInfo[]): { c
   }
 
   const registrySetup = [
+    ...(callbacks.some(
+      (callback) => callback.phase === "inputSchema" || callback.phase === "outputSchema",
+    )
+      ? ['import { defineDurableSchema as __eveDefineDurableSchema } from "eve/tools";']
+      : []),
     `var __eveDurableCallbackSym = Symbol.for("eve:durable-dynamic-callback");`,
     `function __eveStampDynamicCallback(callback, impl, closure) {`,
     `  Object.defineProperty(callback, __eveDurableCallbackSym, { configurable: true, value: { callback: impl, closure } });`,
