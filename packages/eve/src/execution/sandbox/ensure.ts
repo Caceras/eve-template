@@ -135,7 +135,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     providerName: string,
     handle: SandboxProviderHandle,
   ): RuntimeSandboxSession {
-    trackActiveSandboxHandle({ handle, providerName, sessionId: input.sessionId });
     const sandbox = withRuntimeSandboxLifecycle(
       handle.sandbox,
       (deleteOptions?: SandboxDeleteOptions) => handle.onSessionDelete(deleteOptions),
@@ -191,6 +190,11 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       });
     const handle = await opening;
     installHandle(provider.providerName, handle);
+    trackActiveSandboxHandle({
+      handle,
+      providerName: provider.providerName,
+      sessionId: input.sessionId,
+    });
     return handle;
   }
 
@@ -256,6 +260,11 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
 
     if (opened === undefined)
       throw new Error(`Sandbox "${definition.logicalPath}" did not open a provider handle.`);
+    trackActiveSandboxHandle({
+      handle: opened.handle,
+      providerName: opened.providerName,
+      sessionId: input.sessionId,
+    });
     return opened.handle;
   }
 

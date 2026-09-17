@@ -183,6 +183,7 @@ describe("ensureSandboxAccess", () => {
         state: null,
       });
       await expect(access.get()).rejects.toThrow("setup failed");
+      expect(countActiveSandboxHandles()).toBe(0);
       await expect(access.get()).resolves.toBeTruthy();
     });
     expect(attempts).toBe(2);
