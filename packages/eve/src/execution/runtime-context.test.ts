@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { EVE_EVALUATION_ENV_FLAG } from "#internal/application/dev-environment.js";
 import { ContextContainer, contextStorage, loadContext } from "#context/container.js";
 import {
   AuthKey,
   ChannelInstrumentationKey,
   ContinuationHookTokensKey,
   ContinuationTokenKey,
+  EvaluationKey,
   ParentTraceContextKey,
   type Session,
   type SessionAuthContext,
@@ -154,6 +156,10 @@ function createMinimalBundle(): Parameters<typeof buildRunContext>[0]["bundle"] 
 }
 
 describe("buildRunContext", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("seeds auth from the run input", () => {
     const ctx = buildRunContext({
       bundle: createMinimalBundle(),
@@ -184,6 +190,36 @@ describe("buildRunContext", () => {
     });
 
     expect(ctx.require(AuthKey)).toBeNull();
+  });
+
+  it("preserves eval provenance in the durable context", () => {
+    const ctx = buildRunContext({
+      bundle: createMinimalBundle(),
+      run: {
+        auth: null,
+        adapter: { kind: "http" },
+        evaluation: true,
+        input: { message: "hi" },
+        mode: "conversation",
+      },
+    });
+
+    expect(ctx.get(EvaluationKey)).toBe(true);
+  });
+
+  it("marks every local-eval run from the process environment", () => {
+    vi.stubEnv(EVE_EVALUATION_ENV_FLAG, "1");
+    const ctx = buildRunContext({
+      bundle: createMinimalBundle(),
+      run: {
+        auth: null,
+        adapter: { kind: "schedule" },
+        input: { message: "hi" },
+        mode: "task",
+      },
+    });
+
+    expect(ctx.get(EvaluationKey)).toBe(true);
   });
 
   it("inherits schedule provenance independently from run auth", () => {

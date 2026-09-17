@@ -1,5 +1,3 @@
-import type { LanguageModel } from "ai";
-
 import { appendPackageUserAgent, withPackageUserAgent } from "#internal/user-agent.js";
 
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
@@ -18,17 +16,54 @@ export const AI_GATEWAY_MODELS_CATALOG_URL = `${GATEWAY_BASE_URL}/v1/models/cata
  */
 export const vercelGatewayFetch: typeof globalThis.fetch = withPackageUserAgent();
 
-/**
- * Request headers eve attaches for a model's provider, or `undefined` when
- * the provider needs none. Gateway-routed models (bare ids and `gateway.*`
- * instances) get the eve User-Agent product token so AI Gateway can attribute
- * the traffic; direct-provider models get no extra headers.
- */
-export function resolveProviderHeaders(model: LanguageModel): Record<string, string> | undefined {
-  if (!isGatewayModel(model)) return undefined;
-  return Object.fromEntries(appendPackageUserAgent(new Headers()));
+/** Framework-owned attribution applied to one AI Gateway request. */
+export interface GatewayRequestAttribution {
+  readonly evaluation?: true;
+  readonly referer?: string;
+  readonly title?: string;
 }
 
-export function isGatewayModel(model: LanguageModel): boolean {
+export const EVE_EVAL_GATEWAY_TAG = "eve-eval";
+
+/**
+ * Request headers eve attaches to a Gateway-routed model call. Direct-provider
+ * models get no extra headers.
+ */
+export function resolveGatewayRequestHeaders(
+  model: GatewayModel,
+  attribution: GatewayRequestAttribution = {},
+): Record<string, string> | undefined {
+  if (!isGatewayModel(model)) return undefined;
+  const headers: Record<string, string> = Object.fromEntries(appendPackageUserAgent(new Headers()));
+  if (attribution.title) headers["x-title"] = attribution.title;
+  if (attribution.referer) headers["http-referer"] = attribution.referer;
+  return headers;
+}
+
+export function withGatewayEvaluationTag(
+  model: GatewayModel,
+  providerOptions: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> | undefined {
+  if (!isGatewayModel(model)) return providerOptions;
+  const gateway =
+    providerOptions?.gateway !== undefined &&
+    typeof providerOptions.gateway === "object" &&
+    providerOptions.gateway !== null
+      ? (providerOptions.gateway as Record<string, unknown>)
+      : {};
+  const tags = Array.isArray(gateway.tags) ? gateway.tags : [];
+
+  return {
+    ...providerOptions,
+    gateway: {
+      ...gateway,
+      tags: tags.includes(EVE_EVAL_GATEWAY_TAG) ? tags : [...tags, EVE_EVAL_GATEWAY_TAG],
+    },
+  };
+}
+
+type GatewayModel = string | { readonly provider?: string };
+
+export function isGatewayModel(model: GatewayModel): boolean {
   return typeof model === "string" || model.provider?.split(".")[0] === "gateway";
 }

@@ -7,12 +7,14 @@ import {
 
 import { loadContext } from "#context/container.js";
 import { ContextKey } from "#context/key.js";
+import { EvaluationKey } from "#context/keys.js";
 import {
   defineDynamic,
   type DynamicResolveContext,
   type DynamicSentinel,
 } from "#dynamic/definition.js";
 import { isAgentReasoningDefinition, isRuntimeLanguageModel } from "#internal/runtime-model.js";
+import { resolveGatewayRequestHeaders, withGatewayEvaluationTag } from "#internal/gateway.js";
 import type {
   AgentReasoningDefinition,
   PublicAgentDynamicModelResult,
@@ -166,6 +168,7 @@ export function autoModel<const T extends Readonly<Record<string, AutoModelOptio
         const state = loadContext();
         const previous = state.get(selection);
         if (previous?.turnId === currentTurnId) return models.get(previous.model)!;
+        const evaluation = state.get(EvaluationKey) === true;
 
         const result = await evaluate({
           model: evaluationModel,
@@ -179,6 +182,12 @@ export function autoModel<const T extends Readonly<Record<string, AutoModelOptio
             },
           },
           abortSignal: ctx.abortSignal,
+          headers: resolveGatewayRequestHeaders(evaluationModel),
+          providerOptions: evaluation
+            ? (withGatewayEvaluationTag(evaluationModel, undefined) as Parameters<
+                typeof evaluate
+              >[0]["providerOptions"])
+            : undefined,
         });
         ctx.abortSignal?.throwIfAborted();
 

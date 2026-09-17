@@ -33,6 +33,7 @@ import {
   type PromptCachePath,
 } from "#harness/prompt-cache.js";
 import { mergeProviderSafetyIdentifier } from "#harness/provider-safety.js";
+import { withGatewayEvaluationTag } from "#internal/gateway.js";
 import {
   collectActionPresentation,
   createPresentedRuntimeActionRequestFromToolCall,
@@ -86,6 +87,7 @@ interface StepHooksInput {
   readonly cachePath: PromptCachePath;
   readonly emit?: HarnessEmitFn;
   readonly emissionState: HarnessEmissionState;
+  readonly gatewayAttribution?: ToolLoopHarnessConfig["gatewayAttribution"];
   /**
    * When `false`, `onStepStart` skips the `step.started` emission.
    * Used by the harness recovery path to avoid emitting `step.started`
@@ -192,9 +194,13 @@ export function buildStepHooks(input: StepHooksInput): StepHooks {
       input.auth ?? contextStorage.getStore()?.get(AuthKey) ?? null,
     );
     if (input.cachePath.kind === "gateway-auto") {
-      stepResult.providerOptions = mergeGatewayAutoCaching(providerOptions) as NonNullable<
-        typeof stepResult.providerOptions
-      >;
+      const gatewayOptions = mergeGatewayAutoCaching(providerOptions);
+      stepResult.providerOptions =
+        input.gatewayAttribution?.evaluation === true
+          ? (withGatewayEvaluationTag(modelReference.id, gatewayOptions) as NonNullable<
+              typeof stepResult.providerOptions
+            >)
+          : (gatewayOptions as NonNullable<typeof stepResult.providerOptions>);
     } else if (providerOptions !== undefined) {
       stepResult.providerOptions = providerOptions as NonNullable<
         typeof stepResult.providerOptions

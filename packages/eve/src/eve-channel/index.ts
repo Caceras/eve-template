@@ -12,6 +12,7 @@ import {
   WORKFLOW_WEBHOOK_ROUTE_PATTERN,
 } from "#execution/workflow-webhook-route.js";
 import { createLogger, logError } from "#internal/logging.js";
+import { isEveEvalRequest } from "#internal/evaluation.js";
 import {
   readAgentInfoRouteResponse,
   readRemoteAgentStreamHeadersResolver,
@@ -311,6 +312,9 @@ export function eveChannel(input: EveChannelInput): EveChannel {
               body.capabilities ?? (body.mode === "task" ? undefined : { requestInput: true }),
             callback: body.callback,
             continuationToken: operationToken,
+            ...(authResult.principalType !== "anonymous" && isEveEvalRequest(req.headers)
+              ? { evaluation: true as const }
+              : {}),
             initiatorAuth: forwarded.accepted ? forwarded.initiatorAuth : undefined,
             input: attachClientContext(
               {

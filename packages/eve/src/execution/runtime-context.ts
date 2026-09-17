@@ -11,6 +11,7 @@ import {
   ContinuationTokenKey,
   ConversationIdKey,
   DynamicSubagentAgentConfigKey,
+  EvaluationKey,
   InitiatorAuthKey,
   ModeKey,
   ParentSessionKey,
@@ -26,7 +27,10 @@ import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agen
 import { readConversationId } from "#tracing/conversation-context.js";
 import { buildConversationContext } from "#channel/conversation-context.js";
 import { ConversationContextKey } from "#shared/conversation-context.js";
-import { resolveInstrumentationEnvironment } from "#internal/application/dev-environment.js";
+import {
+  isEveEvaluationEnvironment,
+  resolveInstrumentationEnvironment,
+} from "#internal/application/dev-environment.js";
 
 /**
  * Builds the bootstrap {@link ContextContainer} for one run.
@@ -69,6 +73,9 @@ export function buildRunContext(input: {
   ctx.set(ModeKey, run.mode);
   ctx.set(AuthKey, auth);
   ctx.set(InitiatorAuthKey, run.initiatorAuth ?? auth);
+  if (run.evaluation === true || isEveEvaluationEnvironment()) {
+    ctx.set(EvaluationKey, true);
+  }
 
   if (input.dynamicSubagentAgentConfig !== undefined) {
     ctx.set(DynamicSubagentAgentConfigKey, input.dynamicSubagentAgentConfig);
