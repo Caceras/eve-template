@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Card, CardText } from "#compiled/chat/index.js";
 import { decodeSlackApiBody } from "#public/channels/slack/api-encoding.js";
+import { buildSlackBinding, buildSlackWorkspaceHandle } from "#public/channels/slack/api.js";
 import {
-  buildSlackBinding,
   callSlackApi,
+  postSlackApiJson,
+  resolveSlackApiUrl,
   resolveSlackBotToken,
   type SlackBotTokenContext,
-} from "#public/channels/slack/api.js";
+} from "#public/channels/slack/api-transport.js";
 
 interface FetchCall {
   url: string;
@@ -997,5 +999,145 @@ describe("Slack bot token context", () => {
 
     expect(token).toBe("xoxb-legacy");
     expect(botToken).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Slack Web API base URL", () => {
+  const ORIGINAL_SLACK_API_URL = process.env.SLACK_API_URL;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    delete process.env.SLACK_API_URL;
+    fetchMock = vi.fn(async () =>
+      Response.json({ ok: true, ts: "1700000002.000002", channel: { id: "D01" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (ORIGINAL_SLACK_API_URL === undefined) delete process.env.SLACK_API_URL;
+    else process.env.SLACK_API_URL = ORIGINAL_SLACK_API_URL;
+  });
+
+  function requestedUrls(mock: {
+    readonly mock: { readonly calls: readonly unknown[][] };
+  }): string[] {
+    return mock.mock.calls.map(([url]) => String(url));
+  }
+
+  it("defaults to Slack's own host", () => {
+    expect(resolveSlackApiUrl()).toBe("https://slack.com/api/");
+    expect(resolveSlackApiUrl({})).toBe("https://slack.com/api/");
+  });
+
+  it("normalizes a configured base to a trailing slash so the method is appended", async () => {
+    expect(resolveSlackApiUrl({ url: "https://sim.example/api" })).toBe("https://sim.example/api/");
+
+    for (const url of ["https://sim.example/api", "https://sim.example/api/"]) {
+      await postSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" });
+    }
+
+    expect(requestedUrls(fetchMock)).toEqual([
+      "https://sim.example/api/chat.update",
+      "https://sim.example/api/chat.update",
+    ]);
+  });
+
+  it("falls back to SLACK_API_URL when no url is configured", () => {
+    process.env.SLACK_API_URL = "http://localhost:3000/api/slack";
+
+    expect(resolveSlackApiUrl()).toBe("http://localhost:3000/api/slack/");
+    expect(resolveSlackApiUrl({ url: "https://sim.example/api/" })).toBe(
+      "https://sim.example/api/",
+    );
+  });
+
+  it("keeps the default host for every binding call when nothing is configured", async () => {
+    const { thread, slack } = buildSlackBinding({
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1700000000.000001",
+      teamId: "T01",
+    });
+
+    await thread.post({ text: "hi" });
+    await thread.startTyping("Thinking...");
+    await slack.request("auth.test", {});
+
+    expect(requestedUrls(fetchMock)).toEqual([
+      "https://slack.com/api/chat.postMessage",
+      "https://slack.com/api/assistant.threads.setStatus",
+      "https://slack.com/api/auth.test",
+    ]);
+  });
+
+  it("routes every binding call through a configured api.url and api.fetch", async () => {
+    const apiFetch = vi.fn(async () => Response.json({ ok: true, ts: "1700000003.000003" }));
+    const { thread, slack } = buildSlackBinding({
+      api: { url: "https://sim.example/api", fetch: apiFetch },
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1700000000.000001",
+      teamId: "T01",
+    });
+
+    await thread.post({ text: "hi" });
+    await thread.postEphemeral("U01", { text: "psst" });
+    await thread.startTyping("Thinking...");
+    await thread.refresh();
+    await slack.request("auth.test", {});
+    await slack.uploadFiles([]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requestedUrls(apiFetch)).toEqual([
+      "https://sim.example/api/chat.postMessage",
+      "https://sim.example/api/chat.postEphemeral",
+      "https://sim.example/api/assistant.threads.setStatus",
+      "https://sim.example/api/conversations.replies",
+      "https://sim.example/api/auth.test",
+    ]);
+  });
+
+  it("routes binding calls through SLACK_API_URL with no explicit config", async () => {
+    process.env.SLACK_API_URL = "https://env.example/api";
+    const { slack } = buildSlackBinding({
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1700000000.000001",
+      teamId: "T01",
+    });
+
+    await slack.request("auth.test", {});
+
+    expect(requestedUrls(fetchMock)).toEqual(["https://env.example/api/auth.test"]);
+  });
+
+  it("accepts apiUrl and fetch on the exported callSlackApi", async () => {
+    const apiFetch = vi.fn(async () => Response.json({ ok: true }));
+
+    await callSlackApi({
+      botToken: "xoxb-test",
+      operation: "views.update",
+      body: {},
+      apiUrl: "https://sim.example/api",
+      fetch: apiFetch,
+    });
+    await callSlackApi({ botToken: "xoxb-test", operation: "views.open", body: {} });
+
+    expect(requestedUrls(apiFetch)).toEqual(["https://sim.example/api/views.update"]);
+    expect(requestedUrls(fetchMock)).toEqual(["https://slack.com/api/views.open"]);
+  });
+
+  it("routes the workspace handle through the configured base", async () => {
+    const handle = buildSlackWorkspaceHandle({
+      api: { url: "https://sim.example/api/" },
+      botToken: "xoxb-test",
+      teamId: "T01",
+    });
+
+    await handle.request("usergroups.list", {});
+
+    expect(requestedUrls(fetchMock)).toEqual(["https://sim.example/api/usergroups.list"]);
   });
 });

@@ -1,0 +1,171 @@
+/**
+ * Slack Web API transport seam: bot-token resolution, the configurable
+ * base URL and fetch implementation, and the low-level call primitive
+ * every outbound Slack call in the channel funnels through.
+ *
+ * Kept separate from `api.ts` so the thread/workspace handles can depend
+ * on the transport without the transport depending on them.
+ */
+
+import {
+  callSlackApi as callSlackApiPrimitive,
+  resolveSlackBotToken as resolveSlackBotTokenPrimitive,
+  type SlackApiOptions,
+  type SlackApiResponse as SlackPrimitiveApiResponse,
+} from "#compiled/@chat-adapter/slack/api.js";
+
+/** Slack app installation workspace available when eve resolves a bot token. */
+export interface SlackBotTokenContext {
+  readonly teamId?: string;
+}
+
+/**
+ * Slack bot token, materialized either as a literal `xoxb-...` string or
+ * as a (possibly async) function that receives the app installation workspace.
+ */
+export type SlackBotToken = string | ((context: SlackBotTokenContext) => string | Promise<string>);
+
+/** Slack's own Web API base. Used when nothing overrides it. */
+const DEFAULT_SLACK_API_URL = "https://slack.com/api/";
+
+/**
+ * Points the channel's Slack Web API traffic somewhere other than
+ * Slack — a local simulator, a proxy, or a recorded fixture server.
+ * Every outbound Slack call the channel makes honors it.
+ */
+export interface SlackApiConfig {
+  /**
+   * Slack Web API base URL. Falls back to `process.env.SLACK_API_URL`,
+   * then to `https://slack.com/api/`. Normalized to a trailing slash so
+   * method names resolve as an extra path segment instead of replacing
+   * the last one.
+   */
+  readonly url?: string;
+  /**
+   * Fetch implementation used for Slack Web API calls and authenticated
+   * `url_private` file downloads. Defaults to the global `fetch`.
+   */
+  readonly fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * Resolves the Slack Web API base URL from explicit config, then
+ * `SLACK_API_URL`, then Slack's own host. Read at call time so a process
+ * that sets the env var after import still picks it up. Always ends in `/`.
+ */
+export function resolveSlackApiUrl(api?: SlackApiConfig): string {
+  const configured = api?.url ?? process.env.SLACK_API_URL;
+  const base =
+    configured !== undefined && configured.length > 0 ? configured : DEFAULT_SLACK_API_URL;
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
+/**
+ * Materializes a {@link SlackBotToken} to a string, falling back to
+ * `process.env.SLACK_BOT_TOKEN`. Throws when neither is set.
+ */
+export async function resolveSlackBotToken(
+  token?: SlackBotToken,
+  context: SlackBotTokenContext = {},
+): Promise<string> {
+  const source = token ?? process.env.SLACK_BOT_TOKEN;
+  if (!source) throw new Error("SLACK_BOT_TOKEN is required.");
+  if (typeof source === "function") return source(context);
+  return resolveSlackBotTokenPrimitive(source);
+}
+
+/**
+ * Slack Web API JSON response envelope. `ok` signals success, `error`
+ * carries Slack's error code on failure, and method-specific fields pass
+ * through verbatim. Callers inspect `ok` themselves.
+ */
+export type SlackApiResponse = SlackPrimitiveApiResponse;
+
+/**
+ * Low-level POST to a Slack Web API method, signed with the bot token
+ * and form-encoded. Form is the only safe default: Slack's JSON support
+ * is partial (e.g. `conversations.replies` rejects JSON). Returns the
+ * raw JSON response; callers inspect `response.ok` themselves.
+ */
+export async function callSlackApi(input: {
+  readonly botToken: SlackBotToken | undefined;
+  readonly context?: SlackBotTokenContext;
+  readonly operation: string;
+  readonly body: unknown;
+  /**
+   * Slack Web API base URL. Falls back to `process.env.SLACK_API_URL`,
+   * then to Slack's own host.
+   */
+  readonly apiUrl?: string;
+  /** Fetch implementation for this call. Defaults to the global `fetch`. */
+  readonly fetch?: typeof globalThis.fetch;
+}): Promise<SlackApiResponse> {
+  return callSlackApiPrimitive(
+    input.operation,
+    normalizeSlackApiBody(input.body),
+    createSlackApiOptions(input.botToken, input.context, {
+      url: input.apiUrl,
+      fetch: input.fetch,
+    }),
+  );
+}
+
+/**
+ * Builds the `request(op, body)` Slack API caller installed on every
+ * Slack handle. Resolves the bot token at call time so rotated
+ * credentials are picked up without rebuilding the binding.
+ */
+export function createSlackRequester(
+  botToken: SlackBotToken | undefined,
+  context: SlackBotTokenContext,
+  api: SlackApiConfig | undefined,
+): (operation: string, body: unknown) => Promise<SlackApiResponse> {
+  return (operation, body) =>
+    callSlackApi({ botToken, context, operation, body, apiUrl: api?.url, fetch: api?.fetch });
+}
+
+/**
+ * Transport options for the vendored Slack helpers, carrying the lazily
+ * resolved bot token plus the configured base URL and fetch.
+ */
+export function createSlackApiOptions(
+  botToken: SlackBotToken | undefined,
+  context: SlackBotTokenContext = {},
+  api?: SlackApiConfig,
+): SlackApiOptions {
+  const options: SlackApiOptions = {
+    apiUrl: resolveSlackApiUrl(api),
+    token: () => resolveSlackBotToken(botToken, context),
+  };
+  if (api?.fetch !== undefined) options.fetch = api.fetch;
+  return options;
+}
+
+/**
+ * One hand-rolled JSON POST to a Slack Web API method, for the two
+ * surfaces (`views.open`, the answered-card `chat.update`) whose payloads
+ * Slack only accepts as JSON.
+ */
+export function postSlackApiJson(input: {
+  readonly api: SlackApiConfig | undefined;
+  readonly body: unknown;
+  readonly method: string;
+  readonly token: string;
+}): Promise<Response> {
+  const url = new URL(input.method, resolveSlackApiUrl(input.api)).toString();
+  return (input.api?.fetch ?? fetch)(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${input.token}`,
+      "content-type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify(input.body),
+  });
+}
+
+function normalizeSlackApiBody(body: unknown): Record<string, unknown> {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    return body as Record<string, unknown>;
+  }
+  return {};
+}
