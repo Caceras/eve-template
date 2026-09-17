@@ -232,7 +232,6 @@ describe("workflowEntry integration", () => {
             default: defineHook({
               events: {
                 async "session.started"(_event, ctx) {
-                  await ctx.getSandbox();
                   initializedSessions += 1;
                   initializedAuth = ctx.session.auth.current;
                   initializedInitiator = ctx.session.auth.initiator;
