@@ -14,6 +14,7 @@ export default defineEval({
         "Reply with the single word: done.",
     );
     parentWrite.expectOk();
+    const conversation = parentWrite.session;
 
     const childTurn = await conversation.send(
       `Ask the \`parent-sandbox\` subagent with message: ` +
@@ -24,7 +25,7 @@ export default defineEval({
     const sessionId = childTurn.sessionId;
     if (sessionId === undefined) throw new Error("Parent sandbox turn has no session id.");
     const completed = t.target.watchTurn(sessionId, {
-      startIndex: requireStreamIndex(t),
+      startIndex: requireStreamIndex(childTurn.session),
     });
     const childCompletion = await completed.result();
     childCompletion.expectOk();
