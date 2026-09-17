@@ -217,7 +217,7 @@ function createRecordingDispatch(events: ReturnType<typeof createPrewarmEvents>)
 
 function createPrewarmEvents() {
   return {
-    runPreparationCommands: [] as string[],
+    preparationCommands: [] as string[],
     runtimeContextAppRoots: [] as string[],
     seededFilePaths: [] as string[],
     seededTemplateCount: 0,
