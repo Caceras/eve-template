@@ -163,7 +163,7 @@ describe.runIf(runMicrosandboxVmScenarios)("microsandbox sandbox file API", () =
       sandboxName: "session-network-policy",
     });
 
-    await expect(handle.sandbox.setNetworkPolicy?.("deny-all")).resolves.toBeUndefined();
+    await expect(handle.sandbox.setNetworkPolicy("deny-all")).resolves.toBeUndefined();
   });
 
   it("readFile returns null for a missing file", async () => {

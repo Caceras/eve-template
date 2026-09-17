@@ -201,20 +201,8 @@ export async function createBashSandbox(input: {
  * Throw rather than silently no-op so brokering code surfaces the gap instead
  * of leaking.
  */
-export async function justBashSetNetworkPolicyUnsupported(): Promise<never> {
-  throw new Error(
-    "setNetworkPolicy() is not supported on the just-bash sandbox provider. just-bash " +
-      "applies its network policy only at sandbox creation (no run-time update) and does not run " +
-      "git or other binaries. Use DockerSandbox for coarse egress control or vercel() / " +
-      "microsandbox() for credential brokering.",
-  );
-}
-
 export function createJustBashHandle(sandbox: BashSandbox): SandboxProviderHandle {
-  const session = buildSandboxSession(
-    createFileBackedInternalSandboxSession({ sandbox }),
-    justBashSetNetworkPolicyUnsupported,
-  );
+  const session = buildSandboxSession(createFileBackedInternalSandboxSession({ sandbox }));
   return {
     sandbox: session,
     async onSessionDelete() {

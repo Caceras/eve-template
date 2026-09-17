@@ -2,7 +2,10 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { defineDefaultSandboxProvider } from "#sandbox/providers/default.js";
 import { DockerSandbox, MicrosandboxSandbox, VercelSandbox } from "#sandbox/providers.js";
-import type { RuntimeSandboxSession } from "#shared/sandbox-session.js";
+import type {
+  MutableNetworkSandboxSession,
+  RuntimeSandboxSessionFor,
+} from "#shared/sandbox-session.js";
 
 describe("sandbox providers", () => {
   it("implements default selection through the provider contract", () => {
@@ -26,6 +29,8 @@ describe("sandbox providers", () => {
 
   it("returns runtime sandboxes from open", () => {
     const environment = DockerSandbox.environment();
-    expectTypeOf(environment.open).returns.toEqualTypeOf<Promise<RuntimeSandboxSession>>();
+    expectTypeOf(environment.open).returns.toEqualTypeOf<
+      Promise<RuntimeSandboxSessionFor<MutableNetworkSandboxSession>>
+    >();
   });
 });

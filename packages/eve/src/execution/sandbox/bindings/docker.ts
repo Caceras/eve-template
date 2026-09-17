@@ -1,3 +1,4 @@
+import type { MutableNetworkSandboxSession } from "#shared/sandbox-session.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -65,7 +66,8 @@ type DockerSandboxPreparedArtifact = {
 };
 type DockerSandboxSessionState = {
   readonly containerName: string;
-  readonly version: 1;
+  readonly generation: string;
+  readonly version: 2;
 };
 
 /**
@@ -87,7 +89,8 @@ export function createDockerSandboxProvider(
 ): SandboxProviderImplementation<
   DockerSandboxRuntimeOptions,
   DockerSandboxPreparedArtifact,
-  DockerSandboxSessionState
+  DockerSandboxSessionState,
+  MutableNetworkSandboxSession
 > {
   const cli = dockerCli ?? createDockerCli();
   const authoredOptions = createOptions ?? {};
@@ -108,6 +111,7 @@ export function createDockerSandboxProvider(
     openOptions: Readonly<DockerSandboxRuntimeOptions> | undefined,
     artifactValue: SandboxPreparedArtifact,
     containerName: string,
+    createIfMissing: boolean,
   ) {
     await ensureDaemon();
     const artifact = requirePreparedDockerArtifact(artifactValue);
@@ -133,6 +137,9 @@ export function createDockerSandboxProvider(
         );
       }
     } else {
+      if (!createIfMissing) {
+        throw new Error(`Docker sandbox session container "${containerName}" no longer exists.`);
+      }
       created = true;
       await startDockerContainer({
         cli,
@@ -294,18 +301,12 @@ export function createDockerSandboxProvider(
 
       return { imageReference };
     },
-    async resume(context, openOptions, artifactValue, stateValue) {
+    async resume(context, artifactValue, stateValue) {
       const state = requireDockerSessionState(stateValue);
-      const expectedName = dockerSessionName(
-        context.session.id,
-        openOptions,
-        artifactValue,
-        optionsHash,
-      );
-      if (state.containerName !== expectedName) {
+      if (state.generation !== dockerGeneration(artifactValue, optionsHash)) {
         throw new Error("Docker sandbox session state is incompatible with this environment.");
       }
-      return await openDockerSession(context, openOptions, artifactValue, state.containerName);
+      return await openDockerSession(context, undefined, artifactValue, state.containerName, false);
     },
     async start(context, openOptions, artifactValue) {
       const containerName = dockerSessionName(
@@ -315,11 +316,19 @@ export function createDockerSandboxProvider(
         optionsHash,
       );
       return {
-        handle: await openDockerSession(context, openOptions, artifactValue, containerName),
-        state: { containerName, version: 1 },
+        handle: await openDockerSession(context, openOptions, artifactValue, containerName, true),
+        state: {
+          containerName,
+          generation: dockerGeneration(artifactValue, optionsHash),
+          version: 2,
+        },
       };
     },
   };
+}
+
+function dockerGeneration(artifact: SandboxPreparedArtifact, optionsHash: string): string {
+  return createSandboxProviderIdentity({ artifact, environment: optionsHash, version: 1 });
 }
 
 function dockerSessionName(
@@ -349,12 +358,13 @@ function requirePreparedDockerArtifact(
 function requireDockerSessionState(state: SandboxPreparedArtifact): DockerSandboxSessionState {
   if (
     !isSandboxPreparedArtifactRecord(state) ||
-    state.version !== 1 ||
-    typeof state.containerName !== "string"
+    state.version !== 2 ||
+    typeof state.containerName !== "string" ||
+    typeof state.generation !== "string"
   ) {
     throw new Error("Invalid Docker sandbox session state.");
   }
-  return { containerName: state.containerName, version: 1 };
+  return { containerName: state.containerName, generation: state.generation, version: 2 };
 }
 
 async function resolveDockerHandleIdentity(cli: DockerCli, containerName: string): Promise<string> {

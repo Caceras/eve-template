@@ -81,10 +81,8 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       throw new Error(`Sandbox "${definition.logicalPath}" selected a different environment.`);
     if (provider !== getSandboxEnvironmentRuntime(definition.environment))
       throw new Error(`Sandbox "${definition.logicalPath}" selected a different provider.`);
-    if (persisted !== null && persisted.providerName !== provider.providerName) {
-      throw new Error(
-        `Sandbox session state belongs to provider "${persisted.providerName}", not "${provider.providerName}".`,
-      );
+    if (persisted !== null) {
+      throw new Error(`Sandbox "${definition.logicalPath}" is already initialized.`);
     }
 
     const workspaceResourceRoot =
@@ -115,17 +113,14 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       storagePath: resolveSandboxCacheDirectory(appRoot),
     };
     const createHandle = async () => {
-      if (persisted === null) {
-        const result = await provider.implementation.start(context, options, artifact);
-        if (!isSandboxPreparedArtifact(result.state)) {
-          throw new Error(
-            `Sandbox provider "${provider.providerName}" returned non-serializable session state.`,
-          );
-        }
-        persisted = { providerName: provider.providerName, state: result.state };
-        return result.handle;
+      const result = await provider.implementation.start(context, options, artifact);
+      if (!isSandboxPreparedArtifact(result.state)) {
+        throw new Error(
+          `Sandbox provider "${provider.providerName}" returned non-serializable session state.`,
+        );
       }
-      return await provider.implementation.resume(context, options, artifact, persisted.state);
+      persisted = { providerName: provider.providerName, state: result.state };
+      return result.handle;
     };
     opening = createHandle().catch((error: unknown) => {
       opening = undefined;
@@ -133,18 +128,70 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     });
 
     const handle = await opening;
-    trackActiveSandboxHandle({
-      handle,
-      providerName: provider.providerName,
-      sessionId: input.sessionId,
-    });
+    return installHandle(provider.providerName, handle);
+  }
+
+  function installHandle(
+    providerName: string,
+    handle: SandboxProviderHandle,
+  ): RuntimeSandboxSession {
+    trackActiveSandboxHandle({ handle, providerName, sessionId: input.sessionId });
     const sandbox = withRuntimeSandboxLifecycle(
       handle.sandbox,
       (deleteOptions?: SandboxDeleteOptions) => handle.onSessionDelete(deleteOptions),
       () => handle.onSessionStop(),
     );
-    opened = { handle, providerName: provider.providerName, sandbox };
+    opened = { handle, providerName, sandbox };
     return sandbox;
+  }
+
+  async function resumePersisted(
+    definition: Extract<typeof registered.definition, { readonly kind: "independent" }>,
+    session: SandboxProviderSessionContext["session"],
+  ): Promise<SandboxProviderHandle> {
+    if (persisted === null) throw new Error("Sandbox session state is missing.");
+    const provider = getSandboxEnvironmentRuntime(definition.environment);
+    if (persisted.providerName !== provider.providerName) {
+      throw new Error(
+        `Sandbox session state belongs to provider "${persisted.providerName}", not "${provider.providerName}".`,
+      );
+    }
+    const inherited = registered.inheritance;
+    const workspaceResourceRoot =
+      inherited?.workspaceResourceRoot ?? registered.workspaceResourceRoot;
+    const templateKey = await createRuntimeSandboxTemplateKey({
+      compiledArtifactsSource: input.compiledArtifactsSource,
+      configurationHash: getSandboxEnvironmentConfigurationHash(definition.environment),
+      nodeId: inherited?.nodeId ?? input.nodeId,
+      providerName: provider.providerName,
+      sourceId: definition.sourceId,
+      templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
+    });
+    const artifact = await loadSandboxPreparedArtifact({
+      compiledArtifactsSource: input.compiledArtifactsSource,
+      providerName: provider.providerName,
+      templateName: templateKey,
+    });
+    if (artifact === undefined) {
+      throw new SandboxTemplateNotProvisionedError({
+        providerName: provider.providerName,
+        templateKey,
+      });
+    }
+    const context: SandboxProviderSessionContext = {
+      host: createSandboxProviderHost(appRoot),
+      session,
+      storagePath: resolveSandboxCacheDirectory(appRoot),
+    };
+    opening = provider.implementation
+      .resume(context, artifact, persisted.state)
+      .catch((error: unknown) => {
+        opening = undefined;
+        throw error;
+      });
+    const handle = await opening;
+    installHandle(provider.providerName, handle);
+    return handle;
   }
 
   async function resolveHandle(): Promise<SandboxProviderHandle> {
@@ -161,6 +208,10 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
             turn: { id: "sandbox-initialization", sequence: 0 },
           }
         : buildCallbackContext().session;
+
+    if (persisted !== null) {
+      return await resumePersisted(definition, session);
+    }
 
     if (inherited !== undefined) {
       const configurationHash = getSandboxEnvironmentConfigurationHash(definition.environment);
@@ -184,8 +235,21 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
           throw new Error(`Sandbox "${definition.logicalPath}" must return the sandbox it opens.`);
         }
       } catch (error) {
+        const failed = opened?.handle;
         opened = undefined;
         opening = undefined;
+        persisted = null;
+        if (failed !== undefined) {
+          try {
+            await failed.onSessionDelete();
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [error, cleanupError],
+              `Sandbox "${definition.logicalPath}" initialization and cleanup both failed.`,
+              { cause: error },
+            );
+          }
+        }
         throw error;
       }
     }

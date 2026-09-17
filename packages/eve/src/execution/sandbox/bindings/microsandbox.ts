@@ -1,3 +1,4 @@
+import type { MutableNetworkSandboxSession } from "#shared/sandbox-session.js";
 import { enrichMicrosandboxError } from "#execution/sandbox/bindings/microsandbox-create.js";
 import {
   createMicrosandboxHandle,
@@ -37,7 +38,8 @@ export function createMicrosandboxSandboxProvider(
 ): SandboxProviderImplementation<
   MicrosandboxSandboxRuntimeOptions,
   MicrosandboxPreparedArtifact,
-  MicrosandboxProviderSessionState
+  MicrosandboxProviderSessionState,
+  MutableNetworkSandboxSession
 > {
   const createOptions = authoredOptions ?? {};
   const options = resolveMicrosandboxOptions(createOptions);
@@ -73,7 +75,7 @@ export function createMicrosandboxSandboxProvider(
         throw enrichMicrosandboxError({ context: "Failed to prepare microsandbox", error });
       }
     },
-    async resume(context, runtimeOptions, artifactValue, stateValue) {
+    async resume(context, artifactValue, stateValue) {
       const artifact = requireArtifact(artifactValue);
       const state = requireState(stateValue);
       if (
@@ -86,12 +88,12 @@ export function createMicrosandboxSandboxProvider(
       const result = await createMicrosandboxHandle({
         artifact,
         context,
+        createIfMissing: false,
         existingState: state,
-        onSession: runtimeOptions?.onSession,
         options,
         optionsHash,
         providerName: MICROSANDBOX_PROVIDER_NAME,
-        runtimeOptions,
+        runtimeOptions: { networkPolicy: state.networkPolicy },
       });
       return result.handle;
     },

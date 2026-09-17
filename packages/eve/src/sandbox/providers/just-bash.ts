@@ -8,7 +8,7 @@ export const JustBashSandbox = defineSandboxProvider<
   JustBashEnvironmentOptions,
   undefined,
   { readonly templateRootPath: string },
-  { readonly rootPath: string; readonly version: 1 }
+  { readonly generation: string; readonly rootPath: string; readonly version: 2 }
 >({
   name: "just-bash",
   environment: (options) => createJustBashSandboxProvider(options),

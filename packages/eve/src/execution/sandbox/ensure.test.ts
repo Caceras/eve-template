@@ -98,6 +98,16 @@ describe("ensureSandboxAccess", () => {
     expect((await open(value.registry)).sandbox).toBeTruthy();
     expect(value.create).toHaveBeenCalledOnce();
   });
+  it("resumes persisted provider state without invoking the selector", async () => {
+    const setup = vi.fn();
+    const value = fixture(setup);
+    await open(value.registry, "session-1", {
+      session: { providerName: "test", state: null },
+    });
+    expect(setup).not.toHaveBeenCalled();
+    expect(value.create).toHaveBeenCalledOnce();
+  });
+
   it("passes empty live options when a child inherits its parent sandbox", async () => {
     const value = fixture();
     const parent = value.registry.sandbox;

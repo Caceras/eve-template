@@ -431,8 +431,10 @@ describe("Docker provider create", () => {
       return undefined;
     });
 
-    await createEngine({ cli }).openSession({
-      existing: { containerName: PROVIDER_CONTAINER_NAME, version: 1 },
+    const engine = createEngine({ cli });
+    const { state } = await engine.start({ appRoot, sandboxName: SESSION_KEY });
+    await engine.openSession({
+      existing: state,
       appRoot,
       sandboxName: SESSION_KEY,
     });
@@ -594,7 +596,7 @@ describe("Docker provider create", () => {
       },
     });
 
-    await handle.sandbox.setNetworkPolicy?.("deny-all");
+    await handle.sandbox.setNetworkPolicy("deny-all");
 
     expect(
       findCall(calls, (args) => args[0] === "network" && args[1] === "disconnect")?.args,
@@ -619,7 +621,7 @@ describe("Docker provider create", () => {
       },
     });
 
-    await handle.sandbox.setNetworkPolicy?.("allow-all");
+    await handle.sandbox.setNetworkPolicy("allow-all");
 
     const networkCalls = calls
       .filter((call) => call.args[0] === "network")
@@ -639,7 +641,7 @@ describe("Docker provider create", () => {
   it("rejects domain-level network policies with guidance toward the Vercel provider", async () => {
     const { handle } = await createRunningSessionHandle({});
 
-    await expect(handle.sandbox.setNetworkPolicy?.({ allow: { "*": [] } })).rejects.toThrow(
+    await expect(handle.sandbox.setNetworkPolicy({ allow: { "*": [] } })).rejects.toThrow(
       /Vercel provider/,
     );
   });

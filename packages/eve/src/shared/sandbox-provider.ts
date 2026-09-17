@@ -118,8 +118,8 @@ export interface SandboxProviderSessionContext {
   readonly storagePath: string;
 }
 
-export interface SandboxProviderHandle {
-  readonly sandbox: SandboxSession;
+export interface SandboxProviderHandle<Session extends SandboxSession = SandboxSession> {
+  readonly sandbox: Session;
   onRuntimeShutdown(): Promise<void>;
   onSessionDelete(options?: SandboxDeleteOptions): Promise<void>;
   onSessionStop(): Promise<void>;
@@ -129,19 +129,19 @@ export interface SandboxProviderImplementation<
   OpenOptions extends object | undefined,
   PreparedArtifact extends SandboxPreparedArtifact,
   SessionState,
+  Session extends SandboxSession = SandboxSession,
 > {
   prepare(context: SandboxProviderPrepareContext): Promise<PreparedArtifact>;
   resume(
     context: SandboxProviderSessionContext,
-    options: Readonly<OpenOptions> | undefined,
     artifact: Readonly<PreparedArtifact>,
     state: Readonly<SessionState>,
-  ): Promise<SandboxProviderHandle>;
+  ): Promise<SandboxProviderHandle<Session>>;
   start(
     context: SandboxProviderSessionContext,
     options: Readonly<OpenOptions> | undefined,
     artifact: Readonly<PreparedArtifact>,
-  ): Promise<{ readonly handle: SandboxProviderHandle; readonly state: SessionState }>;
+  ): Promise<{ readonly handle: SandboxProviderHandle<Session>; readonly state: SessionState }>;
 }
 
 type SandboxOptionArguments<Options extends object | undefined> = Options extends undefined
@@ -155,25 +155,30 @@ export type SandboxProviderDefinition<
   OpenOptions extends object | undefined,
   PreparedArtifact extends SandboxPreparedArtifact,
   SessionState,
+  Session extends SandboxSession,
 > = {
   readonly name: string;
   environment(
     ...args: SandboxOptionArguments<EnvironmentOptions>
-  ): SandboxProviderImplementation<OpenOptions, PreparedArtifact, SessionState>;
+  ): SandboxProviderImplementation<OpenOptions, PreparedArtifact, SessionState, Session>;
 };
 
 export interface SandboxProvider<
   EnvironmentOptions extends object | undefined,
   OpenOptions extends object | undefined,
+  Session extends SandboxSession,
 > {
   readonly name: string;
-  environment(...args: SandboxOptionArguments<EnvironmentOptions>): SandboxEnvironment<OpenOptions>;
+  environment(
+    ...args: SandboxOptionArguments<EnvironmentOptions>
+  ): SandboxEnvironment<OpenOptions, Session>;
 }
 
 type ErasedSandboxProviderImplementation = SandboxProviderImplementation<
   object | undefined,
   SandboxPreparedArtifact,
-  SandboxPreparedArtifact
+  SandboxPreparedArtifact,
+  SandboxSession
 >;
 
 export interface SandboxProviderRuntime {
@@ -186,18 +191,20 @@ export function defineSandboxProvider<
   OpenOptions extends object | undefined = undefined,
   PreparedArtifact extends SandboxPreparedArtifact = SandboxPreparedArtifact,
   SessionState = SandboxPreparedArtifact,
+  Session extends SandboxSession = SandboxSession,
 >(
   definition: SandboxProviderDefinition<
     EnvironmentOptions,
     OpenOptions,
     PreparedArtifact,
-    SessionState
+    SessionState,
+    Session
   >,
-): SandboxProvider<EnvironmentOptions, OpenOptions> {
+): SandboxProvider<EnvironmentOptions, OpenOptions, Session> {
   return {
     name: definition.name,
     environment(...args: SandboxOptionArguments<EnvironmentOptions>) {
-      return createSandboxEnvironment({
+      return createSandboxEnvironment<OpenOptions, Session>({
         configuration: args[0],
         runtime: {
           implementation: eraseSandboxProviderImplementation(definition.environment(...args)),
@@ -212,8 +219,9 @@ function eraseSandboxProviderImplementation<
   Options extends object | undefined,
   Artifact extends SandboxPreparedArtifact,
   SessionState,
+  Session extends SandboxSession,
 >(
-  implementation: SandboxProviderImplementation<Options, Artifact, SessionState>,
+  implementation: SandboxProviderImplementation<Options, Artifact, SessionState, Session>,
 ): ErasedSandboxProviderImplementation {
   return implementation as ErasedSandboxProviderImplementation;
 }

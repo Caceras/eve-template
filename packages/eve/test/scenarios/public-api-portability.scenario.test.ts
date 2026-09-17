@@ -88,7 +88,11 @@ export const environment = process.env.VERCEL === "1"
   ? VercelSandbox.environment({ resources: { vcpus: 2 } })
   : DefaultSandbox.environment({ docker: { image: "ghcr.io/vercel/eve:latest" } });
 void Drive;
-void DockerSandbox.dockerfile().open({ networkPolicy: "deny-all" });
+async function verifyMutableNetworkCapability() {
+  const sandbox = await DockerSandbox.dockerfile().open({ networkPolicy: "deny-all" });
+  await sandbox.setNetworkPolicy("allow-all");
+}
+void verifyMutableNetworkCapability;
 void DockerSandbox.image("ghcr.io/acme/agent:latest");
 void JustBashSandbox.environment();
 void MicrosandboxSandbox.dockerfile();
@@ -359,9 +363,17 @@ async function expectPortableFixtureToTypecheck(testCase: PortabilityCase): Prom
     )}\n`,
   );
 
-  await runFile(process.execPath, [TSC_BIN_PATH, "-p", consumerTsconfigPath], {
-    cwd: appRoot,
-  });
+  try {
+    await runFile(process.execPath, [TSC_BIN_PATH, "-p", consumerTsconfigPath], {
+      cwd: appRoot,
+    });
+  } catch (error) {
+    const stderr =
+      typeof error === "object" && error !== null && "stderr" in error
+        ? String(error.stderr)
+        : String(error);
+    throw new Error(`Portable consumer typecheck failed:\n${stderr}`, { cause: error });
+  }
 }
 
 async function writeDescriptorAppFiles(input: {

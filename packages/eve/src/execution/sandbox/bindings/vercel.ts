@@ -1,3 +1,4 @@
+import type { MutableNetworkSandboxSession } from "#shared/sandbox-session.js";
 import {
   applyInitialVercelNetworkPolicy,
   createVercelNetworkPolicySetter,
@@ -67,8 +68,9 @@ export type VercelSandboxPreparedArtifact = {
 };
 
 export type VercelSandboxSessionState = {
+  readonly generation: string;
   readonly sandboxName: string;
-  readonly version: 1;
+  readonly version: 2;
 };
 
 type VercelEnvironmentOptions = VercelCreateOptions & {
@@ -80,7 +82,8 @@ export function createVercelSandboxProvider(
 ): SandboxProviderImplementation<
   VercelSandboxRuntimeOptions,
   VercelSandboxPreparedArtifact,
-  VercelSandboxSessionState
+  VercelSandboxSessionState,
+  MutableNetworkSandboxSession
 > {
   const { prepare, ...authoredCreateOptions } = environmentOptions ?? {};
   return createVercelSandbox({ createOptions: authoredCreateOptions, prepare });
@@ -99,7 +102,8 @@ export function createVercelSandbox(
 ): SandboxProviderImplementation<
   VercelSandboxRuntimeOptions,
   VercelSandboxPreparedArtifact,
-  VercelSandboxSessionState
+  VercelSandboxSessionState,
+  MutableNetworkSandboxSession
 > {
   const loadSandboxModule =
     input.loadSandboxModule ??
@@ -191,18 +195,31 @@ export function createVercelSandbox(
         });
       }
     },
-    async resume(context, options, artifact, stateValue) {
+    async resume(_context, artifact, stateValue) {
+      requirePreparedVercelTemplate(artifact);
       const state = requireVercelSessionState(stateValue);
-      const expectedName = vercelSessionName(context.session.id, options, artifact, createOptions);
-      if (state.sandboxName !== expectedName) {
+      if (state.generation !== vercelGeneration(artifact, createOptions)) {
         throw new Error("Vercel sandbox session state is incompatible with this environment.");
       }
-      return await openSession(context, options, artifact, state.sandboxName);
+      const sandboxModule = await loadSandboxModule();
+      const sandbox = await getNamedVercelSandbox({
+        createOptions,
+        sandboxModule,
+        sandboxName: state.sandboxName,
+      });
+      if (sandbox === null) {
+        throw new Error(`Vercel sandbox session "${state.sandboxName}" no longer exists.`);
+      }
+      await ensureVercelSandboxBaseRuntime(sandbox);
+      return createHandle({ createOptions, loadDeleteSandboxModule, sandbox });
     },
     async start(context, options, artifact) {
       const sandboxName = vercelSessionName(context.session.id, options, artifact, createOptions);
       const handle = await openSession(context, options, artifact, sandboxName);
-      return { handle, state: { sandboxName, version: 1 } };
+      return {
+        handle,
+        state: { generation: vercelGeneration(artifact, createOptions), sandboxName, version: 2 },
+      };
     },
   };
 }
@@ -211,6 +228,17 @@ interface VercelSandboxTemplateRecord {
   readonly sandboxName: string;
   readonly snapshotId: string;
   readonly templateKey: string;
+}
+
+function vercelGeneration(
+  artifact: SandboxPreparedArtifact,
+  createOptions: VercelCreateOptions,
+): string {
+  return createSandboxProviderIdentity({
+    artifact: requirePreparedVercelTemplate(artifact),
+    createOptions: vercelIdentityOptions(createOptions),
+    version: 1,
+  });
 }
 
 function vercelSessionName(
@@ -238,12 +266,13 @@ function vercelIdentityOptions(options: object | undefined): object | undefined 
 function requireVercelSessionState(state: SandboxPreparedArtifact): VercelSandboxSessionState {
   if (
     !isSandboxPreparedArtifactRecord(state) ||
-    state.version !== 1 ||
+    state.version !== 2 ||
+    typeof state.generation !== "string" ||
     typeof state.sandboxName !== "string"
   ) {
     throw new Error("Invalid Vercel sandbox session state.");
   }
-  return { sandboxName: state.sandboxName, version: 1 };
+  return { generation: state.generation, sandboxName: state.sandboxName, version: 2 };
 }
 
 function requirePreparedVercelTemplate(
@@ -488,7 +517,7 @@ function createHandle(input: {
   readonly createOptions: VercelCreateOptions;
   readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
   readonly sandbox: VercelSandbox;
-}): SandboxProviderHandle {
+}): SandboxProviderHandle<MutableNetworkSandboxSession> {
   const { sandbox } = input;
   return {
     sandbox: buildSandboxSession(

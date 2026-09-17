@@ -72,6 +72,7 @@ export type VercelSandboxRuntimeOptions = Omit<
 > &
   SandboxNetworkOptions &
   VercelSandboxMountOptions & {
+    /** Optional setup run only during the initial provider `start()` operation. */
     readonly onSession?: (context: {
       readonly sandbox: SandboxSession;
       readonly session: SandboxSelectorContext["session"];

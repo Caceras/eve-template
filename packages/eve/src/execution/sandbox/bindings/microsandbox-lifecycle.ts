@@ -58,7 +58,10 @@ import {
   type SandboxProviderPrepareContext,
 } from "#shared/sandbox-provider.js";
 import { SandboxTemplateNotProvisionedError } from "#shared/sandbox-template-error.js";
-import type { InternalSandboxSession } from "#shared/sandbox-session.js";
+import type {
+  InternalSandboxSession,
+  MutableNetworkSandboxSession,
+} from "#shared/sandbox-session.js";
 
 type LiveMicrosandboxOptions = ResolvedMicrosandboxOptions & MicrosandboxSandboxRuntimeOptions;
 
@@ -69,7 +72,10 @@ export type MicrosandboxPreparedArtifact = {
   readonly version: typeof MICROSANDBOX_METADATA_VERSION;
 };
 
-const activeMicrosandboxSessionHandles = new Map<string, SandboxProviderHandle>();
+const activeMicrosandboxSessionHandles = new Map<
+  string,
+  SandboxProviderHandle<MutableNetworkSandboxSession>
+>();
 
 export async function prewarmMicrosandboxTemplate(input: {
   readonly providerName: string;
@@ -214,6 +220,7 @@ export async function prewarmMicrosandboxTemplate(input: {
 export async function createMicrosandboxHandle(input: {
   readonly artifact: MicrosandboxPreparedArtifact;
   readonly context: SandboxProviderSessionContext;
+  readonly createIfMissing?: boolean;
   readonly existingState?: MicrosandboxSessionMetadata;
   readonly onSession?: (input: {
     readonly sandbox: import("#shared/sandbox-session.js").SandboxSession;
@@ -224,7 +231,7 @@ export async function createMicrosandboxHandle(input: {
   readonly providerName: string;
   readonly runtimeOptions?: MicrosandboxSandboxRuntimeOptions;
 }): Promise<{
-  readonly handle: SandboxProviderHandle;
+  readonly handle: SandboxProviderHandle<MutableNetworkSandboxSession>;
   readonly state: MicrosandboxSessionMetadata;
 }> {
   const preparedTemplate = requirePreparedMicrosandboxTemplate(input.artifact, input.providerName);
@@ -279,6 +286,12 @@ export async function createMicrosandboxHandle(input: {
         state: existingState,
       };
     }
+  }
+
+  if (existingState !== undefined && input.createIfMissing === false) {
+    throw new Error(
+      `microsandbox session "${existingState.sandboxName}" is no longer available to resume.`,
+    );
   }
 
   if (
@@ -366,7 +379,7 @@ function createHandle(
   sandbox: MicrosandboxVm,
   _optionsHash: string,
   onShutdown?: () => void,
-): SandboxProviderHandle {
+): SandboxProviderHandle<MutableNetworkSandboxSession> {
   const session = buildSandboxSession(
     createMicrosandboxInternalSession(sandbox),
     async (policy) => {
@@ -399,7 +412,10 @@ function createActiveMicrosandboxSessionKey(sessionRootPath: string, optionsHash
   return `${sessionRootPath}\0${optionsHash}`;
 }
 
-function cacheHandle(key: string, handle: SandboxProviderHandle): SandboxProviderHandle {
+function cacheHandle(
+  key: string,
+  handle: SandboxProviderHandle<MutableNetworkSandboxSession>,
+): SandboxProviderHandle<MutableNetworkSandboxSession> {
   activeMicrosandboxSessionHandles.set(key, handle);
   return handle;
 }

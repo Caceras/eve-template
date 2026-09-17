@@ -1,7 +1,7 @@
 ---
 issue: TBD
 status: draft
-last_updated: "2026-09-15"
+last_updated: "2026-09-16"
 ---
 
 # Sandbox environments and provider sessions
@@ -41,18 +41,18 @@ Provider callbacks and runtime callback arguments are never stored in prepared a
 
 ## Public sandbox sessions
 
-`SandboxSession` is an I/O-only surface used by preparation and provider-defined session hooks. It contains process and file operations, eve-owned `resolvePath()`, and optional `setNetworkPolicy()`. It has no `id`, `stop()`, or `delete()`.
+`SandboxSession` is an I/O-only surface used by preparation and provider-defined session hooks. It contains process and file operations and eve-owned `resolvePath()`. Providers express additional capabilities in their exact session type. It has no `id`, `stop()`, or `delete()`.
 
-`RuntimeSandboxSession` extends that surface with `stop()` and `delete()` and is returned by `environment.open()`.
+`environment.open()` returns the provider-specific session type plus `stop()` and `delete()`. Core erases that exact type only at the heterogeneous runtime registry boundary.
 
 Authors use `ctx.session.id` for durable eve identity. Provider-native IDs and core artifact keys remain private. `resolvePath()` remains unchanged: relative paths resolve beneath `/workspace`, and absolute paths pass through.
 
-`setNetworkPolicy()` is an optional capability. Dedicated Vercel, Docker, and microsandbox providers expose it. A provider that reuses one native network boundary may omit it and require immutable policy in environment configuration.
+`setNetworkPolicy()` is required on the session types returned by dedicated Vercel, Docker, and microsandbox environments. just-bash and providers that reuse one native network boundary omit it from their session types and require policy at creation time.
 
 ## Provider contract
 
 ```ts
-interface SandboxProviderImplementation<OpenOptions, Artifact, SessionState> {
+interface SandboxProviderImplementation<OpenOptions, Artifact, SessionState, Session> {
   prepare(context: SandboxProviderPrepareContext): Promise<Artifact>;
 
   start(
@@ -60,16 +60,15 @@ interface SandboxProviderImplementation<OpenOptions, Artifact, SessionState> {
     options: Readonly<OpenOptions> | undefined,
     artifact: Readonly<Artifact>,
   ): Promise<{
-    handle: SandboxProviderHandle;
+    handle: SandboxProviderHandle<Session>;
     state: SessionState;
   }>;
 
   resume(
     context: SandboxProviderSessionContext,
-    options: Readonly<OpenOptions> | undefined,
     artifact: Readonly<Artifact>,
     state: Readonly<SessionState>,
-  ): Promise<SandboxProviderHandle>;
+  ): Promise<SandboxProviderHandle<Session>>;
 }
 
 interface SandboxProviderSessionContext {
@@ -77,8 +76,8 @@ interface SandboxProviderSessionContext {
   readonly storagePath: string;
 }
 
-interface SandboxProviderHandle {
-  readonly sandbox: SandboxSession;
+interface SandboxProviderHandle<Session> {
+  readonly sandbox: Session;
   onSessionStop(): Promise<void>;
   onRuntimeShutdown(): Promise<void>;
   onSessionDelete(options?: SandboxDeleteOptions): Promise<void>;
@@ -101,7 +100,7 @@ Preparation context exposes a tracked filesystem scoped to the authored sandbox 
 
 ```ts
 interface SandboxProviderFiles {
-  glob(pattern: string): Promise<readonly string[]>;
+  list(): Promise<readonly string[]>;
   read(path: string): Promise<Uint8Array>;
   readText(path: string): Promise<string>;
 }
@@ -113,19 +112,19 @@ Provider contexts expose `storagePath` for private caches, local VM state, and t
 
 ### Start and resume
 
-Core calls `start()` when no serialized provider session state exists and `resume()` whenever it does. `start()` is idempotent: repeated or concurrent calls with the same context, options, and artifact converge on the same native resource and equivalent state. `resume()` may run repeatedly across process restarts.
+Core evaluates `defineSandbox()` and calls `start()` when no serialized provider session state exists. After initialization succeeds, core checkpoints the selected provider and state. Later workflow steps and process restarts bypass the selector and call `resume()` directly. Failed initial selector code deletes the newly started handle and leaves no durable state, so a later access can retry initialization.
 
-`start()` receives the current provider-owned open options and exact artifact. `resume()` receives the same options, the target deployment's exact artifact, and persisted provider state. Providers validate artifacts during both methods.
+`start()` receives provider-owned open options and the exact artifact. `resume()` receives only the current session context, the target deployment's exact artifact, and persisted provider state. Open options and callbacks are never serialized or reconstructed by core. A provider must include any immutable option-derived data needed for reconnection in its own JSON-compatible state.
 
-Provider, environment configuration, open options, artifact selection, and provider state are pinned to the durable sandbox session generation. They do not rotate implicitly. Deletion or explicit migration clears or replaces state.
+Provider state is immutable after `start()` in this contract. `resume()` reconnects or restarts persisted native state but does not recreate missing native compute from unavailable callbacks. If native state is gone, resume fails. Deletion clears provider state; the next access evaluates the selector and starts again.
 
 During deployment handoff, the target provider validates state against its current implementation and artifact. Incompatibility rejects activation, leaving the existing owner on its current deployment. Core does not persist old artifacts or migrate provider state.
 
 ### Minimal session state
 
-Provider session state contains only values that cannot be cheaply and deterministically recovered, such as an opaque platform ID. It does not duplicate prepared artifacts, options, credentials, clients, callbacks, or derivable hashes. Providers version and validate their state in `resume()`.
+Provider session state contains only values that cannot be cheaply and deterministically recovered, such as an opaque platform ID. It does not duplicate prepared artifacts, credentials, clients, callbacks, or derivable hashes. It may contain immutable option-derived values required for direct resume. Providers version and validate their state in `resume()`.
 
-Provider state is returned only by `start()`; handles do not expose a later state-capture operation or create/restore union.
+Provider state is returned only by `start()` and is immutable for the durable session. Handles do not expose a later state-capture operation or create/restore union.
 
 ### Lifecycle hooks
 
@@ -147,7 +146,7 @@ Dedicated providers include `session.id`:
 session ID
 + validated artifact
 + immutable environment options
-+ open options
++ serialized immutable open-option identity
 + provider contract version
 → native identity
 ```
@@ -171,10 +170,10 @@ The Vercel provider retains the useful pre-redesign behavior inside its own impl
 
 1. `start()` derives a deterministic native name from `session.id`, the validated artifact, environment options, open options, and a Vercel contract version.
 2. It looks up that name and creates only when absent.
-3. When it creates native compute, it runs its provider-owned `onSession` hook.
-4. It returns minimal state such as `{ version: 1, sandboxName }`.
-5. `resume()` reconnects from that state.
-6. If native compute is missing during resume, it recreates from the exact artifact and runs `onSession` for the newly created Sandbox.
+3. When it creates native compute, it may run its provider-owned, start-only `onSession` hook.
+4. The selector may also initialize the live sandbox after `open()` before returning it.
+5. It returns immutable state such as `{ version: 1, sandboxName }`.
+6. `resume()` looks up that name directly from state. If native compute is missing, resume fails rather than recreating callback side effects.
 
 Snapshot-unavailable replacement behavior remains provider-owned. No author controls the native name.
 
@@ -198,8 +197,8 @@ Core exposes no public environment `kind`. Providers discover their own preparat
 - Environment and open options are provider-owned single objects; omission remains `undefined`.
 - Core invokes provider `prepare()`, `start()`, and `resume()` directly.
 - Prepared artifacts are immutable, complete, and consumed directly at runtime.
-- Provider start is idempotent; resume may repeat across process restarts.
-- Provider session state is minimal, JSON-compatible, and provider-validated.
+- A successfully initialized selector runs once; resume bypasses it and may repeat across process restarts.
+- Provider session state is immutable, minimal, JSON-compatible, and provider-validated.
 - Existing sessions retain their pinned generation across deployment handoff or remain on the old deployment when incompatible.
 - Core contains no provider-native identity, sharing, ownership, or repair branch.
 - Public sandbox sessions expose operations rather than provider or core identity.

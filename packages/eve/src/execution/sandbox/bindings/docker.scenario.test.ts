@@ -297,11 +297,11 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
       const denied = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(denied.stdout.trim()).toBe("0");
 
-      await handle.sandbox.setNetworkPolicy?.("allow-all");
+      await handle.sandbox.setNetworkPolicy("allow-all");
       const allowed = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(Number(allowed.stdout.trim())).toBeGreaterThan(0);
 
-      await handle.sandbox.setNetworkPolicy?.("deny-all");
+      await handle.sandbox.setNetworkPolicy("deny-all");
       const deniedAgain = await handle.sandbox.run({ command: "ip route 2>/dev/null | wc -l" });
       expect(deniedAgain.stdout.trim()).toBe("0");
     },
@@ -323,7 +323,7 @@ describe.runIf(runDockerScenarios)("docker sandbox engine against a real daemon"
         content: "survives reconnect",
         path: "persisted.txt",
       });
-      expect(state).toMatchObject({ version: 1 });
+      expect(state).toMatchObject({ version: 2 });
       // Server shutdown stops the container; reattach must restart it
       // transparently.
       await firstHandle.onRuntimeShutdown();

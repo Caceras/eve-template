@@ -51,7 +51,7 @@ export interface MicrosandboxSandboxCreateOptions {
 export interface MicrosandboxSandboxRuntimeOptions extends SandboxNetworkOptions {
   /** Initial network policy for this VM. @default "allow-all" */
   readonly networkPolicy?: SandboxNetworkPolicy;
-  /** Idempotent setup run whenever this session's native VM is created. */
+  /** Optional setup run only during the initial provider `start()` operation. */
   readonly onSession?: (context: {
     readonly sandbox: SandboxSession;
     readonly session: SandboxSelectorContext["session"];

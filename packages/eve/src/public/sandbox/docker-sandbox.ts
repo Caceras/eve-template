@@ -27,7 +27,7 @@ export interface DockerSandboxEnvironmentOptions {
 export interface DockerSandboxRuntimeOptions extends SandboxNetworkOptions {
   /** Initial network policy for this container. @default "allow-all" */
   readonly networkPolicy?: DockerSandboxNetworkPolicy;
-  /** Idempotent setup run whenever this session's native container is created. */
+  /** Optional setup run only during the initial provider `start()` operation. */
   readonly onSession?: (context: {
     readonly sandbox: SandboxSession;
     readonly session: SandboxSelectorContext["session"];

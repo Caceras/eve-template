@@ -6,13 +6,15 @@ import {
   type SandboxProviderHandle,
   type SandboxProviderImplementation,
 } from "#shared/sandbox-provider.js";
+import type { SandboxSession } from "#shared/sandbox-session.js";
 
 export function createSandboxProviderHarness<
   Options extends object | undefined,
   PreparedArtifact extends SandboxPreparedArtifact,
   SessionState,
+  Session extends SandboxSession,
 >(
-  implementation: SandboxProviderImplementation<Options, PreparedArtifact, SessionState>,
+  implementation: SandboxProviderImplementation<Options, PreparedArtifact, SessionState, Session>,
   options: Options,
   harnessOptions: {
     readonly preparedArtifact?: () => PreparedArtifact;
@@ -64,7 +66,7 @@ export function createSandboxProviderHarness<
       readonly existing?: SessionState;
       readonly prepared?: PreparedArtifact;
       readonly sandboxName: string;
-    }): Promise<SandboxProviderHandle> {
+    }): Promise<SandboxProviderHandle<Session>> {
       const artifact = await resolveArtifact(input);
       const context = {
         host: createSandboxProviderHost(input.appRoot),
@@ -78,7 +80,7 @@ export function createSandboxProviderHarness<
       if (input.existing === undefined) {
         return (await implementation.start(context, options, artifact)).handle;
       }
-      return await implementation.resume(context, options, artifact, input.existing);
+      return await implementation.resume(context, artifact, input.existing);
     },
     async start(input: {
       readonly appRoot: string;

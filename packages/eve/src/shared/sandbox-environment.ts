@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import { ContextContainer, contextStorage, type AlsContext } from "#context/container.js";
 import type { SessionAuth, SessionParent, SessionTurn } from "#context/keys.js";
 import type { SandboxProviderRuntime } from "#shared/sandbox-provider.js";
-import type { RuntimeSandboxSession } from "#shared/sandbox-session.js";
+import type {
+  RuntimeSandboxSession,
+  RuntimeSandboxSessionFor,
+  SandboxSession,
+} from "#shared/sandbox-session.js";
 
 const ENVIRONMENT = Symbol.for("eve.sandbox-environment");
 const PROVIDER_RUNTIME = Symbol.for("eve.sandbox-provider-runtime");
@@ -38,8 +42,9 @@ export interface SandboxEnvironmentIdentity {
 
 export interface SandboxEnvironment<
   Options extends object | undefined = object,
+  Session extends SandboxSession = SandboxSession,
 > extends SandboxEnvironmentIdentity {
-  open(...args: SandboxOpenArguments<Options>): Promise<RuntimeSandboxSession>;
+  open(...args: SandboxOpenArguments<Options>): Promise<RuntimeSandboxSessionFor<Session>>;
 }
 
 interface ConstructorRuntime {
@@ -58,11 +63,14 @@ const globals = globalThis as typeof globalThis & {
 };
 const runtimes = (globals[RUNTIMES] ??= new WeakMap<AlsContext, ConstructorRuntime>());
 
-export function createSandboxEnvironment<Options extends object | undefined = object>(input: {
+export function createSandboxEnvironment<
+  Options extends object | undefined = object,
+  Session extends SandboxSession = SandboxSession,
+>(input: {
   readonly configuration?: unknown;
   readonly runtime: SandboxProviderRuntime;
-}): SandboxEnvironment<Options> {
-  let environment: SandboxEnvironment<Options>;
+}): SandboxEnvironment<Options, Session> {
+  let environment: SandboxEnvironment<Options, Session>;
 
   environment = {
     [CONFIGURATION_HASH]: hashConstructorOptions({ environment: input.configuration, sandbox: {} }),
@@ -76,7 +84,7 @@ export function createSandboxEnvironment<Options extends object | undefined = ob
       if (runtime === undefined) {
         throw new Error("Sandbox environments can only open sandboxes inside defineSandbox().");
       }
-      return await runtime.open({
+      return (await runtime.open({
         configurationHash: hashConstructorOptions({
           environment: input.configuration,
           sandbox: options,
@@ -85,7 +93,7 @@ export function createSandboxEnvironment<Options extends object | undefined = ob
         environmentConfigurationHash: environment[CONFIGURATION_HASH],
         options,
         provider: input.runtime,
-      });
+      })) as RuntimeSandboxSessionFor<Session>;
     },
   };
   return environment;

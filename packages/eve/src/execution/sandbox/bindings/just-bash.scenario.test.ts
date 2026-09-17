@@ -192,18 +192,6 @@ describe("just-bash sandbox file API", () => {
     expect(stdout.trim()).toBe("production");
   });
 
-  it("rejects setNetworkPolicy — the just-bash engine cannot broker", async () => {
-    const cacheDirectory = await createTemporaryCacheDirectory("network-policy");
-    const handle = await createPrewarmedLocalHandle({
-      appRoot: cacheDirectory,
-      sandboxName: "session-network-policy",
-    });
-
-    await expect(handle.sandbox.setNetworkPolicy?.("deny-all")).rejects.toThrow(
-      "not supported on the just-bash sandbox provider",
-    );
-  });
-
   it("readFile returns null for a missing file", async () => {
     const cacheDirectory = await createTemporaryCacheDirectory("file-api");
     const handle = await createPrewarmedLocalHandle({
@@ -291,7 +279,7 @@ describe("just-bash sandbox file API", () => {
 
     await firstHandle.onSessionStop();
 
-    expect(state).toMatchObject({ version: 1 });
+    expect(state).toMatchObject({ version: 2 });
     await expect(
       readFile(join(state.rootPath, "fs", "workspace", "persisted.txt"), "utf8"),
     ).resolves.toBe("survives reconnect");

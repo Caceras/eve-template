@@ -1,5 +1,6 @@
 import type {
   InternalSandboxSession,
+  MutableNetworkSandboxSession,
   SandboxProcess,
   SandboxReadBinaryFileOptions,
   SandboxReadFileOptions,
@@ -29,6 +30,11 @@ export type { InternalSandboxSession };
  * Providers without mutable firewall support omit `setNetworkPolicy`; the
  * dedicated Vercel provider wires it to `sandbox.update`.
  */
+export function buildSandboxSession(
+  primitives: InternalSandboxSession,
+  setNetworkPolicy: (policy: SandboxNetworkPolicy) => Promise<void>,
+): MutableNetworkSandboxSession;
+export function buildSandboxSession(primitives: InternalSandboxSession): SandboxSession;
 export function buildSandboxSession(
   primitives: InternalSandboxSession,
   setNetworkPolicy?: (policy: SandboxNetworkPolicy) => Promise<void>,

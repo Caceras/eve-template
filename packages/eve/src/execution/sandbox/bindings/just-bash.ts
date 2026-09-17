@@ -16,7 +16,6 @@ import {
 import {
   createBashSandbox,
   createJustBashHandle,
-  justBashSetNetworkPolicyUnsupported,
 } from "#execution/sandbox/bindings/just-bash-runtime.js";
 import {
   LOCAL_SANDBOX_TEMPLATE_RECENT_WINDOW_MS,
@@ -41,7 +40,11 @@ const JUST_BASH_CACHE_DIRECTORY_NAME = "just-bash";
 export const JUST_BASH_PROVIDER_NAME = "just-bash";
 
 type JustBashPreparedArtifact = { readonly templateRootPath: string };
-type JustBashSessionState = { readonly rootPath: string; readonly version: 1 };
+type JustBashSessionState = {
+  readonly generation: string;
+  readonly rootPath: string;
+  readonly version: 2;
+};
 
 export function createJustBashSandboxProvider(
   authoredOptions: JustBashSandboxCreateOptions | undefined = undefined,
@@ -80,7 +83,6 @@ export function createJustBashSandboxProvider(
       });
       const templateSession = buildSandboxSession(
         createFileBackedInternalSandboxSession({ sandbox: templateSandbox }),
-        justBashSetNetworkPolicyUnsupported,
       );
 
       try {
@@ -109,14 +111,17 @@ export function createJustBashSandboxProvider(
       }
       return { templateRootPath };
     },
-    async resume(context, _openOptions, artifactValue, stateValue) {
+    async resume(context, artifactValue, stateValue) {
       const artifact = requirePreparedJustBashArtifact(artifactValue);
       const state = requireJustBashSessionState(stateValue);
+      const generation = createSandboxProviderIdentity({ artifact, version: 1 });
       const expectedRootPath = sessionRootPath(context, artifact);
-      if (state.rootPath !== expectedRootPath) {
+      if (state.generation !== generation || state.rootPath !== expectedRootPath) {
         throw new Error("just-bash session state is incompatible with this environment.");
       }
-      await ensureSessionRoot(artifact, state.rootPath);
+      if (!(await pathExists(state.rootPath))) {
+        throw new Error(`just-bash session root "${state.rootPath}" no longer exists.`);
+      }
       return await openHandle(context, state.rootPath, options);
     },
     async start(context, _openOptions, artifactValue) {
@@ -125,7 +130,11 @@ export function createJustBashSandboxProvider(
       await ensureSessionRoot(artifact, rootPath);
       return {
         handle: await openHandle(context, rootPath, options),
-        state: { rootPath, version: 1 },
+        state: {
+          generation: createSandboxProviderIdentity({ artifact, version: 1 }),
+          rootPath,
+          version: 2,
+        },
       };
     },
   };
@@ -234,12 +243,13 @@ function requirePreparedJustBashArtifact(
 function requireJustBashSessionState(state: SandboxPreparedArtifact): JustBashSessionState {
   if (
     !isSandboxPreparedArtifactRecord(state) ||
-    state.version !== 1 ||
+    state.version !== 2 ||
+    typeof state.generation !== "string" ||
     typeof state.rootPath !== "string"
   ) {
     throw new Error("Invalid just-bash session state.");
   }
-  return { rootPath: state.rootPath, version: 1 };
+  return { generation: state.generation, rootPath: state.rootPath, version: 2 };
 }
 
 function resolveTemplateRootPath(storagePath: string, key: string): string {

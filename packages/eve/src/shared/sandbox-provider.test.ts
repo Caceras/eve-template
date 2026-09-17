@@ -14,7 +14,7 @@ const provider = defineSandboxProvider<
     async prepare() {
       return { templateId: environmentOptions?.image ?? "default" };
     },
-    async resume(_context, _options, _artifact, state) {
+    async resume(_context, _artifact, state) {
       return handle(state.nativeId);
     },
     async start(context) {

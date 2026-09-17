@@ -138,6 +138,10 @@ export interface SandboxSession extends Pick<
  * Unlike the I/O-only session used during sandbox initialization, this handle
  * exposes provider-backed lifecycle operations.
  */
+export interface MutableNetworkSandboxSession extends SandboxSession {
+  setNetworkPolicy(policy: SandboxNetworkPolicy): Promise<void>;
+}
+
 export interface RuntimeSandboxSession extends SandboxSession {
   /** Permanently deletes this sandbox and its disposable provider state. */
   delete(options?: SandboxDeleteOptions): Promise<void>;
@@ -148,6 +152,9 @@ export interface RuntimeSandboxSession extends SandboxSession {
    */
   stop(): Promise<void>;
 }
+
+export type RuntimeSandboxSessionFor<Session extends SandboxSession> = Session &
+  Pick<RuntimeSandboxSession, "delete" | "stop">;
 
 /**
  * Internal sandbox session, used to construct the public {@link SandboxSession}.

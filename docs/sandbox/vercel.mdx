@@ -51,11 +51,17 @@ return environment.open({
 });
 ```
 
-Credential transforms inject headers at the network boundary so the secret does not enter the sandbox process. You can call `sandbox.setNetworkPolicy()` later on the opened session sandbox.
+Credential transforms inject headers at the network boundary so the secret does not enter the sandbox process. The dedicated Vercel environment returns a session where `setNetworkPolicy()` is required, so you can update the policy directly after `open()` without a capability check:
+
+```ts
+const sandbox = await environment.open();
+await sandbox.setNetworkPolicy("deny-all");
+return sandbox;
+```
 
 ## Live sandbox options
 
-`open()` also accepts Vercel compute resources, timeout, Drive mounts, and an idempotent `onSession` callback. Vercel runs `onSession` whenever it creates native session compute, including recreation during resume; ordinary reconnection does not rerun it.
+`open()` also accepts Vercel compute resources, timeout, Drive mounts, and an optional `onSession` callback. Vercel runs `onSession` only during the initial `start()` operation. Durable workflow steps reconnect by calling `resume()` directly, so they do not rerun `defineSandbox()`, `environment.open()`, or `onSession`.
 
 ```ts
 return environment.open({
@@ -64,6 +70,8 @@ return environment.open({
   },
 });
 ```
+
+You can usually initialize the returned sandbox directly in `defineSandbox()` instead of using `onSession`. If initialization fails, eve deletes the newly started sandbox and retries the selector on the next access. After initialization succeeds, the provider persists only immutable JSON-compatible state. If the named Vercel Sandbox later disappears, resume fails rather than recreating it without the original callback or open options.
 
 eve owns the persistent sandbox identity and prepared snapshot source.
 
