@@ -9,7 +9,7 @@ import {
 const connectConfig: SelfModificationConfig = {
   deployed: {
     authorize: () => true,
-    credentials: { vercelConnect: { connector: "github/selfmod-acme-agent" } },
+    credentials: { pat: true },
     source: { git: { directory: ".", repository: "github.com/acme/agent" } },
     target: { branch: "main" },
   },

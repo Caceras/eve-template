@@ -1,4 +1,4 @@
-import type * as Vercel from "#compiled/@vercel/sandbox-drives/index.js";
+import type * as Vercel from "#compiled/@vercel/sandbox/index.js";
 import type { SandboxSelectorContext } from "#shared/sandbox-environment.js";
 import type { SandboxNetworkOptions } from "#shared/sandbox-network-policy.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";

@@ -191,7 +191,7 @@ curl -X POST http://127.0.0.1:2000/eve/v1/session/<sessionId> \
   -d '{"inputResponses":[{"requestId":"req_A","optionId":"approve"}]}'
 ```
 
-Message sends default to `"steer"`; if a turn is active, eve buffers the follow-up and applies it at the next committed workflow boundary under the same turn ID. Current model and tool work completes safely. Channels and TypeScript `Session.send(...)` calls can select `turnPolicy: "queue"` when the active turn should finish first. Structured `inputResponses` answer their addressed requests.
+Message sends default to `"steer"`. Before assistant output begins, eve interrupts pending model generation and continues the same turn with the correction. Reasoning and provider search progress do not count as assistant output. An executing eve tool finishes safely, and its result is preserved before the correction reaches the next model call. After assistant output starts, steering applies at the next committed workflow boundary; text already streamed remains visible. Channels and TypeScript `Session.send(...)` calls can select `turnPolicy: "queue"` when the active turn should finish first. Structured `inputResponses` answer their addressed requests.
 
 If the session is waiting on a human-in-the-loop approval, respond with the channel’s Approve or Cancel controls. Text messages do not decide an approval; unrelated text starts an ordinary turn while the approval stays pending and answerable. A later structured `inputResponses` answer keyed by its `requestId` still resumes the original tool call, even after intervening turns.
 
@@ -250,6 +250,8 @@ Reset terminally retires the exact session ID. A reset ID never becomes a new se
 ## Reconnect and rewind
 
 The stream is durable. Every event is recorded before a step completes, so consumers can reconnect from their cursor when an HTTP connection ends. A nonnegative `startIndex` is an absolute event count: use it to pick up where you dropped off or pass `0` to rewind to the start.
+
+When automatic reconnection is enabled and `startIndex` is nonnegative, the TypeScript client requests renewable leases over that durable stream. A server that supports leases sends transport heartbeats during quiet periods, then ends the response so the client reconnects from its current cursor. This bounds server-side stream readers even when a host does not report that the client disconnected. The lease renewal and heartbeats are transport details: they do not stop the run or appear as session events. Tail-relative reads and streams with reconnection disabled do not request leases.
 
 If a reconnect overlaps events you already handled, [`meta.id`](#the-event-envelope) identifies the duplicates: it is unchanged across reconnects and rewinds, so a consumer keyed on it can replay safely.
 

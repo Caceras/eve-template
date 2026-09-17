@@ -2,17 +2,11 @@ import { defineDynamic, defineTool } from "#public/tools/index.js";
 
 export default defineDynamic({
   events: {
-    "session.started": () =>
+    "turn.started": (_event, ctx) =>
       defineTool({
-        description: "Read a token with retained epoch 39 provider ownership.",
-        inputSchema: { type: "object", properties: {} },
-        async execute(_input, ctx) {
-          const token = await ctx.getToken({
-            getToken: async () => ({ token: "fixture-token" }),
-            principalType: "app",
-          });
-          return { token: token.token };
-        },
+        description: "Report the current session identity.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: () => ({ sessionId: ctx.session.id }),
       }),
   },
 });

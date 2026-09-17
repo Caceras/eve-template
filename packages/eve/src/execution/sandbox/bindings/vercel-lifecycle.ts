@@ -5,13 +5,13 @@ import {
 } from "#execution/sandbox/bindings/vercel-credentials.js";
 import type {
   VercelCreateOptions,
-  VercelDeleteModule,
+  VercelModule,
   VercelSandbox,
 } from "#execution/sandbox/bindings/vercel-sdk-types.js";
 
 export async function deleteVercelSandbox(input: {
   readonly createOptions: VercelCreateOptions;
-  readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule: () => Promise<VercelModule>;
   readonly sandbox: VercelSandbox;
   readonly signal?: AbortSignal;
 }): Promise<void> {
@@ -21,7 +21,7 @@ export async function deleteVercelSandbox(input: {
 
 export async function deleteUnusableVercelSandbox(input: {
   readonly createOptions: VercelCreateOptions;
-  readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule: () => Promise<VercelModule>;
   readonly sandbox: VercelSandbox;
 }): Promise<void> {
   await deleteVercelSandboxRecord(input);
@@ -29,7 +29,7 @@ export async function deleteUnusableVercelSandbox(input: {
 
 async function deleteVercelSandboxRecord(input: {
   readonly createOptions: VercelCreateOptions;
-  readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule: () => Promise<VercelModule>;
   readonly sandbox: VercelSandbox;
   readonly signal?: AbortSignal;
 }): Promise<void> {

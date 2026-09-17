@@ -655,7 +655,7 @@ describe("buildApplication", () => {
               framework: "eve",
               name: "eve-support",
               root: ".",
-              routePrefix: "/eve/agents/support",
+              routePrefix: "/eve/support",
             },
           ],
         },
@@ -714,7 +714,7 @@ describe("buildApplication", () => {
             "eve-support": {
               framework: "eve",
               root: "agents/support",
-              routePrefix: "/eve/agents/support",
+              routePrefix: "/eve/support",
             },
           },
           version: 3,

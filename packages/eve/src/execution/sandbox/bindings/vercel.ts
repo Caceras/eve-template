@@ -58,7 +58,6 @@ import { normalizeVercelReadStream } from "#execution/sandbox/bindings/vercel-re
 import { resolveSandboxModelPath } from "#shared/skill-paths.js";
 import type {
   VercelCreateOptions,
-  VercelDeleteModule,
   VercelModule,
   VercelSandbox,
 } from "#execution/sandbox/bindings/vercel-sdk-types.js";
@@ -92,7 +91,7 @@ export function createVercelSandboxProvider(
 export interface CreateVercelSandboxInput {
   readonly createSandbox?: CreateVercelSandbox;
   readonly createOptions?: VercelCreateOptions;
-  readonly loadDeleteSandboxModule?: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule?: () => Promise<VercelModule>;
   readonly loadSandboxModule?: () => Promise<VercelModule>;
   readonly prepare?: (sandbox: SandboxSession) => Promise<void> | void;
 }
@@ -107,7 +106,7 @@ export function createVercelSandbox(
 > {
   const loadSandboxModule =
     input.loadSandboxModule ??
-    (async () => await import("#compiled/@vercel/sandbox-drives/index.js"));
+    (async () => await import("#compiled/@vercel/sandbox/index.js"));
   const loadDeleteSandboxModule =
     input.loadDeleteSandboxModule ??
     (async () => await import("#compiled/@vercel/sandbox/index.js"));
@@ -425,7 +424,7 @@ interface VercelSandboxSessionCreateResult {
 
 async function ensureUsableSession(input: {
   readonly input: EnsureSessionInput;
-  readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule: () => Promise<VercelModule>;
   readonly session: VercelSandboxSessionCreateResult;
 }): Promise<VercelSandboxSessionCreateResult> {
   try {
@@ -515,7 +514,7 @@ function createSessionCreateParams(
 
 function createHandle(input: {
   readonly createOptions: VercelCreateOptions;
-  readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly loadDeleteSandboxModule: () => Promise<VercelModule>;
   readonly sandbox: VercelSandbox;
 }): SandboxProviderHandle<MutableNetworkSandboxSession> {
   const { sandbox } = input;

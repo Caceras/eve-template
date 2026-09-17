@@ -1,13 +1,9 @@
 import { defineTool } from "#public/tools/index.js";
 
 export default defineTool({
-  description: "Read a token with retained epoch 42 provider ownership.",
-  inputSchema: { type: "object", properties: {} },
-  async execute(_input, ctx) {
-    const token = await ctx.getToken({
-      getToken: async () => ({ token: "fixture-token" }),
-      principalType: "app",
-    });
-    return { token: token.token };
+  description: "Read the current session identity.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  execute(_input, ctx) {
+    return { sessionId: ctx.session.id };
   },
 });
