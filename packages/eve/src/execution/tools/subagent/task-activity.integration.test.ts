@@ -32,7 +32,7 @@ type Observer = ActivityObserverConfig & {
 };
 type Kind = "local" | "remote";
 const { createSession, dispatchSession, startRemote, continueRemote } = vi.hoisted(() => ({
-  createSession: vi.fn(async (_input: RunInput) => undefined),
+  createSession: vi.fn(async (_input: RunInput) => ({ sessionId: "candidate-session" })),
   dispatchSession: vi.fn(async (_input: { command: { caller?: TurnCaller } }) => ({
     status: "accepted",
   })),
@@ -43,7 +43,9 @@ const { createSession, dispatchSession, startRemote, continueRemote } = vi.hoist
 }));
 vi.mock("#execution/workflow-runtime.js", () => ({
   createWorkflowRuntime: () => ({ createSession, dispatchSession }),
-  waitForCommandHookOwner: async () => ({ runId: "child-session" }),
+}));
+vi.mock("#execution/workflow-started.js", () => ({
+  readWorkflowStarted: vi.fn(async () => ({ runId: "child-session", sessionId: "child-session" })),
 }));
 vi.mock("#subagents/remote-dispatch.js", () => ({
   resolveRemoteAgentForAction: () => ({ url: "https://remote.example/eve/v1" }),

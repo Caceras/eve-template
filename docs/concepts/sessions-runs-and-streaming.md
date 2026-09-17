@@ -262,7 +262,7 @@ Clear removes model-message history in place, including static and dynamic user-
 
 Reset terminally retires the exact session ID. A reset ID never becomes a new session; create another session explicitly for a fresh conversation. Compact, clear, and reset return `"no_active_session"` when the target is already inactive.
 
-Reset waits up to 30 seconds for the current owner to release the stable session address and the addressed continuation token. The response keeps the original public session ID in `previousSessionId`, even when a newer deployment owns the session.
+For current-generation and imported sessions, reset waits up to 30 seconds for the current owner to release the stable session address and the addressed continuation token. For legacy sessions that have not been imported, reset can return before those addresses are released. The response keeps the original public session ID in `previousSessionId`, even when a newer deployment owns the session.
 
 ## Reconnect and rewind
 

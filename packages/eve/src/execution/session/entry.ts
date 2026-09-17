@@ -94,7 +94,7 @@ async function bootInitialOwner(
     if (input.input.message === undefined && mode !== "conversation") {
       throw new Error("A message-free session must use conversation mode.");
     }
-    const [sessionCreation, stableClaim, aliasClaim] = await Promise.allSettled([
+    const [sessionCreation, ownership] = await Promise.allSettled([
       createSessionStep({
         compiledArtifactsSource: serializedBundle.source,
         continuationToken,
@@ -108,20 +108,11 @@ async function bootInitialOwner(
         sessionId,
         taskId: input.taskId,
       }),
-      inbox.claimSessionHook(sessionCommandHookToken(sessionId)),
-      continuationToken === "" ? Promise.resolve() : inbox.claimSessionHook(continuationToken),
+      claimInitialSessionInbox(inbox, sessionId, continuationToken, input.acknowledgeStartup),
     ]);
     if (sessionCreation.status === "rejected") throw sessionCreation.reason;
-    if (stableClaim.status === "rejected") throw stableClaim.reason;
-    if (aliasClaim.status === "rejected") {
-      if (!isHookConflictError(aliasClaim.reason)) throw aliasClaim.reason;
-      if (input.acknowledgeStartup === true) {
-        if (typeof aliasClaim.reason.conflictingRunId !== "string") throw aliasClaim.reason;
-        await publishWorkflowStartedStep({
-          runId: aliasClaim.reason.conflictingRunId,
-          continuationToken,
-        });
-      }
+    if (ownership.status === "rejected") throw ownership.reason;
+    if (!ownership.value) {
       if (
         input.activityCollectorRunId !== undefined ||
         input.continuationConflictCommand !== undefined
@@ -134,9 +125,6 @@ async function bootInitialOwner(
       }
       await inbox.dispose();
       return undefined;
-    }
-    if (input.acknowledgeStartup === true) {
-      await publishWorkflowStartedStep({ runId: sessionId, sessionId });
     }
     return {
       inbox,
@@ -173,6 +161,35 @@ async function bootInitialOwner(
       sessionWritable,
     });
   }
+}
+
+/** Acknowledge hook ownership without waiting for bundle loading or session construction. */
+async function claimInitialSessionInbox(
+  inbox: SessionInboxHandle,
+  sessionId: string,
+  continuationToken: string,
+  acknowledgeStartup: boolean | undefined,
+): Promise<boolean> {
+  const [stableClaim, aliasClaim] = await Promise.allSettled([
+    inbox.claimSessionHook(sessionCommandHookToken(sessionId)),
+    continuationToken === "" ? Promise.resolve() : inbox.claimSessionHook(continuationToken),
+  ]);
+  if (stableClaim.status === "rejected") throw stableClaim.reason;
+  if (aliasClaim.status === "rejected") {
+    if (!isHookConflictError(aliasClaim.reason)) throw aliasClaim.reason;
+    if (acknowledgeStartup === true) {
+      if (typeof aliasClaim.reason.conflictingRunId !== "string") throw aliasClaim.reason;
+      await publishWorkflowStartedStep({
+        runId: aliasClaim.reason.conflictingRunId,
+        continuationToken,
+      });
+    }
+    return false;
+  }
+  if (acknowledgeStartup === true) {
+    await publishWorkflowStartedStep({ runId: sessionId, sessionId });
+  }
+  return true;
 }
 
 /** Validates, claims the exact hook set, then tells the previous owner it may exit. */
