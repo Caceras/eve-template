@@ -88,9 +88,19 @@ describe("repro #3458: steering a child parked on a proxied approval", () => {
         serializedContext: context(),
         sessionState: createDurableSessionState({ session: cancelledChildWithProxiedApproval() }),
       });
-      const stalledSession = cancelled.sessionState.snapshot.session;
-      const result: StepResult = {
-        next: async () => ({ output: "next cycle", isError: false }),
+      const cancelledSession = cancelled.sessionState.snapshot.session;
+      const stalledSession: HarnessSession = {
+        ...cancelledSession,
+        agent: {
+          ...cancelledSession.agent,
+          modelReference: { id: "openai/gpt-5.4" },
+          tools: [],
+        },
+        compaction: { recentWindowSize: 10, threshold: 100_000 },
+      };
+      let result: StepResult;
+      result = {
+        next: async () => result,
         session: stalledSession,
       };
       const runStep = vi.fn(async () => result);
