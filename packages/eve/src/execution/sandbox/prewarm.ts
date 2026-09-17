@@ -221,10 +221,6 @@ async function collectPrewarmTargets(input: {
         templatePlan,
       });
 
-      if (templateKey === null) {
-        return;
-      }
-
       const seedFiles = await loadResourceRootSeedFiles({
         compileDirectoryPath: input.compileDirectoryPath,
         workspaceResourceRoot,
