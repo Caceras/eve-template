@@ -20,7 +20,7 @@
     "typescript": "catalog:"
   },
   "e2e": {
-    "localOnly": true,
-    "modelMatrix": "default"
+    "modelMatrix": "default",
+    "worlds": []
   }
 }
