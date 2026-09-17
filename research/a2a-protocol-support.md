@@ -1,5 +1,5 @@
 ---
-issue: 678
+issue: "https://github.com/vercel/eve/issues/678"
 status: implemented
 last_updated: "2026-09-17"
 ---
