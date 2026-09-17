@@ -82,7 +82,7 @@ parent session body                     step                          child run
 ───────────────────                     ────                          ─────────
 childId = hash(sid, turnId, callId)
 started  = createHook(`${childId}:started`)
-                                        start(childWorkflow, {
+                                        start(workflowToolRunWorkflow, {
                                           childId, executor,
                                           parentInbox, startedToken })
                                         → runId (journaled)
@@ -105,17 +105,24 @@ claiming `${childId}` loses, resumes `started` with the winner's `runId`, and
 exits. The parent body awaits one hook in both cases. No polling, no loser
 protocol beyond "resume the same hook".
 
-**Executors.** The child run is one workflow (`childWorkflow`) that owns the
-lifecycle and runs one of three executors:
+**Executors.** The child run is #3413's `runWorkflowToolInvocation`, which
+already owns admission, body execution, report drainage, and settlement for
+both lifetimes. This plan adds one executor beside `body`:
 
-| Executor | Runs where                                                      | Replaces                                                               |
-| -------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `agent`  | Starts a session run; child forwards its inbox                  | `startLocalSubagent`, `startRemoteSubagent`, `agent-invoke` round trip |
-| `body`   | `executeWorkflowBody` inside the child run                      | `workflowToolRunWorkflow`, background `taskRunWorkflow`                |
-| `tool`   | In-process `execute` in the parent step; child records receipts | `IN_PROCESS_WORKFLOW_EXECUTOR`                                         |
+| Executor | Runs where                                     | Replaces                                                               |
+| -------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `body`   | `executeWorkflowBody` inside the child run     | unchanged from #3413                                                   |
+| `agent`  | Starts a session run; child forwards its inbox | `startLocalSubagent`, `startRemoteSubagent`, `agent-invoke` round trip |
 
-Blocking vs background is a parent-side choice about when to consume the
-terminal view, not a different child kind.
+Today a subagent call is a `body` executor whose body calls `ctx.agent()`,
+which round-trips through the parent to start the session. The `agent`
+executor starts the session from the child run directly, with the
+parent-owned material (auth, capabilities, dynamic config) carried in the
+child's input. `ctx.agent()` inside authored bodies becomes a nested child
+with the same executor.
+
+Blocking vs background is #3413's `turn` / `session` lifetime; not a
+different child kind.
 
 **Lifecycle envelope.** The child writes `ChildView` transitions through one
 transition function and delivers each to the parent inbox as a `child` command
@@ -153,19 +160,51 @@ pattern extends cleanly to ingress, or ingress wants its own design, is
 decided after step 5 with the child model in hand. See "Root session ingress"
 below.
 
+## Relationship to #3413
+
+[#3413](https://github.com/vercel/eve/pull/3413) (`background-tasks-redesign.md`)
+is a prerequisite, not a parallel effort. It delivers the child-side half of
+invariant 3: `taskRunWorkflow` is deleted, both lifetimes enter
+`workflowToolRunWorkflow` → `runWorkflowToolInvocation` with a `turn` or
+`session` owner adapter, `eve.tasks` and `eve.runtime.workflowToolRuns` merge
+into `eve.runtime.workflowInvocations`, and `TaskExec` / executor bindings /
+no-body task runs / dynamic background tools are removed. It also makes
+`defineWorkflowTool` the only background authoring surface.
+
+It does not touch the two root causes. After #3413:
+
+- `waitForCommandHookOwner`, `retryUnreachable`, and `CANCEL_COMMIT_POLL_*`
+  are still called from steps.
+- `claimHookOwnership` conflict → silent exit is still the identity mechanism
+  in `background-owner.ts`; `hookToken = randomUUID()` per attempt is
+  unchanged; the `agent-invoke` round trip is unchanged.
+- `settleWorkflowToolRunCancellation` replaces the 1 s task force-stop with a
+  250 ms poll on `getRun().status` for up to 35 s, from a parent step. This
+  is the one design point to resolve before it lands: the shared escalation
+  is right, but under invariant 1 it belongs in the child body, which
+  force-stops itself after grace and reports `cancelled`; the parent only
+  sends `cancel` and continues.
+- `resultKind: "subagent"` still gates six sites in `tool-execution.ts`.
+
+The sequence below is baselined on #3413 having merged. Its checkpoint
+version 5 boundary is a hard handoff cutoff; the handle-store merge in step 4
+changes registry shape again and should land inside the same version or as a
+prompt version 6, not months later.
+
 ## What is deleted
 
-Removed outright (no replacement):
+Beyond what #3413 already removes. Removed outright (no replacement):
 
 - `execution/tasks/parent/{delegate,dispatch,run-parent,task-cancel,control-shared,subagent-task-projection}.ts`
 - `execution/tools/subagent/{invoke-step,invoke-preparation,start,task-agent-requests,task-cancel,accept-event-step,emit-called-step}.ts`
-- `execution/tools/workflow/{workflow,start,background,run-control,owner,owner-inbox,answer}.ts`
+- `execution/tools/workflow/{run-control,answer}.ts`; `start.ts` random
+  `hookToken`
 - `execution/{session-workflow-tool-run,route-child-delivery,cancel-descendant-turns-step}.ts`
 - `subagents/{start-local,start-remote,handle-dispatch,parent-notification,parent-result,callback-route,callback-step,adapter,invocation}.ts`
 - `subagents/handles/` turn-owned phases and `transitions.ts` reserve/claim
-- `harness/{workflow-tool-runs,proxy-input-requests}.ts`
+- `harness/proxy-input-requests.ts`
 - `waitForCommandHookOwner`, `retryUnreachable`, `CANCEL_COMMIT_POLL_*`,
-  `TASK_RUN_CANCEL_*`
+  `settleWorkflowToolRunCancellation` parent-side polling
 - Pending the ingress decision: `waitForHookRelease`, `HANDOFF_RETRY_*`,
   `continuation-conflict-step.ts`
 - `resultKind: "subagent"` and every branch on it
@@ -174,46 +213,56 @@ Removed outright (no replacement):
 
 Replaced by smaller equivalents:
 
-- `taskRunWorkflow` + `workflowToolRunWorkflow` → `childWorkflow`
-- `tasks/session-index.ts` + `subagents/handles/store.ts` → one `children`
-  record keyed by `childId`
+- `background-owner.ts` admission (claim-or-exit) → adopt `childId`, resume
+  `started`
+- `subagents/handles/store.ts` → folded into `workflowInvocations` as the
+  `agent` executor's record
 - `tasks/child/steps.ts` (8 wake variants) → one `deliverChildViewStep`
 - `proxied-deliver-step.ts` + `hitl-proxy-steps.ts` → one answer route
 
-Rough scope: ~12.7k non-test lines are in the affected modules today. The
-target is under half that, with the reduction coming from removed
-mechanisms rather than compression.
+Rough scope: ~12.7k non-test lines were in the affected modules before #3413;
+it removes ~600 net. The target for what remains is under half, with the
+reduction coming from removed mechanisms rather than compression.
 
-Kept as-is: `applyTaskTransition` (renamed), `raceChannelReads`,
-`SessionInputQueue` dedupe, `sessionHookTokens`, `claimHookOwnership`,
-handoff anchor/activation, `startWorkflowOnDeployment`, remote transport in
-`remote-dispatch.ts` (becomes the `agent` executor's remote arm).
+Kept as-is: `runWorkflowToolInvocation`, `applyTaskTransition` (renamed),
+`raceChannelReads`, `SessionInputQueue` dedupe, `sessionHookTokens`,
+`claimHookOwnership` (as a lock, not identity), handoff anchor/activation,
+`startWorkflowOnDeployment`, remote transport in `remote-dispatch.ts`
+(becomes the `agent` executor's remote arm), `workflowInvocations` registry
+and cohort barrier.
 
 ## Sequence
 
-Each step lands independently and leaves `main` green.
+Baselined on #3413 merged. Each step lands independently and leaves `main`
+green.
 
-1. **`childWorkflow` + `agent` executor for background subagents.** The default
-   subagent path moves first because it exercises every mechanism. Parent body
-   awaits `started`; old polling stays for the other two kinds.
-2. **`body` executor.** Blocking workflow tools and `ctx.agent()` inside bodies
-   move onto `childWorkflow`. `workflowToolRunWorkflow` and the
-   `agent-invoke` round trip are deleted.
-3. **`tool` executor.** Background non-workflow tools. `taskRunWorkflow`
+1. **Parent-minted identity and body-side startup.** `childId` derivation;
+   `background-owner.ts` admission adopts it and resumes `started`; the parent
+   body awaits `started` instead of the step polling. `waitForCommandHookOwner`
+   and `retryUnreachable` deleted. Blocking runs get a deterministic
+   `hookToken` from `childId`, closing the replay-orphan gap.
+2. **`agent` executor.** The `agent-invoke` round trip is replaced by the
+   child run starting the agent session directly with parent-supplied
+   material carried in its input. `invoke-step.ts`, `start-local.ts`,
+   `parent-notification.ts` and the reply-hook protocol are deleted; the
+   child's session result flows through the same envelope as any other
+   executor outcome.
+3. **Cancel and HITL on the envelope.** `task_cancel` becomes request-only;
+   `settleWorkflowToolRunCancellation` moves into the child body; answer
+   routing keyed by `childId`. Remaining poll loops and compensating guards
    deleted.
-4. **Cancel and HITL on the envelope.** `task_cancel` becomes request-only;
-   answer routing keyed by `childId`. Poll loops and guards deleted.
-5. **Handle store collapse.** `children` record replaces task index + handles.
-   `resultKind` removed.
+4. **Handle store fold.** Agent handles become the `agent` executor's record
+   in `workflowInvocations`; `resultKind` removed. Registry shape change
+   coordinated with #3413's checkpoint version.
 
-Steps 1–5 are the committed scope. `waitForHookRelease` and
+Steps 1–4 are the committed scope. `waitForHookRelease` and
 `continuation-conflict-step.ts` survive them; they are listed under deletion
 because the ingress decision below is expected to remove them, not because
-steps 1–5 do.
+steps 1–4 do.
 
 ### Root session ingress
 
-Decided after step 5. The question is whether root-session creation and reset
+Decided after step 4. The question is whether root-session creation and reset
 adopt the child pattern (parent-minted identity, lock hook, ingress awaits a
 `started` signal) or keep `sessionId = runId` with alias arbitration hardened
 in place. Inputs needed before deciding:
