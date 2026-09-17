@@ -128,7 +128,6 @@ export function createDockerSandboxProvider(
       "{{.State.Running}}",
       containerName,
     ]);
-    let created = false;
     if (inspect.exitCode === 0) {
       if (inspect.stdout.trim() !== "true") {
         expectDockerSuccess(
@@ -140,7 +139,6 @@ export function createDockerSandboxProvider(
       if (!createIfMissing) {
         throw new Error(`Docker sandbox session container "${containerName}" no longer exists.`);
       }
-      created = true;
       await startDockerContainer({
         cli,
         containerName,
@@ -159,9 +157,6 @@ export function createDockerSandboxProvider(
       createDockerInternalSession({ cli, containerIdentity }),
       (policy) => setDockerNetworkPolicy(cli, containerIdentity, policy),
     );
-    if (created && openOptions?.onSession !== undefined) {
-      await openOptions.onSession({ sandbox: session, session: context.session });
-    }
     return {
       sandbox: session,
       async onSessionDelete() {

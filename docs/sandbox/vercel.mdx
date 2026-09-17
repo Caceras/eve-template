@@ -61,17 +61,9 @@ return sandbox;
 
 ## Live sandbox options
 
-`open()` also accepts Vercel compute resources, timeout, Drive mounts, and an optional `onSession` callback. Configure project credentials and custom fetch behavior on the environment, not in `open()`, because resume does not reconstruct start-only options. Vercel runs `onSession` only during the initial `start()` operation. Durable workflow steps reconnect by calling `resume()` directly, so they do not rerun `defineSandbox()`, `environment.open()`, or `onSession`.
+`open()` also accepts Vercel compute resources, timeout, and Drive mounts. Configure project credentials and custom fetch behavior on the environment, not in `open()`, because resume does not reconstruct start-only options.
 
-```ts
-return environment.open({
-  onSession: async ({ sandbox, session }) => {
-    await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
-  },
-});
-```
-
-You can usually initialize the returned sandbox directly in `defineSandbox()` instead of using `onSession`. If initialization fails, eve deletes the newly started sandbox and retries the selector on the next access. After initialization succeeds, the provider persists only immutable JSON-compatible state. If the named Vercel Sandbox later disappears, resume fails rather than recreating it without the original callback or open options.
+Initialize the returned sandbox directly in `defineSandbox()`. If initialization fails, eve deletes the newly started sandbox and retries the selector on the next access. After initialization succeeds, the provider persists only immutable JSON-compatible state. If the named Vercel Sandbox later disappears, resume fails rather than recreating initialization side effects.
 
 eve owns the persistent sandbox identity and prepared snapshot source.
 

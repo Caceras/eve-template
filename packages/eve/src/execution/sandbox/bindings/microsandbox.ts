@@ -102,7 +102,6 @@ export function createMicrosandboxSandboxProvider(
       const result = await createMicrosandboxHandle({
         artifact,
         context,
-        onSession: runtimeOptions?.onSession,
         options,
         optionsHash,
         providerName: MICROSANDBOX_PROVIDER_NAME,

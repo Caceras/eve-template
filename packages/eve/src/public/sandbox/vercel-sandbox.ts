@@ -1,7 +1,5 @@
 import type * as Vercel from "#compiled/@vercel/sandbox/index.js";
-import type { SandboxSelectorContext } from "#shared/sandbox-environment.js";
 import type { SandboxNetworkOptions } from "#shared/sandbox-network-policy.js";
-import type { SandboxSession } from "#shared/sandbox-session.js";
 
 type VercelCreateOptions = NonNullable<Parameters<typeof Vercel.Sandbox.create>[0]>;
 
@@ -71,10 +69,4 @@ export type VercelSandboxRuntimeOptions = Omit<
   "fetch" | "image" | "projectId" | "source" | "tags" | "teamId" | "token"
 > &
   SandboxNetworkOptions &
-  VercelSandboxMountOptions & {
-    /** Optional setup run only during the initial provider `start()` operation. */
-    readonly onSession?: (context: {
-      readonly sandbox: SandboxSession;
-      readonly session: SandboxSelectorContext["session"];
-    }) => Promise<void> | void;
-  };
+  VercelSandboxMountOptions;

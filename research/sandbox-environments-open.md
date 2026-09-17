@@ -17,25 +17,22 @@ export const environment = VercelSandbox.environment({
   },
 });
 
-export default defineSandbox(() =>
-  environment.open({
-    networkPolicy: "deny-all",
-    onSession: async ({ sandbox, session }) => {
-      await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
-    },
-  }),
-);
+export default defineSandbox(async ({ session }) => {
+  const sandbox = await environment.open({ networkPolicy: "deny-all" });
+  await sandbox.writeTextFile({ path: ".eve/session", content: session.id });
+  return sandbox;
+});
 ```
 
 `environment.open()` returns the exact `RuntimeSandboxSession` selected by the sandbox definition. It is the only author-facing environment operation.
 
 ## Provider-owned options and hooks
 
-Environment configuration and live options are single provider-owned objects. Core passes them unchanged and never reserves, injects, extracts, or interprets fields such as `prepare` or `onSession`.
+Environment configuration and live options are single provider-owned objects. Core passes them unchanged and never reserves, injects, extracts, or interprets fields such as `prepare`.
 
 Omission remains `undefined`. Providers normalize optional input themselves. Objects with required fields remain required; positional arguments are not supported.
 
-Providers own callback names, argument types, ordering, and lifecycle timing. A snapshot provider may expose `prepare(sandbox)`. A provider may expose an `onSession` callback in its open options and construct that callback's arguments from the live sandbox, current artifact, and read-only eve session context. Dockerfile image providers expose no authored preparation callback when immutable setup belongs in the Dockerfile.
+Providers own callback names, argument types, ordering, and lifecycle timing. A snapshot provider may expose `prepare(sandbox)`. A custom provider may expose a start-only callback in its open options. Built-in providers instead initialize the live sandbox in `defineSandbox()` after `open()`. Dockerfile image providers expose no authored preparation callback when immutable setup belongs in the Dockerfile.
 
 Provider callbacks and runtime callback arguments are never stored in prepared artifacts. Provider-defined session-hook return values may enter serialized provider session state only when `resume()` needs them.
 
@@ -170,10 +167,9 @@ The Vercel provider retains the useful pre-redesign behavior inside its own impl
 
 1. `start()` derives a deterministic native name from `session.id`, the validated artifact, environment options, open options, and a Vercel contract version.
 2. It looks up that name and creates only when absent.
-3. When it creates native compute, it may run its provider-owned, start-only `onSession` hook.
-4. The selector may also initialize the live sandbox after `open()` before returning it.
-5. It returns immutable state such as `{ version: 1, sandboxName }`.
-6. `resume()` looks up that name directly from state. If native compute is missing, resume fails rather than recreating callback side effects.
+3. The selector initializes the live sandbox after `open()` before returning it.
+4. It returns immutable state such as `{ version: 1, sandboxName }`.
+5. `resume()` looks up that name directly from state. If native compute is missing, resume fails rather than recreating callback side effects.
 
 Snapshot-unavailable replacement behavior remains provider-owned. No author controls the native name.
 

@@ -222,10 +222,6 @@ export async function createMicrosandboxHandle(input: {
   readonly context: SandboxProviderSessionContext;
   readonly createIfMissing?: boolean;
   readonly existingState?: MicrosandboxSessionMetadata;
-  readonly onSession?: (input: {
-    readonly sandbox: import("#shared/sandbox-session.js").SandboxSession;
-    readonly session: SandboxProviderSessionContext["session"];
-  }) => Promise<void> | void;
   readonly options: ResolvedMicrosandboxOptions;
   readonly optionsHash: string;
   readonly providerName: string;
@@ -321,9 +317,6 @@ export async function createMicrosandboxHandle(input: {
       activeMicrosandboxSessionHandles.delete(activeSessionKey);
     }),
   );
-  if (input.onSession !== undefined) {
-    await input.onSession({ sandbox: handle.sandbox, session: input.context.session });
-  }
   return { handle, state: await sandbox.captureState(input.optionsHash) };
 }
 

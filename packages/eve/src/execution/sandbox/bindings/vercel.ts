@@ -105,8 +105,7 @@ export function createVercelSandbox(
   MutableNetworkSandboxSession
 > {
   const loadSandboxModule =
-    input.loadSandboxModule ??
-    (async () => await import("#compiled/@vercel/sandbox/index.js"));
+    input.loadSandboxModule ?? (async () => await import("#compiled/@vercel/sandbox/index.js"));
   const loadDeleteSandboxModule =
     input.loadDeleteSandboxModule ??
     (async () => await import("#compiled/@vercel/sandbox/index.js"));
@@ -123,7 +122,7 @@ export function createVercelSandbox(
     sandboxName: string,
   ) {
     const artifact = requirePreparedVercelTemplate(artifactValue);
-    const { mounts, onSession, ...runtimeOptions } = options ?? {};
+    const { mounts, ...runtimeOptions } = options ?? {};
     const sessionCreateOptions = { ...createOptions, ...runtimeOptions };
     const tags = resolveVercelSandboxTags(sessionCreateOptions.tags, {
       sessionId: context.session.id,
@@ -163,9 +162,6 @@ export function createVercelSandbox(
       loadDeleteSandboxModule,
       sandbox: session.sandbox,
     });
-    if (session.created && onSession !== undefined) {
-      await onSession({ sandbox: handle.sandbox, session: context.session });
-    }
     return handle;
   }
 
@@ -258,7 +254,7 @@ function vercelSessionName(
 
 function vercelIdentityOptions(options: object | undefined): object | undefined {
   if (options === undefined) return undefined;
-  const excluded = new Set(["fetch", "onSession", "projectId", "signal", "teamId", "token"]);
+  const excluded = new Set(["fetch", "projectId", "signal", "teamId", "token"]);
   return Object.fromEntries(Object.entries(options).filter(([key]) => !excluded.has(key)));
 }
 

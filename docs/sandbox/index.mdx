@@ -189,7 +189,7 @@ export const AcmeSandbox = defineSandboxProvider<
 
 `prepare()` returns the complete JSON-serializable artifact. Core calls `start()` once for a new durable sandbox session and persists its minimal JSON-compatible state. Process restarts call `resume()` with only the current context, that state, and the target deployment's exact artifact. Provider handles implement `onSessionStop()`, `onRuntimeShutdown()`, and `onSessionDelete()`.
 
-Open options belong to `start()` and are not serialized or passed to `resume()`. A provider must put any immutable option-derived data needed for reconnection in its session state. With the current immutable-state contract, `resume()` reconnects existing native state and fails if it is gone rather than recreating callback side effects. Provider-specific callbacks such as `onSession` are start-only.
+Open options belong to `start()` and are not serialized or passed to `resume()`. A provider must put any immutable option-derived data needed for reconnection in its session state. With the current immutable-state contract, `resume()` reconnects existing native state and fails if it is gone rather than recreating callback side effects. A custom provider may define start-only callback fields, but built-in providers initialize the sandbox in `defineSandbox()` after `open()`.
 
 Preparation discovers authored files through `ctx.files`; core keeps project layout and artifact storage keys private. Keep provider SDK values behind the provider. `environment.open()` preserves the provider's sandbox capability type, while the heterogeneous runtime registry erases it to eve's common session surface.
 

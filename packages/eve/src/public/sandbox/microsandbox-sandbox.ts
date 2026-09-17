@@ -1,4 +1,3 @@
-import type { SandboxSelectorContext } from "#shared/sandbox-environment.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 import type {
   SandboxNetworkOptions,
@@ -51,9 +50,4 @@ export interface MicrosandboxSandboxCreateOptions {
 export interface MicrosandboxSandboxRuntimeOptions extends SandboxNetworkOptions {
   /** Initial network policy for this VM. @default "allow-all" */
   readonly networkPolicy?: SandboxNetworkPolicy;
-  /** Optional setup run only during the initial provider `start()` operation. */
-  readonly onSession?: (context: {
-    readonly sandbox: SandboxSession;
-    readonly session: SandboxSelectorContext["session"];
-  }) => Promise<void> | void;
 }
