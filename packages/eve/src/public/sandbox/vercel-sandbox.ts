@@ -68,7 +68,7 @@ export interface VercelSandboxMountOptions {
 /** Options accepted when creating one live Vercel sandbox from an environment. */
 export type VercelSandboxRuntimeOptions = Omit<
   VercelSandboxCreateOptions,
-  "image" | "source" | "tags"
+  "fetch" | "image" | "projectId" | "source" | "tags" | "teamId" | "token"
 > &
   SandboxNetworkOptions &
   VercelSandboxMountOptions & {

@@ -114,7 +114,7 @@ Provider contexts expose `storagePath` for private caches, local VM state, and t
 
 Core evaluates `defineSandbox()` and calls `start()` when no serialized provider session state exists. After initialization succeeds, core checkpoints the selected provider and state. Later workflow steps and process restarts bypass the selector and call `resume()` directly. Failed initial selector code deletes the newly started handle and leaves no durable state, so a later access can retry initialization.
 
-`start()` receives provider-owned open options and the exact artifact. `resume()` receives only the current session context, the target deployment's exact artifact, and persisted provider state. Open options and callbacks are never serialized or reconstructed by core. A provider must include any immutable option-derived data needed for reconnection in its own JSON-compatible state.
+`start()` receives provider-owned open options and the exact artifact. `resume()` receives only the current session context, the target deployment's exact artifact, and persisted provider state. Open options and callbacks are never serialized or reconstructed by core. Credentials, clients, fetch implementations, and signals needed for lookup belong to environment/provider configuration rather than start-only open options. A provider must include any immutable option-derived data needed for reconnection in its own JSON-compatible state.
 
 Provider state is immutable after `start()` in this contract. `resume()` reconnects or restarts persisted native state but does not recreate missing native compute from unavailable callbacks. If native state is gone, resume fails. Deletion clears provider state; the next access evaluates the selector and starts again.
 
