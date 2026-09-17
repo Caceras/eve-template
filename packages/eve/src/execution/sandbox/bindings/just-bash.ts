@@ -26,6 +26,7 @@ import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { createSandboxProviderIdentity } from "#execution/sandbox/provider-identity.js";
 import type { JustBashSandboxCreateOptions } from "#public/sandbox/just-bash-sandbox.js";
+import type { FixedNetworkSandboxSession } from "#shared/sandbox-session.js";
 import {
   isSandboxPreparedArtifactRecord,
   providerResourceTargetFiles,
@@ -48,7 +49,12 @@ type JustBashSessionState = {
 
 export function createJustBashSandboxProvider(
   authoredOptions: JustBashSandboxCreateOptions | undefined = undefined,
-): SandboxProviderImplementation<undefined, JustBashPreparedArtifact, JustBashSessionState> {
+): SandboxProviderImplementation<
+  undefined,
+  JustBashPreparedArtifact,
+  JustBashSessionState,
+  FixedNetworkSandboxSession
+> {
   const options = authoredOptions ?? {};
   const autoInstall = options.autoInstall ?? true;
   const environmentIdentity = {

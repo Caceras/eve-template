@@ -7,6 +7,7 @@ export type {
   SandboxReadFileOptions,
   SandboxRemovePathOptions,
   SandboxReadTextFileOptions,
+  FixedNetworkSandboxSession,
   MutableNetworkSandboxSession,
   SandboxRunOptions,
   SandboxSession,

@@ -109,19 +109,7 @@ export interface SandboxSession extends Pick<
    * The read and write methods already apply this internally.
    */
   resolvePath(path: string): string;
-  /**
-   * Applies a firewall network policy to this live sandbox at run time,
-   * for changing the policy *during* a turn (e.g. brokering a credential
-   * resolved mid-turn, or tightening egress after fetching data). A
-   * per-domain `transform` injects headers at the firewall so secrets
-   * never enter the sandbox process. The policy takes effect from the time
-   * the call resolves, so await it before the egress you want governed.
-   *
-   * When the policy is known at session start, prefer configuring it up
-   * front in the provider environment or the selector before running untrusted code. The
-   * Docker provider honors only `"allow-all"` and `"deny-all"`;
-   * the just-bash provider omits this method (it runs no binaries to govern).
-   */
+  /** Applies a firewall policy when the selected provider supports mutable networking. */
   setNetworkPolicy?(policy: SandboxNetworkPolicy): Promise<void>;
   /**
    * Removes one file or directory from the sandbox filesystem.
@@ -139,8 +127,11 @@ export interface SandboxSession extends Pick<
  * exposes provider-backed lifecycle operations.
  */
 export interface MutableNetworkSandboxSession extends SandboxSession {
+  /** Applies a firewall policy to the live sandbox. */
   setNetworkPolicy(policy: SandboxNetworkPolicy): Promise<void>;
 }
+
+export type FixedNetworkSandboxSession = Omit<SandboxSession, "setNetworkPolicy">;
 
 export interface RuntimeSandboxSession extends SandboxSession {
   /** Permanently deletes this sandbox and its disposable provider state. */
