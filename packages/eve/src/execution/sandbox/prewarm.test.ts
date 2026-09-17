@@ -12,6 +12,7 @@ import { createDiskRuntimeCompiledArtifactsSource } from "#runtime/compiled-arti
 import { ROOT_RUNTIME_AGENT_NODE_ID, type ResolvedAgentGraphBundle } from "#runtime/graph.js";
 import type { ResolvedSandboxDefinition } from "#runtime/types.js";
 import { defineSandbox } from "#public/definitions/sandbox.js";
+import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 
 vi.mock("#execution/sandbox/template-prewarm-lock.js", () => ({
   withSandboxTemplatePrewarmLock: async (_input: unknown, callback: () => Promise<unknown>) =>
@@ -69,7 +70,8 @@ describe("prewarmAppSandboxes", () => {
 
     expect(firstInputs).toHaveLength(1);
     expect(secondInputs).toHaveLength(1);
-    expect(firstInputs[0]?.storagePath).toBe(secondInputs[0]?.storagePath);
+    expect(firstInputs[0]?.storagePath).toBe(resolveSandboxCacheDirectory(appRoot));
+    expect(secondInputs[0]?.storagePath).toBe(resolveSandboxCacheDirectory(appRoot));
   });
 
   it.each(["docker", "microsandbox"])(

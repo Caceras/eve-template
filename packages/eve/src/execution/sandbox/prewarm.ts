@@ -237,11 +237,7 @@ async function collectPrewarmTargets(input: {
                 : `${input.compileDirectoryPath}/${workspaceResourceRoot.logicalPath}`,
             seedFiles,
           }),
-          storagePath: join(
-            resolveSandboxCacheDirectory(input.appRoot),
-            provider.providerName,
-            "preparation",
-          ),
+          storagePath: resolveSandboxCacheDirectory(input.appRoot),
         },
         label: formatLabel(nodeId),
         provider,

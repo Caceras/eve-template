@@ -26,6 +26,7 @@ import { createLoggingSandboxSession } from "#execution/sandbox/logging-session.
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { createSandboxProviderIdentity } from "#execution/sandbox/provider-identity.js";
 import type { JustBashSandboxCreateOptions } from "#public/sandbox/just-bash-sandbox.js";
+import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import type { FixedNetworkSandboxSession } from "#shared/sandbox-session.js";
 import {
   isSandboxPreparedArtifactRecord,
@@ -197,7 +198,7 @@ export async function pruneJustBashSandboxTemplates(input: {
   readonly retainCount?: number;
 }): Promise<void> {
   const templatesDirectory = resolveLocalProviderTemplatesDirectory(
-    input.appRoot,
+    resolveSandboxCacheDirectory(input.appRoot),
     JUST_BASH_CACHE_DIRECTORY_NAME,
   );
   const now = input.now ?? Date.now();
