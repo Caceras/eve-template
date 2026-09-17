@@ -2,7 +2,7 @@
   "kind": "eve-extension-capability-contract",
   "capability": "dynamicTool",
   "epoch": 45,
-  "sha256": "cff834e7d7a99d6b4b65a05fff5df7085510038c288f1a8010d2045777e51840",
+  "sha256": "f6032295d049859c4ceaf65b52dc804d57f4e26b6852c0d2c2c6c1f593e3f671",
   "exports": [
     "DynamicToolEntry",
     "DynamicToolEvents",
@@ -10,6 +10,7 @@
     "DynamicToolSet",
     "autoModel",
     "defineDurableCallback",
+    "defineDurableSchema",
     "defineDynamic"
   ]
 }
