@@ -99,6 +99,8 @@ export interface InstrumentationStepScope<TSession> {
   ) => HandleEventFn | undefined;
   readonly prepareAttempt: (input: {
     readonly attemptIndex: number;
+    readonly attemptKind?: InstrumentationAttemptKind;
+    readonly functionId?: string;
     readonly runtimeContext?: Readonly<Record<string, unknown>>;
     readonly stepIndex: number;
     readonly turnId: string;
@@ -129,6 +131,8 @@ export interface PreparedInstrumentationAttempt {
   readonly scope: InstrumentationAttemptScope;
   readonly telemetry: TelemetryOptions | undefined;
 }
+
+export type InstrumentationAttemptKind = "compaction" | "model";
 
 export type InstrumentationAttempt = InstrumentationAttemptScope;
 
@@ -409,11 +413,15 @@ export function bindInstrumentationRuntime(
                 title: sessionContext.title,
               }),
             prepareAttempt: (attemptInput) => {
+              const attemptKind = attemptInput.attemptKind ?? "model";
+              const attemptKindSuffix = attemptKind === "model" ? "" : `:${attemptKind}`;
               const scope: InstrumentationAttemptScope = {
-                attemptId: `${boundSession.sessionId}:${attemptInput.turnId}:${attemptInput.stepIndex}:${attemptInput.attemptIndex}`,
+                attemptId: `${boundSession.sessionId}:${attemptInput.turnId}:${attemptInput.stepIndex}:${attemptInput.attemptIndex}${attemptKindSuffix}`,
                 attemptIndex: attemptInput.attemptIndex,
+                attemptKind,
                 channelAudience: audience,
-                functionId: settings?.functionId ?? boundSession.agentName,
+                functionId:
+                  attemptInput.functionId ?? settings?.functionId ?? boundSession.agentName,
                 rootSessionId: sessionContext.parent?.rootSessionId ?? boundSession.sessionId,
                 sessionId: boundSession.sessionId,
                 stepIndex: attemptInput.stepIndex,

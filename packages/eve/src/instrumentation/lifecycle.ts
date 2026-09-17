@@ -12,13 +12,15 @@ import type {
 
 /**
  * Stable eve identity for one model attempt. Retries share `stepIndex` and
- * differ by `attemptIndex`, so `step.attempt.*` fires once per attempt while
+ * differ by `attemptIndex`; compaction attempts share the step but use a
+ * distinct `attemptKind`, so `step.attempt.*` fires once per attempt while
  * protocol `step.*` events and the resolver hook fire once per step.
  */
 export interface InstrumentationAttemptScope {
   readonly channelAudience?: ChannelAudience;
   readonly attemptId: string;
   readonly attemptIndex: number;
+  readonly attemptKind?: "compaction" | "model";
   readonly functionId?: string;
   readonly rootSessionId?: string;
   readonly sessionId: string;

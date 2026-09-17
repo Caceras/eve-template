@@ -60,7 +60,7 @@ import {
   type ConversationContext,
 } from "#shared/conversation-context.js";
 import type { InstrumentationDecision } from "#shared/instrumentation-decision.js";
-import { compactMessages, shouldCompact } from "#harness/compaction.js";
+import { compactMessages, shouldCompact, type CompactionResult } from "#harness/compaction.js";
 import {
   createFrameworkUserMessage,
   createUserMessage,
@@ -92,6 +92,7 @@ import { PendingSkillAnnouncementKey } from "#context/dynamic-skill-lifecycle.js
 import { deserializeContext, serializeContext } from "#context/serialize.js";
 import { stashToolInterrupt } from "#harness/tool-interrupts.js";
 import { appendMissingToolResultMessages, createToolLoopHarness } from "#harness/tool-loop.js";
+import { setEveAttributes } from "#runtime/attributes/emit.js";
 import { isSessionLimitDecline, TurnCancelledError } from "#harness/turn-cancellation.js";
 import {
   getSessionUsageLimitViolation,
@@ -275,14 +276,26 @@ vi.mock("./compaction.js", () => ({
   shouldCompact: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock("#runtime/attributes/emit.js", () => ({
+  setEveAttributes: vi.fn(),
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
   vi.mocked(shouldCompact).mockReset().mockReturnValue(false);
   vi.mocked(compactMessages).mockReset();
+  vi.mocked(setEveAttributes).mockClear();
   vi.unstubAllEnvs();
   declareTelemetry(undefined);
   mockGetRegisteredTelemetryIntegrations.mockReset().mockReturnValue([]);
 });
+
+function compactionResult(
+  messages: ModelMessage[],
+  usage?: CompactionResult["usage"],
+): CompactionResult {
+  return { messages, usage };
+}
 
 function createTestSession(overrides?: Partial<HarnessSession>): HarnessSession {
   return {
@@ -2086,7 +2099,15 @@ describe("createToolLoopHarness", () => {
   it("accumulates provider-reported token usage and cost across the session", async () => {
     setupMockAgent({
       finishReason: "stop",
-      providerMetadata: { gateway: { cost: "0.0123" } },
+      providerMetadata: {
+        gateway: {
+          cost: "0",
+          marketCost: "0.0123",
+          routing: {
+            modelAttempts: [{ providerAttempts: [{ credentialType: "byok", success: true }] }],
+          },
+        },
+      },
       response: { messages: [{ content: "Hello!", role: "assistant" }] },
       text: "Hello!",
       toolCalls: [],
@@ -9862,11 +9883,13 @@ describe("createToolLoopHarness", () => {
 
   it("emits compaction.requested and compaction.completed when compaction triggers", async () => {
     vi.mocked(shouldCompact).mockReturnValue(true);
-    vi.mocked(compactMessages).mockResolvedValue([
-      createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-      { content: "summary", role: "assistant" },
-      createUserMessage("user", "recent message"),
-    ]);
+    vi.mocked(compactMessages).mockResolvedValue(
+      compactionResult([
+        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+        { content: "summary", role: "assistant" },
+        createUserMessage("user", "recent message"),
+      ]),
+    );
 
     setupMockAgent({
       finishReason: "stop",
@@ -9951,7 +9974,7 @@ describe("createToolLoopHarness", () => {
       { content: "summary", role: "assistant" },
       { content: "current", kind: "user" as const, role: "user" },
     ];
-    vi.mocked(compactMessages).mockResolvedValue(compactedHistory);
+    vi.mocked(compactMessages).mockResolvedValue(compactionResult(compactedHistory));
     setupMockAgent({
       finishReason: "stop",
       response: { messages: [{ content: "done", role: "assistant" }] },
@@ -10061,7 +10084,7 @@ describe("createToolLoopHarness", () => {
       { content: "Summary of our conversation so far:", kind: "context.compaction", role: "user" },
       { content: "summary", role: "assistant" },
     ];
-    vi.mocked(compactMessages).mockResolvedValue(compactedHistory);
+    vi.mocked(compactMessages).mockResolvedValue(compactionResult(compactedHistory));
 
     const { emit, events } = createEventCollector();
     const onCompaction = vi.fn(() => []);
@@ -10183,11 +10206,13 @@ describe("createToolLoopHarness", () => {
 
   it("uses the authored compaction model when one is configured", async () => {
     vi.mocked(shouldCompact).mockReturnValue(true);
-    vi.mocked(compactMessages).mockResolvedValue([
-      createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-      { content: "summary", role: "assistant" },
-      createUserMessage("user", "recent message"),
-    ]);
+    vi.mocked(compactMessages).mockResolvedValue(
+      compactionResult([
+        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+        { content: "summary", role: "assistant" },
+        createUserMessage("user", "recent message"),
+      ]),
+    );
 
     setupMockAgent({
       finishReason: "stop",
@@ -10396,10 +10421,12 @@ describe("createToolLoopHarness", () => {
 
   it("invokes onCompaction callback after compaction", async () => {
     vi.mocked(shouldCompact).mockReturnValue(true);
-    vi.mocked(compactMessages).mockResolvedValue([
-      createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-      { content: "summary", role: "assistant" },
-    ]);
+    vi.mocked(compactMessages).mockResolvedValue(
+      compactionResult([
+        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+        { content: "summary", role: "assistant" },
+      ]),
+    );
 
     setupMockAgent({
       finishReason: "stop",
@@ -10429,6 +10456,59 @@ describe("createToolLoopHarness", () => {
       { content: "[State preserved]", kind: "context.state", role: "user" },
       { content: "Resuming.", role: "assistant" },
     ]);
+  });
+
+  it("folds compaction model usage into workflow run tags", async () => {
+    vi.mocked(shouldCompact).mockReturnValue(true);
+    vi.mocked(compactMessages).mockResolvedValue(
+      compactionResult(
+        [
+          createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+          { content: "summary", role: "assistant" },
+        ],
+        {
+          cacheReadTokens: 10,
+          cacheWriteTokens: 5,
+          costUsd: 0.01,
+          inputTokens: 100,
+          outputTokens: 20,
+        },
+      ),
+    );
+    setupMockAgent({
+      finishReason: "stop",
+      providerMetadata: { gateway: { cost: "0.0123" } },
+      response: { messages: [{ content: "Resuming.", role: "assistant" }] },
+      text: "Resuming.",
+      toolCalls: [],
+      toolResults: [],
+      usage: {
+        inputTokenDetails: { cacheReadTokens: 2, cacheWriteTokens: 1 },
+        inputTokens: 7,
+        outputTokens: 3,
+      },
+    });
+
+    const runStep = createToolLoopHarness(createTestConfig("conversation"));
+    const result = await runStep(createTestSession(), { message: "Continue" });
+
+    expect(getSessionTokenUsage(result.session)).toEqual({
+      cacheReadTokens: 12,
+      cacheWriteTokens: 6,
+      costUsd: 0.0223,
+      inputTokens: 107,
+      outputTokens: 23,
+      sawCost: true,
+    });
+    expect(setEveAttributes).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        "$eve.cache_read_tokens": 12,
+        "$eve.cache_write_tokens": 6,
+        "$eve.cost_usd": 0.0223,
+        "$eve.input_tokens": 107,
+        "$eve.output_tokens": 23,
+      }),
+    );
   });
 
   it("compaction appends a framework continuation when recent window trails with assistant", async () => {
@@ -10480,12 +10560,14 @@ describe("createToolLoopHarness", () => {
     // guarded output from the real compactMessages: trailing
     // assistant gets a framework continuation appended.
     vi.mocked(shouldCompact).mockReturnValue(true);
-    vi.mocked(compactMessages).mockResolvedValue([
-      createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-      { content: "summary", role: "assistant" },
-      { content: "The answer is 42.", role: "assistant" },
-      createFrameworkUserMessage("execution.continuation", "Continue."),
-    ]);
+    vi.mocked(compactMessages).mockResolvedValue(
+      compactionResult([
+        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+        { content: "summary", role: "assistant" },
+        { content: "The answer is 42.", role: "assistant" },
+        createFrameworkUserMessage("execution.continuation", "Continue."),
+      ]),
+    );
 
     setupMockAgent({
       finishReason: "stop",
@@ -11172,8 +11254,12 @@ describe("createToolLoopHarness", () => {
         finishReason: "stop",
         providerMetadata: {
           gateway: {
-            cost: 0.0042,
+            cost: "0",
             generationId: "gen_cost_only",
+            marketCost: "0.0042",
+            routing: {
+              modelAttempts: [{ providerAttempts: [{ credentialType: "byok", success: true }] }],
+            },
           },
         },
         response: { messages: [{ content: "done", role: "assistant" }] },
@@ -11430,10 +11516,12 @@ describe("createToolLoopHarness", () => {
 
     it("derives compaction attribution from the compaction model", async () => {
       vi.mocked(shouldCompact).mockReturnValueOnce(true);
-      vi.mocked(compactMessages).mockResolvedValueOnce([
-        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-        { content: "summary", role: "assistant" },
-      ]);
+      vi.mocked(compactMessages).mockResolvedValueOnce(
+        compactionResult([
+          createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+          { content: "summary", role: "assistant" },
+        ]),
+      );
       setupStopResultForAttribution();
 
       const originalProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
@@ -11494,10 +11582,12 @@ describe("createToolLoopHarness", () => {
 
     it("marks Gateway compaction calls made by eval sessions", async () => {
       vi.mocked(shouldCompact).mockReturnValueOnce(true);
-      vi.mocked(compactMessages).mockResolvedValueOnce([
-        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-        { content: "summary", role: "assistant" },
-      ]);
+      vi.mocked(compactMessages).mockResolvedValueOnce(
+        compactionResult([
+          createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+          { content: "summary", role: "assistant" },
+        ]),
+      );
       setupStopResultForAttribution();
 
       const config: ToolLoopHarnessConfig = {
@@ -11727,10 +11817,12 @@ describe("createToolLoopHarness", () => {
 
     it("keeps compaction telemetry metadata-only on a rejected trace", async () => {
       vi.mocked(shouldCompact).mockReturnValueOnce(true);
-      vi.mocked(compactMessages).mockResolvedValueOnce([
-        createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
-        { content: "summary", role: "assistant" },
-      ]);
+      vi.mocked(compactMessages).mockResolvedValueOnce(
+        compactionResult([
+          createFrameworkUserMessage("context.compaction", "Summary of our conversation so far:"),
+          { content: "summary", role: "assistant" },
+        ]),
+      );
       setupMockAgent({
         finishReason: "stop",
         response: { messages: [{ content: "Hello!", role: "assistant" }] },
@@ -11755,6 +11847,11 @@ describe("createToolLoopHarness", () => {
         recordInputs: false,
         recordOutputs: false,
       });
+      expect(
+        mockCreateAiSdkHookBridge.mock.calls.some(
+          ([scope]) => (scope as { attemptKind?: string }).attemptKind === "compaction",
+        ),
+      ).toBe(true);
     });
 
     it("keeps the content-capable lifecycle bridge active on a rejected trace", async () => {
@@ -12802,7 +12899,9 @@ describe("createToolLoopHarness", () => {
         const withClientContext = scenario === "client context";
         if (scenario === "compaction") {
           vi.mocked(shouldCompact).mockReturnValueOnce(true);
-          vi.mocked(compactMessages).mockImplementationOnce(async (messages) => messages.slice(2));
+          vi.mocked(compactMessages).mockImplementationOnce(async (messages) =>
+            compactionResult(messages.slice(2)),
+          );
         }
         const toolCall = {
           type: "tool-call" as const,
@@ -12965,9 +13064,11 @@ describe("createToolLoopHarness", () => {
         }),
       );
       vi.mocked(shouldCompact).mockReturnValueOnce(true);
-      vi.mocked(compactMessages).mockResolvedValueOnce([
-        createFrameworkUserMessage("context.compaction", "Conversation summary"),
-      ]);
+      vi.mocked(compactMessages).mockResolvedValueOnce(
+        compactionResult([
+          createFrameworkUserMessage("context.compaction", "Conversation summary"),
+        ]),
+      );
       setupMockAgentError(new Error("Model unavailable"));
 
       const failed = await contextStorage.run(ctx, () =>
@@ -13015,9 +13116,11 @@ describe("createToolLoopHarness", () => {
         };
         expect(ctx.get(HistoryStateKey)).toEqual(expectedState);
 
-        vi.mocked(compactMessages).mockResolvedValue([
-          createFrameworkUserMessage("context.compaction", "Conversation summary"),
-        ]);
+        vi.mocked(compactMessages).mockResolvedValue(
+          compactionResult([
+            createFrameworkUserMessage("context.compaction", "Conversation summary"),
+          ]),
+        );
         let session = first.session;
         if (replacement === "automatic compaction") {
           vi.mocked(shouldCompact).mockReturnValueOnce(true);
@@ -13069,7 +13172,9 @@ describe("createToolLoopHarness", () => {
 
     it("keeps ephemeral client context out of compaction and its token baseline", async () => {
       vi.mocked(shouldCompact).mockReturnValueOnce(true);
-      vi.mocked(compactMessages).mockImplementationOnce(async (messages) => [...messages]);
+      vi.mocked(compactMessages).mockImplementationOnce(async (messages) =>
+        compactionResult([...messages]),
+      );
       setupMockAgent({
         ...defaultModelResult(),
         usage: { inputTokens: 321 },

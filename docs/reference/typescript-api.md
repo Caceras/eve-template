@@ -193,6 +193,9 @@ Pass another bare OpenAI model slug to override the default. `experimental_chatg
 
 `chatgpt()` uses stateless requests (`store: false`). eve retains reasoning summaries and encrypted reasoning in session history and replays them after tool calls and on later turns. You do not need to configure `reasoning.encrypted_content` explicitly.
 
+The ChatGPT subscription path reports token usage, but it does not report a
+dollar cost. Usage limits that depend on cost do not increase on these calls.
+
 eve uses one local authentication path with two credential owners:
 
 1. Run `eve dev`, open `/login`, and select **ChatGPT subscription**.

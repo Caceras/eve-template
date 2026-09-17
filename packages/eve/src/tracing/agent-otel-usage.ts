@@ -3,6 +3,7 @@ import type { Span } from "#compiled/@opentelemetry/api/index.js";
 import type { InstrumentationUsage } from "#instrumentation/lifecycle.js";
 import type { AgentTurnTraceState } from "#tracing/agent-trace-state.js";
 import { AGENT_USAGE_ATTRIBUTES } from "#tracing/agent-span-contract.js";
+import { readGatewayEffectiveCostUsd, readGatewayUpstreamCostUsd } from "#shared/gateway-cost.js";
 
 /** Applies eve's structural token usage attributes to an agent span. */
 export function setAgentUsage(span: Span, usage: InstrumentationUsage): void {
@@ -54,8 +55,10 @@ export function readGatewayCost(
   const gateway = providerMetadata.gateway;
   if (!isRecord(gateway)) return undefined;
   const attributes: Record<string, string | number> = {};
-  const cost = readUsd(gateway.cost);
+  const cost = readGatewayEffectiveCostUsd(providerMetadata);
   if (cost !== undefined) attributes["gen_ai.usage.cost"] = cost;
+  const upstreamCost = readGatewayUpstreamCostUsd(providerMetadata);
+  if (upstreamCost !== undefined) attributes["gen_ai.usage.upstream_cost"] = upstreamCost;
   const gatewayCost = readUsd(gateway.gatewayCost);
   if (gatewayCost !== undefined) attributes["gen_ai.usage.gateway_cost"] = gatewayCost;
   const inputCost = readUsd(gateway.inputInferenceCost);

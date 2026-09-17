@@ -7,7 +7,6 @@ import {
   type LanguageModelCallEndEvent,
   type LanguageModel,
   type ModelMessage,
-  type ProviderMetadata,
   type SystemModelMessage,
   type TelemetryOptions,
   ToolLoopAgent,
@@ -51,6 +50,7 @@ import {
 import { buildDynamicSubagentTools } from "#context/dynamic-subagent-lifecycle.js";
 import { PendingSkillAnnouncementKey } from "#context/dynamic-skill-lifecycle.js";
 import { toErrorMessage } from "#shared/errors.js";
+import { readGatewayEffectiveCostUsd } from "#shared/gateway-cost.js";
 import {
   createActionResultEvent,
   createApprovalCandidateEvent,
@@ -603,8 +603,10 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
             onCompaction: config.onCompaction,
             resolveModel: config.resolveModel,
             gatewayAttribution: config.gatewayAttribution,
+            prepareAttempt: stepInstrumentation?.prepareAttempt,
             session,
             telemetry: stepInstrumentation?.telemetry(),
+            toolCount: config.tools.size,
           });
 
           session = compacted.session;
@@ -1195,8 +1197,10 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       promptMessages: createModelMessages(messages),
       resolveModel: config.resolveModel,
       gatewayAttribution: config.gatewayAttribution,
+      prepareAttempt: stepInstrumentation?.prepareAttempt,
       session,
       telemetry: stepInstrumentation?.telemetry(),
+      toolCount: config.tools.size,
     });
     session = compaction.session;
     if (compaction.compacted) {
@@ -1476,7 +1480,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
           if (generation.interrupted) return;
           interruptedUsage = extractTokenUsageDelta({
             usage: event.usage,
-            costUsd: extractGatewayCostUsd(event.providerMetadata),
+            costUsd: readGatewayEffectiveCostUsd(event.providerMetadata),
           });
           for (const part of event.content) {
             if (
@@ -1874,13 +1878,10 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
 
     // --- Step-side observability tags ---------------------------------------
     //
-    // Tag the **turn workflow run** (the current `"use step"` is hosted by
-    // that workflow, so `setAttributes` writes to its
-    // attributes table) with the model id and per-turn cumulative token
-    // counts. Per-turn totals are accumulated on `session.state` because
-    // each tool-loop iteration is a fresh `"use step"` and the workflow
-    // runtime's last-write-wins per-key semantics mean only the running
-    // total — not the per-step delta — should reach the dashboard.
+    // Tag the owner workflow run with the model id and per-turn cumulative
+    // token counts. Totals include any compaction model call and are stored on
+    // `session.state` because each tool-loop iteration is a fresh `"use step"`
+    // and Workflow attributes use last-write-wins semantics.
     //
     // Best-effort: `setEveAttributes` swallows runtime failures so a
     // broken tag emit can never break the agent loop.
@@ -1888,7 +1889,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       previous: getTurnUsageState(session.state),
       turnId: emissionState.turnId,
       usage: extractTokenUsageDelta({
-        costUsd: extractGatewayCostUsd(result.providerMetadata),
+        costUsd: readGatewayEffectiveCostUsd(result.providerMetadata),
         usage: result.usage,
       }),
     });
@@ -1898,12 +1899,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
     // mock models in tests omit it, so guard the lookup so a missing field
     // becomes `undefined` and is dropped by `setEveAttributes` instead of
     // throwing into the tool loop.
-    let modelTag: string | undefined;
-    try {
-      modelTag = formatLanguageModelGatewayId(model);
-    } catch {
-      modelTag = undefined;
-    }
+    const modelTag = formatModelTag(model);
     await setEveAttributes({
       "$eve.model": modelTag,
       "$eve.input_tokens": nextTurnUsage.inputTokens,
@@ -1966,24 +1962,12 @@ function extractTokenUsageDelta(input: {
   };
 }
 
-function extractGatewayCostUsd(providerMetadata: ProviderMetadata | undefined): number | undefined {
-  const gateway = readGatewayMetadata(providerMetadata);
-  const cost = gateway?.cost;
-  if (typeof cost === "number" && Number.isFinite(cost)) {
-    return cost;
+function formatModelTag(model: LanguageModel): string | undefined {
+  try {
+    return formatLanguageModelGatewayId(model);
+  } catch {
+    return undefined;
   }
-  if (typeof cost === "string") {
-    const parsed = Number(cost);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function readGatewayMetadata(
-  providerMetadata: ProviderMetadata | undefined,
-): ProviderMetadata[string] | undefined {
-  const gateway = providerMetadata?.gateway;
-  return gateway && typeof gateway === "object" && !Array.isArray(gateway) ? gateway : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -3093,10 +3077,12 @@ async function maybeCompact(input: {
   readonly onCompaction?: ToolLoopHarnessConfig["onCompaction"];
   /** Model-visible prompt used only to decide whether durable history needs compaction. */
   readonly promptMessages?: readonly HarnessModelMessage[];
+  readonly prepareAttempt?: InstrumentationStepScope<HarnessSession>["prepareAttempt"];
   readonly resolveModel: ToolLoopHarnessConfig["resolveModel"];
   readonly gatewayAttribution?: ToolLoopHarnessConfig["gatewayAttribution"];
   readonly session: HarnessSession;
   readonly telemetry?: TelemetryOptions;
+  readonly toolCount: number;
 }): Promise<{
   readonly compacted: boolean;
   readonly messages: HarnessModelMessage[];
@@ -3116,6 +3102,17 @@ async function maybeCompact(input: {
   if (!needsSummary && !needsMemoryCanonicalization) {
     return { compacted: false, messages, session };
   }
+
+  const compactionAttempt = needsSummary
+    ? input.prepareAttempt?.({
+        attemptIndex: 0,
+        attemptKind: "compaction",
+        functionId: "eve.compaction",
+        runtimeContext: { "eve.compaction": true },
+        stepIndex: emissionState.stepIndex,
+        turnId: emissionState.turnId,
+      })
+    : undefined;
 
   const compaction = await resolveCompactionModel({
     compactionModelReference: session.agent.compactionModelReference,
@@ -3159,23 +3156,34 @@ async function maybeCompact(input: {
       canonical.ordinary,
   );
   const compactedOrdinary = needsSummary
-    ? await compactMessages(
-        [...ordinary],
-        compaction.model,
-        session.compaction,
-        providerOptions,
-        input.telemetry,
-        resolveGatewayRequestHeaders(compaction.model, input.gatewayAttribution),
-        input.abortSignal,
-        input.force === true,
-      )
-    : [...ordinary];
-  messages = validateHarnessModelMessages([...canonical.memory, ...compactedOrdinary]);
+    ? await runCompactionAttempt()
+    : { messages: [...ordinary] };
+  messages = validateHarnessModelMessages([...canonical.memory, ...compactedOrdinary.messages]);
 
   if (input.onCompaction) {
     for (const msg of input.onCompaction()) {
       messages.push(msg);
     }
+  }
+
+  let compactionUsageState: ReturnType<typeof accumulateTurnUsage> | undefined;
+  if (compactedOrdinary.usage !== undefined) {
+    const nextUsage = accumulateTurnUsage({
+      previous: getTurnUsageState(session.state),
+      turnId: emissionState.turnId,
+      usage: compactedOrdinary.usage,
+    });
+    session = setTurnUsageState(session, nextUsage);
+    compactionUsageState = nextUsage;
+    await setEveAttributes({
+      "$eve.model": formatModelTag(compaction.model),
+      "$eve.input_tokens": nextUsage.inputTokens,
+      "$eve.output_tokens": nextUsage.outputTokens,
+      "$eve.cache_read_tokens": nextUsage.cacheReadTokens,
+      "$eve.cache_write_tokens": nextUsage.cacheWriteTokens,
+      "$eve.cost_usd": nextUsage.sawCost ? nextUsage.costUsd : undefined,
+      "$eve.tool_count": input.toolCount,
+    });
   }
 
   if (emit) {
@@ -3197,11 +3205,34 @@ async function maybeCompact(input: {
       if (commit !== undefined) {
         messages = validateHarnessModelMessages(commit.history);
         session = { ...session, state: commit.state };
+        if (compactionUsageState !== undefined) {
+          session = setTurnUsageState(session, compactionUsageState);
+        }
       }
     }
   }
 
   return { compacted: true, messages, session: replaceSessionHistory(session, messages) };
+
+  async function runCompactionAttempt() {
+    try {
+      const result = await compactMessages(
+        [...ordinary],
+        compaction.model,
+        session.compaction,
+        providerOptions,
+        compactionAttempt?.telemetry ?? input.telemetry,
+        resolveGatewayRequestHeaders(compaction.model, input.gatewayAttribution),
+        input.abortSignal,
+        input.force === true,
+      );
+      await compactionAttempt?.complete();
+      return result;
+    } catch (error) {
+      await compactionAttempt?.fail(error);
+      throw error;
+    }
+  }
 }
 
 /**

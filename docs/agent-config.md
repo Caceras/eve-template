@@ -201,10 +201,13 @@ could only grant another zero-value window.
 When `maxInputTokensPerSession` is omitted, root sessions apply a default
 input budget of `40_000_000` provider-reported input tokens.
 `maxOutputTokensPerSession` and `maxTokenCostUsdPerSession` are unset by
-default. `maxTokenCostUsdPerSession` is a US-dollar limit on model token cost,
-not tool or infrastructure spend. It uses the cost reported with each model
-step; AI Gateway supplies this value, while model steps without reported cost
-do not add to the limit. Set any usage limit to `false` to uncap that axis.
+default. `maxTokenCostUsdPerSession` is a US-dollar limit on model-call spend
+reported by AI Gateway, including compaction calls; it does not cover every
+tool or infrastructure cost. For system credentials it uses the
+Gateway-reported call cost excluding surcharges, and for successful BYOK calls
+it uses the Gateway's market-price estimate of upstream provider spend. Calls
+without reported cost do not add to the limit. Set any usage limit to `false`
+to uncap that axis.
 
 Delegated subagent sessions have no fixed default. Each child receives a
 share of the delegating parent's remaining quota at dispatch time — the

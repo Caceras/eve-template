@@ -148,14 +148,14 @@ Local traces retain model, tool, and memory-record content by default. Set
 
 ## Workflow run tags
 
-Separately from OpenTelemetry, eve tags every Workflow run with reserved
-`$eve.*` attributes. These framework-owned attributes are queryable in the
-Workflow dashboard, not on OTel spans. eve emits them for every session, turn,
-and subagent run, whether or not `agent/instrumentation.ts` exists.
+Separately from OpenTelemetry, eve tags Workflow runs with reserved `$eve.*`
+attributes. These framework-owned attributes are queryable in the Workflow
+dashboard, not on OTel spans. eve emits them for session and subagent runs,
+whether or not `agent/instrumentation.ts` exists.
 
 Structural tags describe a run's place in its tree:
 
-- `$eve.type`: `"session"`, `"turn"`, or `"subagent"`.
+- `$eve.type`: `"session"` or `"subagent"`.
 - `$eve.parent`: the immediate parent session ID.
 - `$eve.root`: the root session ID for the tree.
 - `$eve.subagent`: the compiled graph node ID for a subagent run.
@@ -166,10 +166,18 @@ Structural tags describe a run's place in its tree:
   conversation-wide identity.
 
 Each turn also accumulates `$eve.model`, `$eve.input_tokens`,
-`$eve.output_tokens`, `$eve.cache_read_tokens`, and `$eve.tool_count`. These
-tags power the **Agent Runs** tab in Vercel's **Observability** view. See
+`$eve.output_tokens`, `$eve.cache_read_tokens`, `$eve.cache_write_tokens`,
+`$eve.cost_usd`, and `$eve.tool_count`. Automatic and standalone compaction
+model calls are included in those running totals. These tags power the **Agent
+Runs** tab in Vercel's **Observability** view. See
 [Deploy to Vercel](../guides/deployment/vercel#inspect-agent-runs) for
 enablement.
+
+For calls served with AI Gateway system credentials, `$eve.cost_usd` is the
+Gateway-reported call cost, excluding surcharges. For successful BYOK calls,
+it uses the Gateway's market-price estimate of upstream provider spend; the
+Gateway's own BYOK inference debit is zero. Direct provider calls, including
+the local ChatGPT subscription path, report token usage but no dollar cost.
 
 ## Debug discovery
 

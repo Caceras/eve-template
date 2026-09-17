@@ -2950,6 +2950,41 @@ describe("createAgentOtelInstrumentation", () => {
     });
   });
 
+  it("writes BYOK market cost as effective spend on the step span", async () => {
+    const runtime = createRuntime();
+    await emitAttempt({
+      hooks: runtime.hooks,
+      providerMetadata: {
+        gateway: {
+          cost: "0",
+          gatewayCost: "0",
+          generationId: "gen_01KYR80F7ZV4RM3PJ635KMXB5V",
+          marketCost: "0.000182",
+          routing: {
+            modelAttempts: [
+              {
+                providerAttempts: [{ credentialType: "byok", success: true }],
+              },
+            ],
+          },
+        },
+      },
+      runInContext: runtime.runInContext,
+      sessionId: "session-1",
+      turnId: "turn-1",
+      turnSequence: 0,
+    });
+    await runtime.provider.forceFlush();
+
+    const step = byName(runtime.exporter.getFinishedSpans(), "agent.step")[0]!;
+    expect(step.attributes).toMatchObject({
+      "gen_ai.generation.id": "gen_01KYR80F7ZV4RM3PJ635KMXB5V",
+      "gen_ai.usage.cost": 0.000182,
+      "gen_ai.usage.gateway_cost": 0,
+      "gen_ai.usage.upstream_cost": 0.000182,
+    });
+  });
+
   it("emits no cost attributes when the provider is not the gateway", async () => {
     const runtime = createRuntime();
     await emitAttempt({

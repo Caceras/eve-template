@@ -319,7 +319,7 @@ Every span carries a real duration. A turn's root `invoke_agent` span is written
 
 Model, `execute_tool`, and memory spans retain their content by default. Set `EVE_TRACES_CONTENT=off` to omit system prompts, prompt messages, and response text for models; call arguments and results for tools; and recalled memory records. Each captured value is capped at 32 KB.
 
-Step spans carry token counts under `agent.usage.*`, and cost when Vercel AI Gateway served the call. Model spans also expose `gen_ai.usage.*` token counters. The CLI sums step-level counters only, so model and delegated-call totals are not counted twice.
+Step spans carry token counts under `agent.usage.*`, and cost when Vercel AI Gateway served the call. For successful BYOK calls, `gen_ai.usage.cost` uses the Gateway's market-price estimate of upstream provider spend and `gen_ai.usage.upstream_cost` preserves that estimate; `gen_ai.usage.gateway_cost` preserves the Gateway debit. Compaction model calls get their own step span. Model spans also expose `gen_ai.usage.*` token counters. The CLI sums step-level counters only, so model and delegated-call totals are not counted twice.
 
 ### Retention
 

@@ -11,10 +11,24 @@ import {
 } from "#harness/compaction-prompt.js";
 import { createFrameworkUserMessage, isFrameworkUserMessage } from "#harness/messages.js";
 import { estimateTokens } from "#harness/token-estimate.js";
+import { readGatewayEffectiveCostUsd } from "#shared/gateway-cost.js";
 import type { RuntimeModelReference } from "#runtime/agent/bootstrap.js";
 import type { CompactionConfig, ToolLoopHarnessConfig } from "#harness/types.js";
 
 const COMPACTION_SUMMARY_RESERVE_TOKENS = 2_048;
+
+export interface CompactionUsage {
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
+  readonly costUsd?: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+}
+
+export interface CompactionResult {
+  readonly messages: ModelMessage[];
+  readonly usage?: CompactionUsage;
+}
 
 /**
  * Element type of a non-string `ModelMessage.content` array.
@@ -194,15 +208,16 @@ export async function compactMessages(
   headers?: Record<string, string>,
   abortSignal?: AbortSignal,
   forceSummary = false,
-): Promise<ModelMessage[]> {
+): Promise<CompactionResult> {
   const { conversation, previousCheckpoint } = extractPreviousCheckpoint(messages);
   const recentConfig = forceSummary ? { ...config, recentWindowSize: 1 } : config;
   let keep = selectRecentWindowSize(conversation, recentConfig);
+  let usage: CompactionUsage | undefined;
 
   if (!forceSummary) {
     const { older, recent } = splitMessagesForCompaction(conversation, keep);
     if (older.length === 0 && previousCheckpoint === undefined) {
-      return keepNonToolResultMessages(recent);
+      return { messages: keepNonToolResultMessages(recent) };
     }
 
     // Capping preserves most of the measured prompt. Retain any known
@@ -222,7 +237,7 @@ export async function compactMessages(
         tokenEstimateAdjustment,
       });
       if (outcome.type === "within-limit") {
-        return outcome.messages;
+        return { messages: outcome.messages };
       }
     }
   }
@@ -246,6 +261,13 @@ export async function compactMessages(
       telemetry: telemetry ? { ...telemetry, functionId: "eve.compaction" } : undefined,
       temperature: 0,
     });
+    usage = addCompactionUsage(usage, {
+      cacheReadTokens: result.usage?.inputTokenDetails?.cacheReadTokens,
+      cacheWriteTokens: result.usage?.inputTokenDetails?.cacheWriteTokens,
+      costUsd: readGatewayEffectiveCostUsd(result.providerMetadata),
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+    });
 
     if (result.text.trim().length === 0) {
       throw new Error(
@@ -267,7 +289,7 @@ export async function compactMessages(
       config.threshold,
     );
     if (evaluateThreshold(verbatim, config, "estimate").type === "within-limit") {
-      return verbatim;
+      return { messages: verbatim, usage };
     }
 
     const stripped = withResumptionGuard(
@@ -276,11 +298,44 @@ export async function compactMessages(
       config.threshold,
     );
     if (evaluateThreshold(stripped, config, "estimate").type === "within-limit" || keep === 0) {
-      return stripped;
+      return { messages: stripped, usage };
     }
 
     keep -= 1;
   }
+}
+
+function addCompactionUsage(
+  current: CompactionUsage | undefined,
+  delta: CompactionUsage,
+): CompactionUsage | undefined {
+  if (!hasUsage(delta)) return current;
+  if (current === undefined) return delta;
+  return {
+    cacheReadTokens: sumOptional(current.cacheReadTokens, delta.cacheReadTokens),
+    cacheWriteTokens: sumOptional(current.cacheWriteTokens, delta.cacheWriteTokens),
+    costUsd:
+      current.costUsd === undefined && delta.costUsd === undefined
+        ? undefined
+        : (current.costUsd ?? 0) + (delta.costUsd ?? 0),
+    inputTokens: sumOptional(current.inputTokens, delta.inputTokens),
+    outputTokens: sumOptional(current.outputTokens, delta.outputTokens),
+  };
+}
+
+function hasUsage(usage: CompactionUsage): boolean {
+  return (
+    usage.cacheReadTokens !== undefined ||
+    usage.cacheWriteTokens !== undefined ||
+    usage.costUsd !== undefined ||
+    usage.inputTokens !== undefined ||
+    usage.outputTokens !== undefined
+  );
+}
+
+function sumOptional(current: number | undefined, delta: number | undefined): number | undefined {
+  if (current === undefined && delta === undefined) return undefined;
+  return (current ?? 0) + (delta ?? 0);
 }
 
 const CAPPED_RESULT_ANNOTATION =

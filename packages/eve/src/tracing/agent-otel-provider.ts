@@ -233,6 +233,7 @@ export function createAgentOtelInstrumentation(
               "agent.framework.name": "eve",
               "agent.framework.version": input.frameworkVersion,
               "agent.step.attempt": event.scope.attemptIndex,
+              "agent.step.kind": event.scope.attemptKind ?? "model",
               "agent.step.index": event.scope.stepIndex,
               "agent.turn.id": event.scope.turnId,
               "agent.name": event.scope.functionId,

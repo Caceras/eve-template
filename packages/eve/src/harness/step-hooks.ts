@@ -40,6 +40,7 @@ import {
 } from "#harness/action-presentation.js";
 import { isInvalidToolCall } from "#harness/tool-call-input-errors.js";
 import type { RuntimeToolResultActionResult } from "#shared/action-types.js";
+import { readGatewayEffectiveCostUsd } from "#shared/gateway-cost.js";
 import {
   type HarnessEmitFn,
   type HarnessSession,
@@ -350,7 +351,7 @@ export async function emitStepActions(
       stepIndex: state.stepIndex,
       turnId: state.turnId,
       usage: extractStepUsage({
-        costUsd: extractGatewayCostUsd(step.providerMetadata),
+        costUsd: readGatewayEffectiveCostUsd(step.providerMetadata),
         usage: step.usage,
       }),
     }),
@@ -481,19 +482,6 @@ function extractStepProviderMetadata(
 ): StepCompletedProviderMetadata | undefined {
   const generationId = readGatewayGenerationId(providerMetadata);
   return generationId === undefined ? undefined : { gateway: { generationId } };
-}
-
-function extractGatewayCostUsd(providerMetadata: ProviderMetadata | undefined): number | undefined {
-  const gateway = readGatewayMetadata(providerMetadata);
-  const cost = gateway?.cost;
-  if (typeof cost === "number" && Number.isFinite(cost)) {
-    return cost;
-  }
-  if (typeof cost === "string") {
-    const parsed = Number(cost);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
 }
 
 export function readGatewayGenerationId(

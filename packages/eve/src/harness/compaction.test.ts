@@ -362,12 +362,13 @@ async function compact(
     recentWindowSize: overrides.recentWindowSize ?? 4,
     threshold: overrides.threshold ?? ROOMY,
   };
-  const result = await compactMessages(
+  const compaction = await compactMessages(
     messages,
     {} as Parameters<typeof compactMessages>[1],
     compactionConfig,
   );
 
+  const result = compaction.messages;
   expectWellFormedCompaction(result, compactionConfig.threshold);
   return { result, summarizer: summarizer as ReturnType<typeof vi.mocked<never>> };
 }
@@ -699,7 +700,7 @@ describe("compactMessages: forced summary", () => {
     } as Awaited<ReturnType<typeof generateText>>);
     const messages = [user("old message"), assistant("old reply")];
 
-    const result = await compactMessages(
+    const compaction = await compactMessages(
       messages,
       {} as Parameters<typeof compactMessages>[1],
       { recentWindowSize: 10, threshold: ROOMY },
@@ -711,7 +712,47 @@ describe("compactMessages: forced summary", () => {
     );
 
     expect(generateText).toHaveBeenCalledOnce();
-    expect(result).toContainEqual({ content: "forced checkpoint", role: "assistant" });
+    expect(compaction.messages).toContainEqual({ content: "forced checkpoint", role: "assistant" });
+  });
+
+  it("returns provider-reported usage from the summarization call", async () => {
+    const { generateText } = await import("ai");
+    vi.mocked(generateText).mockResolvedValue({
+      providerMetadata: {
+        gateway: {
+          cost: "0",
+          marketCost: "0.0123",
+          routing: {
+            modelAttempts: [{ providerAttempts: [{ credentialType: "byok", success: true }] }],
+          },
+        },
+      },
+      text: "checkpoint text",
+      usage: {
+        inputTokenDetails: { cacheReadTokens: 10, cacheWriteTokens: 5 },
+        inputTokens: 100,
+        outputTokens: 20,
+      },
+    } as never);
+
+    const compaction = await compactMessages(
+      [user("old message"), assistant("old reply")],
+      {} as Parameters<typeof compactMessages>[1],
+      { recentWindowSize: 10, threshold: ROOMY },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(compaction.usage).toEqual({
+      cacheReadTokens: 10,
+      cacheWriteTokens: 5,
+      costUsd: 0.0123,
+      inputTokens: 100,
+      outputTokens: 20,
+    });
   });
 });
 
