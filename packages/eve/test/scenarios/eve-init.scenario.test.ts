@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -15,7 +15,16 @@ import { useTemporaryDirectories } from "../../src/internal/testing/use-temporar
 
 const EVE_BIN_PATH = fileURLToPath(new URL("../../bin/eve.js", import.meta.url));
 const runFile = promisify(execFile);
-const RELEASE_AGE_MINUTES = "2880";
+const RELEASE_AGE_MINUTES = 100_000_000;
+const PNPM_INIT_INSTALL_ARGUMENTS = [
+  "install",
+  "--no-frozen-lockfile",
+  "--yes",
+  "--config.minimum-release-age=0",
+] as const;
+const PNPM_FALLBACK_INSTALL_ARGUMENTS = PNPM_INIT_INSTALL_ARGUMENTS.filter(
+  (argument) => argument !== "--yes",
+);
 
 const createScratchDirectory = useTemporaryDirectories();
 
@@ -64,7 +73,10 @@ function withoutCodingAgentMarkers(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return scrubbed;
 }
 
-async function createFakePnpmEnvironment(scratch: string): Promise<{
+async function createFakePnpmEnvironment(
+  scratch: string,
+  options: { rejectAutoApprove?: boolean } = {},
+): Promise<{
   env: NodeJS.ProcessEnv;
   readCalls(): Promise<PackageManagerCall[]>;
 }> {
@@ -80,6 +92,15 @@ async function createFakePnpmEnvironment(scratch: string): Promise<{
       "  process.env.EVE_INIT_PNPM_LOG,",
       "  `${JSON.stringify({ args, cwd: process.cwd() })}\\n`,",
       ");",
+      ...(options.rejectAutoApprove === true
+        ? [
+            'if (args.includes("--yes")) {',
+            "  console.error(\"ERROR Unknown option: 'yes'\");",
+            '  console.error("For help, run: pnpm help install");',
+            "  process.exit(1);",
+            "}",
+          ]
+        : []),
       'if (args.includes("install")) {',
       '  writeFileSync(join(process.cwd(), "pnpm-lock.yaml"), "lockfileVersion: 9.0\\n");',
       "}",
@@ -164,7 +185,7 @@ async function createFakeNpmEnvironment(scratch: string): Promise<{
 }
 
 describe("eve init smoke", () => {
-  it("resolves a standalone pnpm scaffold under the release-age policy", async () => {
+  it("installs and runs a standalone pnpm scaffold under an inherited release-age policy", async () => {
     const scratch = await createScratchDirectory("eve-init-release-age-");
     const eveTarball = `file:${await ensureScenarioEveTarballPath()}`;
     const pnpmfile = join(scratch, "scaffold-pnpmfile.cjs");
@@ -177,22 +198,19 @@ describe("eve init smoke", () => {
         "} } };\n",
       ].join("\n"),
     );
-    const workspacePolicy = (await loadYaml(
-      fileURLToPath(new URL("../../../../pnpm-workspace.yaml", import.meta.url)),
-    )) as { minimumReleaseAgeExclude: string[] };
+    const configHome = join(scratch, "config");
+    await mkdir(join(configHome, "pnpm"), { recursive: true });
+    await writeFile(
+      join(configHome, "pnpm", "config.yaml"),
+      `minimumReleaseAge: ${RELEASE_AGE_MINUTES}\nverifyDepsBeforeRun: install\n`,
+    );
     const env = {
       ...withoutCodingAgentMarkers(process.env),
-      // The agent path skips the interactive dev handoff, which cannot run
-      // against the real pnpm install this scenario performs.
+      // Exercise the package-manager dev handoff separately without opening a TUI.
       AI_AGENT: "claude",
       CI: "true",
       PNPM_CONFIG_GLOBAL_PNPMFILE: pnpmfile,
-      PNPM_CONFIG_MINIMUM_RELEASE_AGE: RELEASE_AGE_MINUTES,
-      // Use the repository's reviewed dependency exceptions for the current
-      // release without adding bypasses to scaffolded projects.
-      PNPM_CONFIG_MINIMUM_RELEASE_AGE_EXCLUDE: JSON.stringify(
-        workspacePolicy.minimumReleaseAgeExclude,
-      ),
+      XDG_CONFIG_HOME: configHome,
     };
 
     const result = await runEveBin(scratch, ["init", "policy-agent"], env);
@@ -206,7 +224,19 @@ describe("eve init smoke", () => {
       "minimumReleaseAgeStrict: true",
     );
 
-    // Exercise publication lag even when the checkout's version is already available on npm.
+    // pnpm checks the installed lockfile before exec/run and may reinstall.
+    // A one-time install flag must not leave the next command rejecting it.
+    const dev = await runFile("pnpm", ["exec", "eve", "dev", "--help"], {
+      cwd: projectDir,
+      env,
+    });
+    expect(dev.stdout).toContain("Usage: eve dev");
+    await expect(
+      runFile("pnpm", ["install", "--frozen-lockfile"], { cwd: projectDir, env }),
+    ).resolves.toMatchObject({ stdout: expect.any(String) });
+
+    // Exercise the unpublished eve override independently of the initial
+    // scaffold install's release-age bypass.
     const manifestPath = join(projectDir, "package.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
       dependencies: Record<string, string>;
@@ -214,10 +244,17 @@ describe("eve init smoke", () => {
     manifest.dependencies.eve = "0.0.0-eve-init-unpublished";
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     await expect(
-      runFile("pnpm", ["add", "--ignore-scripts", "--lockfile-only", "is-number@7.0.0"], {
-        cwd: projectDir,
-        env,
-      }),
+      runFile(
+        "pnpm",
+        [
+          "add",
+          "--ignore-scripts",
+          "--lockfile-only",
+          "--config.minimum-release-age=0",
+          "is-number@7.0.0",
+        ],
+        { cwd: projectDir, env },
+      ),
     ).resolves.toMatchObject({ stderr: expect.any(String) });
     const lockfile = (await loadYaml(join(projectDir, "pnpm-lock.yaml"))) as {
       overrides?: Record<string, string>;
@@ -256,7 +293,7 @@ describe("eve init smoke", () => {
     await expect(pathExists(join(projectDir, "vercel.json"))).resolves.toBe(false);
     expect(await fakePnpm.readCalls()).toEqual([
       {
-        args: ["--dir", canonicalProjectDir, "install", "--no-frozen-lockfile"],
+        args: ["--dir", canonicalProjectDir, ...PNPM_INIT_INSTALL_ARGUMENTS],
         cwd: canonicalProjectDir,
       },
     ]);
@@ -274,6 +311,27 @@ describe("eve init smoke", () => {
     await expect(
       runFile("git", ["status", "--porcelain"], { cwd: projectDir }),
     ).resolves.toMatchObject({ stdout: "" });
+  });
+
+  it("retries without auto-approval when pnpm rejects the option", async () => {
+    const scratch = await createScratchDirectory("eve-init-pnpm-fallback-");
+    const fakePnpm = await createFakePnpmEnvironment(scratch, { rejectAutoApprove: true });
+
+    const result = await runEveBin(scratch, ["init", "fallback-agent"], fakePnpm.env);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("Unknown option");
+    const projectDir = await realpath(join(scratch, "fallback-agent"));
+    expect(await fakePnpm.readCalls()).toEqual([
+      {
+        args: ["--dir", projectDir, ...PNPM_INIT_INSTALL_ARGUMENTS],
+        cwd: projectDir,
+      },
+      {
+        args: ["--dir", projectDir, ...PNPM_FALLBACK_INSTALL_ARGUMENTS],
+        cwd: projectDir,
+      },
+    ]);
   });
 
   it("adds Web Chat without Vercel configuration", async () => {
@@ -294,7 +352,9 @@ describe("eve init smoke", () => {
       "export default withEve(nextConfig);",
     );
     const [installCall, ...remainingCalls] = await fakePnpm.readCalls();
-    expect(installCall?.args.slice(-2)).toEqual(["install", "--no-frozen-lockfile"]);
+    expect(installCall?.args.slice(-PNPM_INIT_INSTALL_ARGUMENTS.length)).toEqual(
+      PNPM_INIT_INSTALL_ARGUMENTS,
+    );
     expect(remainingCalls).toEqual([]);
   });
 
@@ -316,7 +376,7 @@ describe("eve init smoke", () => {
     await expect(pathExists(join(projectDir, "package-lock.json"))).resolves.toBe(true);
     expect(await fakeNpm.readCalls()).toEqual([
       {
-        args: ["install"],
+        args: ["install", "--yes", "--min-release-age=0"],
         cwd: canonicalProjectDir,
       },
     ]);
@@ -355,7 +415,9 @@ describe("eve init smoke", () => {
       "minimumReleaseAgeStrict: true",
     );
     const calls = await fakePnpm.readCalls();
-    expect(calls[0]?.args.slice(-2)).toEqual(["install", "--no-frozen-lockfile"]);
+    expect(calls[0]?.args.slice(-PNPM_INIT_INSTALL_ARGUMENTS.length)).toEqual(
+      PNPM_INIT_INSTALL_ARGUMENTS,
+    );
     expect(calls).toHaveLength(1);
   });
 
@@ -374,7 +436,7 @@ describe("eve init smoke", () => {
     await expect(pathExists(join(scratch, ".git"))).resolves.toBe(true);
     expect(await fakePnpm.readCalls()).toEqual([
       {
-        args: ["--dir", canonicalProjectDir, "install", "--no-frozen-lockfile"],
+        args: ["--dir", canonicalProjectDir, ...PNPM_INIT_INSTALL_ARGUMENTS],
         cwd: canonicalProjectDir,
       },
     ]);
@@ -413,7 +475,7 @@ describe("eve init smoke", () => {
     await expect(pathExists(join(scratch, ".git"))).resolves.toBe(true);
     expect(await fakePnpm.readCalls()).toEqual([
       {
-        args: ["--dir", canonicalProjectDir, "install", "--no-frozen-lockfile"],
+        args: ["--dir", canonicalProjectDir, ...PNPM_INIT_INSTALL_ARGUMENTS],
         cwd: canonicalProjectDir,
       },
     ]);
@@ -441,7 +503,7 @@ describe("eve init smoke", () => {
     // later in a controllable background process.
     expect(await fakePnpm.readCalls()).toEqual([
       {
-        args: ["--dir", canonicalProjectDir, "install", "--no-frozen-lockfile"],
+        args: ["--dir", canonicalProjectDir, ...PNPM_INIT_INSTALL_ARGUMENTS],
         cwd: canonicalProjectDir,
       },
     ]);

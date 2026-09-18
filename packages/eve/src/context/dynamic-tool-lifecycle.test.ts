@@ -414,6 +414,7 @@ function createApprovalContext(input: {
   readonly toolName: string;
 }): ApprovalContext {
   return {
+    abortSignal: new AbortController().signal,
     approvedTools: new Set(),
     callId: "call_1",
     getSandbox: vi.fn(),
@@ -1120,6 +1121,34 @@ describe("dispatchDynamicToolEvent", () => {
     expect(buildDynamicTools(ctx)).toHaveLength(2);
   });
 
+  it("persists subagent visibility when replaying", async () => {
+    const ctx = createCtx();
+    const resolver = createResolver("root-only", ["session.started"], () => {
+      const entry = defineTool({
+        availableInSubagents: false,
+        description: "run only in the root session",
+        inputSchema: z.strictObject({}),
+        execute: () => null,
+      });
+      stampDurableDynamicToolCallbacks(entry, {
+        inputSchema: { callback: () => entry.inputSchema, closure: {} },
+        execute: { callback: () => null, closure: {} },
+      });
+      return { root_only: entry };
+    });
+
+    await dispatchDynamicToolEvent({
+      ctx,
+      resolvers: [resolver],
+      messages: [],
+      event: makeEvent("session.started"),
+    });
+    const restored = await deserializeContext(serializeContext(ctx));
+    const [metadata] = restored.get(SessionDynamicToolMetadataKey) ?? [];
+    expect(metadata?.availableInSubagents).toBe(false);
+    expect(buildDynamicTools(restored)[0]?.availableInSubagents).toBe(false);
+  });
+
   it("persists background execution and forwards TaskExec when replaying", async () => {
     const ctx = createCtx();
     const stepFn = vi.fn(async function* (
@@ -1142,6 +1171,7 @@ describe("dispatchDynamicToolEvent", () => {
         },
       });
       stampDurableDynamicToolCallbacks(entry, {
+        inputSchema: { callback: () => entry.inputSchema, closure: {} },
         execute: { callback: stepFn as never, closure: {} },
       });
       return { background_task: entry };

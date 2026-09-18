@@ -64,6 +64,16 @@ type JsonSchemaOutput<TSchema> = TSchema extends { readonly const: infer TValue 
                 ? null
                 : JsonValue;
 
+export interface WorkflowAgentMetadata {
+  readonly description: string;
+}
+
+/** Context capabilities available inside an authored `"use step"` helper. */
+export type WorkflowStepToolContext = Pick<
+  ToolContext,
+  "abortSignal" | "callId" | "session" | "toolName" | "getToken" | "requireAuth"
+>;
+
 interface WorkflowAgent {
   <const TOutputSchema extends JsonObject>(
     target: string,
@@ -73,15 +83,17 @@ interface WorkflowAgent {
 }
 
 /**
- * Context supplied to a workflow tool. Pass it directly to a step helper for
- * getToken/requireAuth; those capabilities throw in the workflow body itself.
+ * Context supplied to a workflow tool body. When passed directly to a step,
+ * eve replaces it with {@link WorkflowStepToolContext}.
  */
 export type WorkflowToolContext = Pick<
   ToolContext,
   "abortSignal" | "callId" | "session" | "toolName" | "getToken" | "requireAuth"
 > & {
-  /** Invoke a visible subagent by its model-visible name. */
+  /** Invoke an agent by its invocation name. */
   agent: WorkflowAgent;
+  /** Metadata for agents callable by this workflow, including hidden agents. */
+  agents: Readonly<Record<string, WorkflowAgentMetadata>>;
   /** Ask the human on the session's channel; awaiting the answer suspends the run. */
   ask(request: ToolInputRequest): PromiseLike<ToolInputResponse>;
 };

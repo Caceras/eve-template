@@ -36,6 +36,8 @@ export type ToolExecuteFn<TInput = unknown, TOutput = unknown> = (
 export type ToolExecution = "background";
 
 interface ToolDefinitionBase {
+  /** Whether delegated agent sessions receive this tool. Defaults to `true`. */
+  readonly availableInSubagents?: boolean;
   readonly description: string;
   readonly execution?: ToolExecution;
 }
@@ -390,6 +392,8 @@ export function defineTool<TInput = unknown, TOutput = unknown>(
 export function stampToolDefinition<
   T extends {
     readonly description: string;
+    readonly inputSchema?: unknown;
+    readonly outputSchema?: unknown;
     readonly execute: (...args: never[]) => unknown;
     readonly label?: ToolLabelDefinition;
     readonly approval?: Approval<never>;
@@ -407,6 +411,8 @@ export function stampToolDefinition<
   stampDurableDynamicToolCallbacks(
     definition,
     collectDurableDynamicToolCallbacks({
+      inputSchema: definition.inputSchema,
+      outputSchema: definition.outputSchema,
       label: definition.label,
       approval: definition.approval,
       approvalKey: definition.approvalKey,
@@ -425,15 +431,16 @@ const DISABLED_TOOL_SENTINEL_KIND = "eve:disabled-tool";
 
 /**
  * Marker value returned from {@link disableTool}. Export this as the default
- * export of a file in `agent/tools/` to remove the framework default whose
- * name matches the file's slug.
+ * export of a file in `agent/tools/` to remove the model tool whose name
+ * matches the file's slug, including framework defaults and derived subagent
+ * tools.
  */
 export interface DisabledToolSentinel {
   readonly kind: typeof DISABLED_TOOL_SENTINEL_KIND;
 }
 
 /**
- * Returns a sentinel that disables the framework tool whose name matches the
+ * Returns a sentinel that disables the model tool whose name matches the
  * containing file's slug.
  */
 export function disableTool(): DisabledToolSentinel {

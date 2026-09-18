@@ -50,11 +50,6 @@ import {
 import { summarizeLocalTrace } from "#cli/commands/trace-detail.js";
 import { buildConversationItems } from "#cli/dev/tui/traces/trace-conversation.js";
 import { contentFilteringProcessor } from "#tracing/content-span-processor.js";
-import {
-  composeSpanExportPolicies,
-  redactSpanInputs,
-  redactSpanOutputs,
-} from "#tracing/span-export-policy.js";
 import { ConversationContextKey } from "#shared/conversation-context.js";
 
 const traceContext = (agentName: string, audience: "public" | "private") => ({
@@ -74,10 +69,9 @@ function createRuntime() {
     idGenerator,
     spanProcessors: [
       new SimpleSpanProcessor(exporter),
-      contentFilteringProcessor(
-        new SimpleSpanProcessor(metadata),
-        composeSpanExportPolicies(redactSpanInputs(), redactSpanOutputs()),
-      ),
+      contentFilteringProcessor(new SimpleSpanProcessor(metadata), {
+        span: () => ({ redact: true, inputs: true, outputs: true }),
+      }),
     ],
   });
   const agent = createAgentOtelInstrumentation({
@@ -285,6 +279,7 @@ describe("exported agent telemetry contract", () => {
       })!;
       let dispatch: ReturnType<typeof prepareAgentInvocationTrace>;
       await contextStorage.run(parent, async () => {
+        await binding.preparePreamble({ sequence: 0, sessionStarted: false });
         await binding.instrumentChannelDelivery({
           ctx: parent,
           agentName: "parent",
@@ -310,6 +305,7 @@ describe("exported agent telemetry contract", () => {
             ],
           },
         });
+        // The tool loop prepares turn trace state after the delivery is instrumented.
         await binding.preparePreamble({ sequence: 0, sessionStarted: false, turnId: "turn_0" });
         await hooks.publish({
           idempotencyKey: attemptIdempotencyKey(scope),
