@@ -70,6 +70,7 @@ function respond(request: MockModelRequest): MockModelResponse | string {
     ["WORKFLOW-DEPLOY-START", "deploy_service"],
     ["WORKFLOW-SANDBOX-BLOCKING-START", "sandbox_blocking"],
     ["WORKFLOW-SANDBOX-BACKGROUND-START", "sandbox_background"],
+    ["WORKFLOW-GUARDED-START", "guarded_workflow"],
     ["WORKFLOW-CONFIRM-START", "confirm_deploy"],
     ["WORKFLOW-REPORT-START", "report_deploy"],
     ["WORKFLOW-ESCALATE-START", "escalate_deploy"],
