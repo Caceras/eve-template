@@ -420,28 +420,6 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/eve
 
-  apps/fixtures/eve-code-bench:
-    dependencies:
-      '@vercel/connect':
-        specifier: 'catalog:'
-        version: 2.2.0(@ai-sdk/mcp@2.0.45(zod@4.5.4))(@auth/core@0.41.2)(@chat-adapter/slack@4.34.0(ai@7.0.105(zod@4.5.4))(bufferutil@4.1.0)(supports-color@10.2.2)(zod@4.5.4))(ai@7.0.105(zod@4.5.4))(eve@packages+eve)
-      eve:
-        specifier: workspace:*
-        version: link:../../../packages/eve
-      eve-code:
-        specifier: workspace:*
-        version: link:../../../packages/eve-code
-      zod:
-        specifier: 'catalog:'
-        version: 4.5.4
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 24.13.3
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-
   apps/fixtures/weather-agent:
     dependencies:
       eve:
