@@ -2,11 +2,27 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { RouteHandlerArgs } from "#channel/routes.js";
 import type { Session } from "#channel/session.js";
+import type { SessionAuthContext } from "#channel/types.js";
 import { attachRouteSessionCreator } from "#internal/nitro/routes/channel-route-context.js";
 import { mockChannelContext } from "#internal/testing/mocks/mock-channel-operations.js";
 import { writeForwardedParentSessionBaggage } from "#protocol/baggage.js";
-import { none } from "#public/channels/auth.js";
+import { type AuthFn, none } from "#public/channels/auth.js";
 import { eveChannel } from "#public/channels/eve.js";
+
+const SERVICE_AUTH: SessionAuthContext = {
+  attributes: {},
+  authenticator: "test-service",
+  principalId: "parent-app",
+  principalType: "service",
+};
+const service: AuthFn<Request> = () => SERVICE_AUTH;
+
+const CALLBACK = {
+  callId: "call-1",
+  subagentName: "research",
+  token: "tok123",
+  url: "https://caller.example.com/eve/v1/callback/tok123",
+};
 
 function route(
   method: "GET" | "POST",
@@ -163,15 +179,10 @@ describe("eve ID-addressed session routes", () => {
     });
     const args = attachRouteSessionCreator(createArgs(), createSession);
 
-    const response = await route("POST", "/eve/v1/session")(
+    const response = await route("POST", "/eve/v1/session", { auth: service })(
       new Request("https://eve.test/eve/v1/session", {
         body: JSON.stringify({
-          callback: {
-            callId: "call-1",
-            subagentName: "research",
-            token: "tok123",
-            url: "https://caller.example.com/eve/v1/callback/tok123",
-          },
+          callback: CALLBACK,
           message: "hello",
           mode: "conversation",
         }),
@@ -204,15 +215,10 @@ describe("eve ID-addressed session routes", () => {
     });
     const args = attachRouteSessionCreator(createArgs(), createSession);
 
-    const response = await route("POST", "/eve/v1/session")(
+    const response = await route("POST", "/eve/v1/session", { auth: service })(
       new Request("https://eve.test/eve/v1/session", {
         body: JSON.stringify({
-          callback: {
-            callId: "call-1",
-            subagentName: "research",
-            token: "tok123",
-            url: "https://caller.example.com/eve/v1/callback/tok123",
-          },
+          callback: CALLBACK,
           message: "hello",
           mode: "conversation",
         }),
@@ -246,15 +252,10 @@ describe("eve ID-addressed session routes", () => {
     });
     const args = attachRouteSessionCreator(createArgs(), createSession);
 
-    const response = await route("POST", "/eve/v1/session")(
+    const response = await route("POST", "/eve/v1/session", { auth: service })(
       new Request("https://eve.test/eve/v1/session", {
         body: JSON.stringify({
-          callback: {
-            callId: "call-1",
-            subagentName: "research",
-            token: "tok123",
-            url: "https://caller.example.com/eve/v1/callback/tok123",
-          },
+          callback: CALLBACK,
           message: "hello",
         }),
         headers: {
@@ -291,19 +292,12 @@ describe("eve ID-addressed session routes", () => {
       const trustedForwarders = vi.fn(() => false);
 
       const response = await route("POST", "/eve/v1/session", {
-        auth: none(),
+        auth: service,
         trustedForwarders,
       })(
         new Request("https://eve.test/eve/v1/session", {
           body: JSON.stringify({
-            callback: callback
-              ? {
-                  callId: "call-1",
-                  subagentName: "research",
-                  token: "tok123",
-                  url: "https://caller.example.com/eve/v1/callback/tok123",
-                }
-              : undefined,
+            callback: callback ? CALLBACK : undefined,
             message: "hello",
           }),
           headers: {
@@ -357,19 +351,11 @@ describe("eve ID-addressed session routes", () => {
       } as const;
 
       const response = await route("POST", "/eve/v1/session", {
-        auth: none(),
+        auth: service,
         trustedForwarders,
       })(
         new Request("https://eve.test/eve/v1/session", {
-          body: JSON.stringify({
-            callback: {
-              callId: "call-1",
-              subagentName: "research",
-              token: "tok123",
-              url: "https://caller.example.com/eve/v1/callback/tok123",
-            },
-            message: "hello",
-          }),
+          body: JSON.stringify({ callback: CALLBACK, message: "hello" }),
           headers: {
             "content-type": "application/json",
             baggage: writeForwardedParentSessionBaggage(undefined, parent)!,
@@ -388,6 +374,98 @@ describe("eve ID-addressed session routes", () => {
       );
     },
   );
+
+  describe("remote callback admission", () => {
+    const USER_AUTH: SessionAuthContext = {
+      attributes: {},
+      authenticator: "test-user",
+      principalId: "user-1",
+      principalType: "user",
+    };
+    const rejection = {
+      error: "Remote callbacks require a caller authenticated as a service or runtime principal.",
+      ok: false,
+    };
+
+    it.each([
+      ["an anonymous", none()],
+      ["a user", () => USER_AUTH],
+    ] as const)("rejects a callback from %s principal on session creation", async (_name, auth) => {
+      const createSession = vi.fn();
+      const args = attachRouteSessionCreator(createArgs(), createSession);
+
+      const response = await route("POST", "/eve/v1/session", { auth })(
+        new Request("https://eve.test/eve/v1/session", {
+          body: JSON.stringify({ callback: CALLBACK, message: "hello" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+        args,
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(rejection);
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it("rejects a callback from a user principal on session messages", async () => {
+      const session = createFixedSession();
+
+      const response = await route("POST", "/eve/v1/session/:sessionId", {
+        auth: () => USER_AUTH,
+      })(
+        new Request("https://eve.test/eve/v1/session/wrun_A", {
+          body: JSON.stringify({ callback: CALLBACK, message: "follow-up" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+        createArgs(session),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(rejection);
+      expect(session.send).not.toHaveBeenCalled();
+    });
+
+    it("accepts a callback from a service principal on session messages", async () => {
+      const session = createFixedSession();
+
+      const response = await route("POST", "/eve/v1/session/:sessionId", { auth: service })(
+        new Request("https://eve.test/eve/v1/session/wrun_A", {
+          body: JSON.stringify({ callback: CALLBACK, message: "follow-up" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+        createArgs(session),
+      );
+
+      expect(response.status).toBe(202);
+      expect(session.send).toHaveBeenCalledWith(
+        "follow-up",
+        expect.objectContaining({ callback: CALLBACK }),
+      );
+    });
+
+    it("leaves callback-free requests from user principals unaffected", async () => {
+      const createSession = vi.fn().mockResolvedValue({
+        events: new ReadableStream(),
+        sessionId: "wrun_A",
+      });
+      const args = attachRouteSessionCreator(createArgs(), createSession);
+
+      const response = await route("POST", "/eve/v1/session", { auth: () => USER_AUTH })(
+        new Request("https://eve.test/eve/v1/session", {
+          body: JSON.stringify({ message: "hello" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }),
+        args,
+      );
+
+      expect(response.status).toBe(202);
+      expect(createSession).toHaveBeenCalledTimes(1);
+    });
+  });
 
   it("rejects input responses on session creation", async () => {
     const createSession = vi.fn();

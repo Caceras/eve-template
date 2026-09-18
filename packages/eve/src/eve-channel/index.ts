@@ -61,7 +61,9 @@ import { routeAuth } from "#public/channels/auth.js";
 import { defaultEveAudience } from "#eve-channel/audience.js";
 import { mergeUploadPolicy } from "#public/channels/upload-policy.js";
 import { defineChannel, DELETE, GET, HEAD, PATCH, POST, PUT } from "#public/definitions/channel.js";
+import { setSessionCallbackAuth } from "#execution/session-callback-request.js";
 import {
+  checkRemoteCallbackPrincipal,
   checkUploadPolicy,
   createSessionStreamResponse,
   deriveOperationContinuationToken,
@@ -101,6 +103,7 @@ const log = createLogger("eve.channel");
  */
 export function eveChannel(input: EveChannelInput): EveChannel {
   const uploadPolicy = mergeUploadPolicy(input.uploadPolicy);
+  if (input.callbackAuth !== undefined) setSessionCallbackAuth(input.callbackAuth);
 
   return defineChannel<undefined, EveEventContext>({
     cors: normalizeEveCors(input.cors),
@@ -165,6 +168,8 @@ export function eveChannel(input: EveChannelInput): EveChannel {
 
         const body = parseCreateBody(payload);
         if (body instanceof Response) return body;
+        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        if (callbackRejection !== null) return callbackRejection;
         const forwardedParentSession =
           body.callback === undefined
             ? "absent"
@@ -369,6 +374,8 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         if (forwarded instanceof Response) return forwarded;
         const body = parseSessionMessageBody(payload);
         if (body instanceof Response) return body;
+        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        if (callbackRejection !== null) return callbackRejection;
 
         const policyRejection = checkUploadPolicy(body, uploadPolicy);
         if (policyRejection !== null) return policyRejection;

@@ -28,8 +28,12 @@ const authenticateLaterParentCaller: AuthFn<Request> = (request) =>
     ? principal("later-parent-caller")
     : null;
 
+// The loopback parent dispatches with a callback, which eve only accepts from
+// service or runtime principals.
 const authenticateRemoteChild: AuthFn<Request> = (request) =>
-  request.headers.get("authorization") === REMOTE_CHILD ? principal("remote-http-child") : null;
+  request.headers.get("authorization") === REMOTE_CHILD
+    ? { ...principal("remote-http-child"), principalType: "service" }
+    : null;
 
 const authenticateEvalDriver: AuthFn<Request> = () => principal("eval-driver");
 

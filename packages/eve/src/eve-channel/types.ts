@@ -2,6 +2,7 @@ import type { UserContent } from "ai";
 
 import type { SessionAuthContext, TurnPolicy } from "#channel/types.js";
 import type { TrustedForwarders } from "#channel/forwarded-principal.js";
+import type { OutboundAuthFn } from "#public/agents/auth.js";
 import type { AuthFn } from "#public/channels/auth.js";
 import type { UploadPolicyInput } from "#public/channels/upload-policy.js";
 import type {
@@ -131,6 +132,14 @@ export interface EveChannelInput {
    * remote lineage.
    */
   readonly trustedForwarders?: TrustedForwarders;
+  /**
+   * Outbound auth for the completion, progress, and activity callbacks this
+   * deployment sends to remote parents. Defaults to the deployment's Vercel
+   * OIDC token on Vercel; supply `bearer()`, `basic()`, or a custom
+   * `OutboundAuthFn` from `eve/agents/auth` elsewhere. Callback credentials
+   * are only attached to `https:` callback URLs.
+   */
+  readonly callbackAuth?: OutboundAuthFn;
   /**
    * Attachment policy for inbound file parts. Omit for the framework default (25 MB cap, all media
    * types); `"disabled"` rejects every attachment; a partial config is merged onto the default. Violations reject with 413 (too large) or 415 (bad type).

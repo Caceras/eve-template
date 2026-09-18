@@ -13,6 +13,7 @@ import {
   parseActivityObserverField,
   validateActivityObserverBinding,
 } from "#eve-channel/activity-observer-request.js";
+import { isEveDevEnvironment } from "#internal/application/dev-environment.js";
 import { hasInternalRefScheme } from "#internal/attachments/url-refs.js";
 import {
   EVE_MESSAGE_STREAM_CONTENT_TYPE,
@@ -57,6 +58,27 @@ export async function deriveOperationContinuationToken(input: {
     "",
   );
   return `eve:op:${hex.slice(0, 32)}`;
+}
+
+/**
+ * Reciprocity rule for remote callbacks: this deployment authenticates its
+ * callbacks with its own identity, so it only performs callback work for
+ * callers that authenticated as a service. Local `eve dev` is exempt.
+ */
+export function checkRemoteCallbackPrincipal(
+  body: { readonly activityObserver?: unknown; readonly callback?: unknown },
+  auth: SessionAuthContext,
+): Response | null {
+  if (body.callback === undefined && body.activityObserver === undefined) return null;
+  if (auth.principalType === "service" || auth.principalType === "runtime") return null;
+  if (isEveDevEnvironment() && process.env.VERCEL !== "1") return null;
+  return Response.json(
+    {
+      error: "Remote callbacks require a caller authenticated as a service or runtime principal.",
+      ok: false,
+    },
+    { status: 400 },
+  );
 }
 
 export function parseCreateBody(payload: Record<string, unknown>): ParsedCreateBody | Response {
