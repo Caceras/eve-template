@@ -185,6 +185,10 @@ describe("agentRouter", () => {
       options: { agents: { researcher: "Research" }, message: "Research", model: "" },
     },
     {
+      error: "agentRouter auto requires a non-empty model ID when provided.",
+      options: { agents: { researcher: "Research" }, message: "Research", model: {} },
+    },
+    {
       error: 'agentRouter auto requires a string description for agent "researcher".',
       options: { agents: { researcher: 42 }, message: "Research" },
     },

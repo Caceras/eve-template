@@ -1,27 +1,22 @@
 import { z } from "#compiled/zod/index.js";
 import type { JsonObject } from "#shared/json.js";
-import type { evaluate } from "#ai/evaluate.js";
 
 export { auto, executeAgentRouterTool } from "#execution/tools/agent-router-workflow.js";
 
 export const AGENT_ROUTER_TOOL_DESCRIPTION =
   "Route a task to the best available subagent based on each subagent's declared description.";
 
-export interface AgentRouterAutoOptions {
-  readonly abortSignal?: AbortSignal;
-  readonly agents: Readonly<Record<string, string>>;
-  /** Instructions used to select an agent. */
-  readonly instructions?: string;
-  readonly message: string;
-  /** Evaluation model instance or ID. Defaults to TypeSafe Jev. */
-  readonly model?: Parameters<typeof evaluate>[0]["model"];
-}
-
 export interface AgentRouterOptions {
   /** Instructions used to select an agent. */
   readonly instructions?: string;
   /** Evaluation model ID. Defaults to TypeSafe Jev. */
   readonly model?: string;
+}
+
+export interface AgentRouterAutoOptions extends AgentRouterOptions {
+  readonly abortSignal?: AbortSignal;
+  readonly agents: Readonly<Record<string, string>>;
+  readonly message: string;
 }
 
 export interface AgentRouterInput {

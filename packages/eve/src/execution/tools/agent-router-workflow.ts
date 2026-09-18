@@ -46,7 +46,7 @@ export async function auto({
   if (typeof instructions !== "string" || instructions.trim().length === 0) {
     throw new Error("agentRouter auto requires non-empty instructions when provided.");
   }
-  if (typeof model === "string" && model.trim().length === 0) {
+  if (typeof model !== "string" || model.trim().length === 0) {
     throw new Error("agentRouter auto requires a non-empty model ID when provided.");
   }
   const criteria = Object.fromEntries(
