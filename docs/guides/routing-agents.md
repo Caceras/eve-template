@@ -1,56 +1,55 @@
 ---
 title: "Build an Agent Router"
-description: "Route requests to specialist eve agents with model-directed delegation, controlled workflows, and routing evals."
+description: "Route delegated tasks to specialist eve agents with agentRouter, clear route descriptions, and routing evals."
 contentType: "How-to"
 ---
 
 <!--
 Content plan
-- Overview: Build one root router with billing and support specialists.
-- Goal: Configure, constrain, and test request routing between eve agents.
+- Overview: Build one root agent that delegates through a dedicated router.
+- Goal: Configure, test, and troubleshoot routing between eve agents.
 - Audience: Developers who have an eve project and need specialist delegation.
-- Content: Choose a routing style, build the default model-directed path, add a controlled workflow, test routing, and diagnose common failures.
+- Content: Choose a routing boundary, build the agentRouter path, test routing, customize selection, and diagnose failures.
 - Open questions: Whether a future router template should replace the inline customer-service example.
 -->
 
-An agent router receives a request, selects a specialist, and later combines the specialist's result into its response. In eve, the usual router is a root agent with [declared subagents](/docs/subagents#declared-subagents).
+Use `agentRouter()` when the root model should decide whether to delegate, but a dedicated router should choose the specialist. The router compares the task with each agent's description, invokes one target, and returns that result to the root model.
 
-This guide builds a customer-service router with two specialists:
+This guide builds a customer-service router with `billing` and `support` specialists:
 
 ```text
 incoming request
        |
-   root router
+   root model
+       |
+  agentRouter()
     /       \
 billing   support
 ```
 
-Use this structure when callers talk to one root agent. Use an [agent workspace](/docs/concepts/project-structure#several-root-agents) when each specialist also needs its own endpoint or channel.
+## Choose the routing boundary
 
-## Choose a routing style
+Choose who should make each decision before you add agent files.
 
-Start with model-directed routing. Add a workflow only when you need one validated routing surface.
+| Requirement                                                    | Use                                                                                                                              |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Let the root model choose a visible specialist directly        | [Declared subagents](/docs/subagents#declared-subagents)                                                                         |
+| Let the root model delegate, then use JEV to choose the target | `agentRouter()`                                                                                                                  |
+| Route across a subset or use custom selection criteria         | `defineWorkflowTool` with `ctx.agents` and `ctx.agent()`                                                                         |
+| Choose the agent before the root model runs                    | Application or channel code with separately addressable [workspace agents](/docs/concepts/project-structure#several-root-agents) |
 
-| Requirement                                                | Route with                                                                 |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Let the root choose a specialist from clear descriptions   | Declared subagents                                                         |
-| Hide specialists and allow calls only through one tool     | A workflow tool with `ctx.agent()`                                         |
-| Expose routes only for specific callers or tenants         | [Dynamic subagents](/docs/guides/dynamic-capabilities#dynamic-subagents)   |
-| Delegate to another eve deployment                         | [Remote agents](/docs/guides/remote-agents)                                |
-| Let application code select a separately addressable agent | An [agent workspace](/docs/concepts/project-structure#several-root-agents) |
+`agentRouter()` controls specialist selection after the root calls the `agent` tool. It does not intercept every incoming request before the root model runs.
 
-## Build a model-directed router
+## Create the router
 
-Model-directed routing exposes each specialist as a tool. The root model compares the request with each subagent's `description`, then delegates to the best match.
-
-### Create the agent structure
-
-Start from an existing [eve project](/docs/getting-started), then add two subagent directories:
+Start from an existing [eve project](/docs/getting-started). Add this structure:
 
 ```text
 agent/
 ├── agent.ts
 ├── instructions.md
+├── tools/
+│   └── agent.ts
 └── subagents/
     ├── billing/
     │   ├── agent.ts
@@ -60,19 +59,18 @@ agent/
         └── instructions.md
 ```
 
-Each directory under `agent/subagents/` becomes a specialist. Its directory name becomes the model-facing tool name.
+### Define the specialists
 
-### Define distinct route contracts
-
-Give each specialist a specific `description`. State what belongs on the route and what does not.
+Give each specialist a distinct `description`. The router uses these descriptions as its selection criteria.
 
 ```ts title="agent/subagents/billing/agent.ts"
 import { defineAgent } from "eve";
 
 export default defineAgent({
   description:
-    "Resolve invoices, charges, refunds, subscription payments, and billing-account questions. Do not troubleshoot product behavior.",
+    "Resolve invoices, duplicate charges, refunds, subscriptions, and payment questions. Do not troubleshoot product behavior.",
   model: "anthropic/claude-opus-4.8",
+  tool: false,
 });
 ```
 
@@ -83,135 +81,127 @@ export default defineAgent({
   description:
     "Troubleshoot setup, errors, integrations, and product behavior. Do not answer invoices, charges, refunds, or payment questions.",
   model: "anthropic/claude-opus-4.8",
+  tool: false,
 });
 ```
 
-The descriptions form the route table. Avoid broad descriptions such as “helps customers,” because overlapping routes make selection less predictable.
+`tool: false` hides the direct `billing` and `support` tools from the root model. Both agents remain available to workflow tools through `ctx.agents` and `ctx.agent()`.
+
+Avoid broad descriptions such as “helps customers.” Overlapping descriptions make selection less predictable.
 
 ### Scope each specialist
 
-Give each specialist its own instructions. Return a visible mismatch when a request reaches the wrong route.
+Give each specialist the instructions and capabilities it needs:
 
 ```md title="agent/subagents/billing/instructions.md"
 # Role
 
 Resolve billing requests using the billing tools and policies available to you.
-
-If the request requires product troubleshooting, return `ROUTE_MISMATCH: support`.
-Do not invent account data, charges, refund status, or policy exceptions.
+Do not troubleshoot product behavior or claim that an action occurred without evidence.
 ```
 
 ```md title="agent/subagents/support/instructions.md"
 # Role
 
 Resolve product setup, integration, error, and behavior questions.
-
-If the request concerns a charge, invoice, refund, or payment, return
-`ROUTE_MISMATCH: billing`.
-Do not claim that a billing action occurred.
+Do not answer billing questions or claim that a billing action occurred.
 ```
 
-By default, a declared subagent does not inherit the root's authored instructions, tools, connections, skills, or sandbox. Add each required capability inside that specialist's directory. A subagent can explicitly reuse its parent's sandbox when shared files and processes are intentional. See [The isolation boundary](/docs/subagents#the-isolation-boundary) for the full list.
+A declared subagent does not inherit the root's authored instructions, tools, connections, or skills. Add each required capability under that specialist's directory. See [The isolation boundary](/docs/subagents#the-isolation-boundary) for sandbox and state behavior.
 
-### Configure the root
+### Install the router in the `agent` tool slot
 
-Disable the root-only built-in `agent` tool when the router should use only declared delegation paths. This prevents the root from delegating to an unnamed copy of itself. It does not disable the root's other tools.
+Export `agentRouter()` from `agent/tools/agent.ts`:
+
+```ts title="agent/tools/agent.ts"
+import { agentRouter } from "eve/tools/agent-router";
+
+export default agentRouter();
+```
+
+This replaces the model-facing built-in `agent` tool with a blocking workflow tool. The root model sees one `agent` tool instead of the hidden specialist tools.
+
+The router accepts:
+
+```ts
+{
+  message: string;       // complete task for the selected agent
+  outputSchema?: object; // optional JSON Schema for the selected agent's result
+}
+```
+
+### Tell the root when to delegate
+
+Configure the root model as usual. Omit the root `description` when the router should choose only declared specialists:
 
 ```ts title="agent/agent.ts"
 import { defineAgent } from "eve";
 
 export default defineAgent({
   model: "anthropic/claude-opus-4.8",
-  tool: false,
 });
 ```
 
-Tell the root how to choose routes and handle requests that span both specialists:
+Then tell the root to use the router:
 
 ```md title="agent/instructions.md"
 # Role
 
-Route customer requests to the billing and support specialists.
+Coordinate customer requests through the `agent` tool.
 
-# Routing
+# Delegation
 
-- Send invoices, charges, refunds, and payment questions to `billing`.
-- Send setup, errors, integrations, and product behavior to `support`.
-- For a request that needs both, call both specialists in the same response.
-- Give each specialist the complete request and relevant known context.
-- If a specialist returns `ROUTE_MISMATCH`, call the suggested specialist once.
-- Do not answer a specialist question without delegation.
-
-After the specialists finish, give the customer one concise response.
+- Delegate billing and product-support requests through `agent`.
+- Put the complete request and relevant known context in `message`.
+- For a request that spans both domains, split it into two focused calls.
+- Ask for clarification when the request does not contain enough routing detail.
+- After delegated work finishes, give the customer one concise response.
 ```
 
-Direct model-visible subagent calls run as background tasks. The initial call returns a task receipt, and a completion notification wakes the root in a later turn. When both routes run together, eve delivers their successful completion notifications as one batch before the root synthesizes the response.
+The selected child does not see the root's conversation history. Include all relevant context in `message`, and do not send data that the child should not receive.
 
-Subagents do not see the parent's conversation history. The root must put all relevant context in each subagent's `message`. Do not send data that the specialist should not receive.
+## How target selection works
 
-### Exercise each route
+When the root calls `agent`, `agentRouter()`:
 
-Start the project:
+1. Reads the effective callable-agent descriptions from `ctx.agents`.
+2. Ignores targets with an empty description.
+3. Invokes the only described target without evaluation, or asks the default JEV evaluation model to choose among multiple targets.
+4. Calls the selected target through `ctx.agent()`.
+5. Returns the selected agent's result as the blocking workflow tool result.
+
+The snapshot can include hidden local, remote, workspace, and active dynamic subagents. Availability and authorization are checked again when the router invokes the target.
+
+### Include a root copy
+
+In a top-level root workflow, `ctx.agents.agent` represents a copy of the root. It has an empty description unless `agent/agent.ts` defines one. Add a description to make the root copy eligible:
+
+```ts title="agent/agent.ts"
+import { defineAgent } from "eve";
+
+export default defineAgent({
+  description: "Coordinate requests that require multiple specialist domains.",
+  model: "anthropic/claude-opus-4.8",
+});
+```
+
+The invocation name `agent` is reserved for this root-copy target. Delegated root copies do not receive the router and cannot select another root copy recursively.
+
+## Test the routes
+
+Start the project and exercise each route:
 
 ```bash
 npm run dev
 ```
 
-Send requests that cover one route, multiple routes, and unclear intent:
+| Request                               | Expected target                                    |
+| ------------------------------------- | -------------------------------------------------- |
+| “Why was I charged twice?”            | `billing`                                          |
+| “The upload fails with a 403.”        | `support`                                          |
+| “Something is wrong with my account.” | The root asks for clarification before delegation. |
 
-| Request                                             | Expected delegation                       |
-| --------------------------------------------------- | ----------------------------------------- |
-| “Why was I charged twice?”                          | `billing` only                            |
-| “The upload fails with a 403.”                      | `support` only                            |
-| “My upload fails, and I was charged for the retry.” | `billing` and `support`                   |
-| “Something is wrong with my account.”               | Ask for the missing detail before routing |
-
-Keep the request and expected route together. They become the first cases in your routing evals.
-
-## Put routing behind one workflow tool
-
-Use a workflow tool when specialists must remain hidden from the root model. The root still selects a destination, but it can only invoke specialists through one validated input and one orchestration path.
-
-Keep `tool: false` on the root as shown above. This removes the built-in self-delegation path. Then set `tool: false` on each specialist:
-
-```ts title="agent/subagents/billing/agent.ts"
-import { defineAgent } from "eve";
-
-export default defineAgent({
-  description: "Resolve customer billing requests for the routing workflow.",
-  model: "anthropic/claude-opus-4.8",
-  tool: false,
-});
-```
-
-Apply the same change to `support`. Hidden subagents remain available to authored workflow tools through `ctx.agent()`.
-
-Then add the routing tool:
-
-```ts title="agent/tools/route_request.ts"
-import { defineWorkflowTool } from "eve/tools";
-import { z } from "zod";
-
-export default defineWorkflowTool({
-  description: "Route a customer request to billing or support.",
-  inputSchema: z.object({
-    team: z.enum(["billing", "support"]),
-    request: z.string().min(1),
-  }),
-  async execute({ team, request }, ctx) {
-    "use workflow";
-    return ctx.agent(team, { message: request });
-  },
-});
-```
-
-Update the root instructions so every specialist request goes through `route_request`. The `team` enum allows only the two authored names, but it does not verify that matching subagents exist. A missing target fails at runtime. The blocking workflow waits durably for the selected child and returns its result to the root in the current turn.
-
-This pattern controls orchestration, not classification. The root model still supplies `team`. If a business rule must choose the destination without a model decision, route in application code to a separately addressable [workspace agent](/docs/concepts/project-structure#several-root-agents).
-
-## Add a routing eval
-
-Routing behavior can change when descriptions, instructions, or models change. Assert the selected subagent directly instead of grading only the final prose.
+Turn these cases into evals. Assert the selected agent instead of grading only the final prose:
 
 ```ts title="evals/routing/billing.eval.ts"
 import { defineEval } from "eve/evals";
@@ -221,7 +211,8 @@ export default defineEval({
   async test(t) {
     const turn = await t.send("Why was I charged twice for one month?");
 
-    t.succeeded();
+    turn.expectOk();
+    turn.calledTool("agent", { count: 1 });
     turn.event("subagent.called", {
       data: { name: "billing" },
       count: 1,
@@ -229,13 +220,13 @@ export default defineEval({
     turn.notEvent("subagent.called", {
       data: { name: "support" },
     });
+    t.succeeded();
+    t.noFailedActions();
   },
 });
 ```
 
-This eval checks the route dispatched in the initial root turn. It does not prove that the background child finished or that the root delivered its final answer.
-
-Add cases for support, mixed intent, ambiguity, and adversarial wording. For a mixed request, assert one `subagent.called` event for each specialist. Run the suite with:
+Add cases for support, unclear intent, overlapping descriptions, and adversarial wording. Run them with:
 
 ```bash
 eve eval routing
@@ -243,22 +234,28 @@ eve eval routing
 
 See [Evals](/docs/evals/overview) for configuration, datasets, and CI setup.
 
-## Avoid common routing failures
+## Customize the router
 
-| Symptom                                                     | Check                                                                          | Next action                                                                                    |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| The root chooses different specialists for similar requests | The route descriptions overlap.                                                | Make descriptions mutually exclusive and add concrete boundaries.                              |
-| The specialist lacks context                                | The delegated `message` omits details from the parent conversation.            | Include the complete request and relevant facts in `message`.                                  |
-| The specialist cannot use a root tool or connection         | The capability exists only under the root agent.                               | Add the capability under the specialist's directory.                                           |
-| The root bypasses the intended route                        | The built-in `agent` or direct specialist tools remain visible.                | Disable the built-in `agent`, or hide specialists with `tool: false` and use a workflow tool.  |
-| A route exposes sensitive actions                           | The specialist's tools or connections lack approval or authorization controls. | Add approvals and route authorization. Delegation is not an approval boundary.                 |
-| A specialist needs its own public endpoint                  | Clients must address the specialist directly.                                  | Move it to an agent workspace. Expose it as a workspace peer if the router must still call it. |
+Use `defineWorkflowTool` directly when you need a subset of `ctx.agents`, custom JEV instructions, another evaluation model, or deterministic business rules. Keep each specialist hidden with `tool: false`, select a target in the workflow, then call:
 
-## Extend the router
+```ts
+return ctx.agent(target, { message });
+```
 
-- Use [dynamic subagents](/docs/guides/dynamic-capabilities#dynamic-subagents) to expose routes by tenant, feature flag, or authenticated caller.
-- Use [remote agents](/docs/guides/remote-agents) when a specialist has a separate deployment or owner.
-- Use an [output schema](/docs/subagents#what-the-parent-sees) when the root must combine typed specialist results.
-- Start from the [LLM council template](https://eve.dev/templates/eve-llm-council-template) to study parallel fan-out and result synthesis.
+Run model-based selection inside a `"use step"` function so workflow replay records the decision. See [Route to a hidden subagent with JEV](/docs/tools/workflows#route-to-a-hidden-subagent-with-jev) for a complete implementation.
 
-Workspace members do not become router targets automatically. Declare each peer with `defineWorkspaceAgent` under the router's `agent/subagents/` directory. `vercel dev` provides the local workspace transport. `eve dev` starts only one selected member, so separately running peers need an explicit transport.
+For rules that must run before any root-model inference, select a separately addressable workspace agent in application or channel code. A workspace member does not become a router target automatically. Declare it with `defineWorkspaceAgent` under the router's `agent/subagents/` directory when the router must also call it.
+
+## Troubleshoot routing
+
+| Symptom                                                    | Check                                                       | Next action                                                                                          |
+| ---------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| The router reports no available described agents.          | Every candidate has an empty description or is unavailable. | Add distinct descriptions and check dynamic availability.                                            |
+| The router selects the root unexpectedly.                  | The root has a non-empty description.                       | Remove that description or narrow it to the work the root copy should handle.                        |
+| The root bypasses the router.                              | A specialist still has `tool: true`.                        | Set `tool: false` on every specialist managed by the router.                                         |
+| The router chooses different targets for similar requests. | Specialist descriptions overlap.                            | Add mutually exclusive boundaries and routing evals.                                                 |
+| The specialist lacks context.                              | The delegated `message` omits parent-conversation details.  | Include the complete task and relevant known facts.                                                  |
+| The specialist cannot use a root capability.               | The capability exists only under the root agent.            | Add it under the specialist's directory.                                                             |
+| The root never calls the router.                           | The root instructions leave delegation optional or unclear. | State when the root must call `agent`. Route before root inference if delegation cannot be optional. |
+
+Routing is not an authorization boundary. Keep sensitive tools behind approvals, connection authorization, and route or session controls wherever those tools can run.
