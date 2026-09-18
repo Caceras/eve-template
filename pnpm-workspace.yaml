@@ -13,6 +13,7 @@ allowBuilds:
   "@swc/core": false # Only its pure transform-utils module is vendored (via @workflow/builders); eve never runs SWC.
   braintrust: false # Installs an optional CLI binary; the SDK does not need it.
   bufferutil: false # The package already includes the supported prebuilt bindings.
+  core-js-pure: false # Not needed at runtime; avoids unapproved lifecycle scripts.
   cpu-features: false # Optional ssh2 acceleration; JavaScript fallback is sufficient.
   esbuild: true # Verifies the installed platform binary.
   phase: false # Would install its own Git hooks.
@@ -68,3 +69,12 @@ minimumReleaseAgeExclude:
   - "@vercel/*"
   - "@workflow/*"
   - workflow
+  - "@chat-adapter/gchat@4.41.0"
+  - "@chat-adapter/gmail@4.41.0"
+  - "@chat-adapter/messenger@4.41.0"
+  - "@chat-adapter/shared@4.41.0"
+  - "@chat-adapter/state-memory@4.41.0"
+  - "@chat-adapter/state-redis@4.41.0"
+  - "@chat-adapter/whatsapp@4.41.0"
+  - "@chat-adapter/x@4.41.0"
+  - "chat@4.41.0"

@@ -1230,6 +1230,54 @@ See the [Email (Resend) adapter documentation](https://chat-sdk.dev/adapters/ven
       },
     ],
   },
+  "chat-sdk-gmail": {
+    logo: "gmail",
+    docsHref: "/docs/channels/chat-sdk",
+    badge: "Chat SDK",
+    keywords: ["chat sdk", "gmail", "email", "google workspace", "pubsub", "oauth"],
+    install: `Add this Chat SDK channel from eve's registry. This writes \`agent/channels/gmail.ts\` and installs Chat SDK and its adapter dependencies:
+
+\`\`\`bash
+eve add channel/chat-sdk-gmail
+\`\`\``,
+    quickStart: `Create \`agent/channels/gmail.ts\`:
+
+\`\`\`ts
+// agent/channels/gmail.ts
+import { createGmailAdapter } from "@chat-adapter/gmail";
+import { createRedisState } from "@chat-adapter/state-redis";
+import type { Message, Thread } from "chat";
+import { chatSdkChannel } from "eve/channels/chat-sdk";
+
+export const gmail = createGmailAdapter();
+
+export const { bot, channel, send } = chatSdkChannel({
+  userName: "My Agent",
+  adapters: { gmail },
+  state: createRedisState({ keyPrefix: "gmail-agent" }),
+  // Gmail sends email once and cannot edit an in-progress response.
+  streaming: false,
+});
+
+bot.onNewMention(async (thread: Thread, message: Message) => {
+  await thread.subscribe();
+  await send(message.text, { thread });
+});
+
+bot.onSubscribedMessage(async (thread: Thread, message: Message) => {
+  await send(message.text, { thread });
+});
+
+await bot.initialize();
+
+export default channel;
+\`\`\`
+
+Gmail receives only messages with the configured handoff label. Responses are sent after the turn completes because email cannot edit an in-progress response. The registry installs Redis-backed state so Gmail's cursor, delivery receipts, and lock survive serverless invocations. See the [Gmail adapter documentation](https://chat-sdk.dev/adapters/official/gmail) for credentials, label selection, and delivery semantics.`,
+    configure: `Enable the Gmail API and Pub/Sub, then configure user-context OAuth for the mailbox, an authenticated wrapped Pub/Sub push subscription, and a Gmail handoff-label ID. Set \`GMAIL_MAILBOX\`, \`GMAIL_LABEL_ID\`, \`GMAIL_CLIENT_ID\`, \`GMAIL_CLIENT_SECRET\`, \`GMAIL_REFRESH_TOKEN\`, \`GMAIL_PUBSUB_AUDIENCE\`, \`GMAIL_PUBSUB_SERVICE_ACCOUNT_EMAIL\`, \`GMAIL_SUBSCRIPTION\`, and \`GMAIL_TOPIC_NAME\`. Set \`REDIS_URL\` to a durable Redis connection URL; Upstash REST credentials are not compatible with this adapter. The adapter mounts its authenticated Pub/Sub webhook at \`/eve/v1/gmail\`.
+
+The registry also writes \`agent/schedules/gmail-maintenance.ts\`, which runs \`gmail.watch()\` before \`gmail.sync()\` daily. The ordered job registers or renews Gmail's watch, then catches up its saved cursor without a first-run race. Vercel deploys authored schedules as UTC Cron Jobs; adjust the cadence for your host and plan. See the [Gmail adapter setup guide](https://chat-sdk.dev/adapters/official/gmail#setup) for Google Cloud, Pub/Sub, OAuth scopes, and watch-renewal requirements.`,
+  },
 };
 const baseExtensionPresentations: Record<string, ExtensionPresentation> = {
   blitzreels: {
