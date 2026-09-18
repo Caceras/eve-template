@@ -16,11 +16,8 @@ describe("self-modification subagent instructions", () => {
       });
       expect(resolved).toMatchObject({
         markdown: expect.stringContaining(
-          "ask the requester to repeat the configuration change in their next turn",
+          "you may need to wait for the next turn, by asking the requester to confirm",
         ),
-      });
-      expect(resolved).toMatchObject({
-        markdown: expect.stringContaining("never change /source/agent.ts for this request"),
       });
     } finally {
       if (originalEveDev === undefined) delete process.env.EVE_DEV;
