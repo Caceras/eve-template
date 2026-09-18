@@ -62,7 +62,7 @@ import { defaultEveAudience } from "#eve-channel/audience.js";
 import { mergeUploadPolicy } from "#public/channels/upload-policy.js";
 import { defineChannel, DELETE, GET, HEAD, PATCH, POST, PUT } from "#public/definitions/channel.js";
 import { setSessionCallbackAuth } from "#execution/session-callback-request.js";
-import { checkRemoteCallbackPrincipal } from "#eve-channel/remote-callback-policy.js";
+import { authorizeRemoteCallback } from "#eve-channel/remote-callback-policy.js";
 import {
   checkUploadPolicy,
   createSessionStreamResponse,
@@ -168,7 +168,12 @@ export function eveChannel(input: EveChannelInput): EveChannel {
 
         const body = parseCreateBody(payload);
         if (body instanceof Response) return body;
-        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        const callbackRejection = await authorizeRemoteCallback({
+          body,
+          forwarder: authResult,
+          forwarderTrusted: forwarded.accepted,
+          trustedForwarders: input.trustedForwarders,
+        });
         if (callbackRejection !== null) return callbackRejection;
         const forwardedParentSession =
           body.callback === undefined
@@ -176,32 +181,13 @@ export function eveChannel(input: EveChannelInput): EveChannel {
             : readForwardedParentSessionBaggage(req.headers.get("baggage"));
         let parent: SessionParent | undefined;
         if (typeof forwardedParentSession === "object") {
-          if (forwardedParentSession.callId !== body.callback?.callId) {
+          // The caller passed `authorizeRemoteCallback`, so its lineage is trusted.
+          if (forwardedParentSession.callId === body.callback?.callId) {
+            parent = forwardedParentSession;
+          } else {
             log.warn("ignoring remote parent lineage with a mismatched callback", {
               forwarder: authResult.principalId,
             });
-          } else {
-            let accepted = forwarded.accepted;
-            if (!accepted && input.trustedForwarders !== undefined) {
-              try {
-                accepted = await input.trustedForwarders(authResult);
-              } catch (error) {
-                const errorId = logError(log, "trustedForwarders handler failed", error, {
-                  forwarder: authResult.principalId,
-                });
-                return Response.json(
-                  { error: "trustedForwarders handler failed.", errorId, ok: false },
-                  { status: 500 },
-                );
-              }
-            }
-            if (accepted) {
-              parent = forwardedParentSession;
-            } else {
-              log.warn("ignoring remote parent lineage from an untrusted forwarder", {
-                forwarder: authResult.principalId,
-              });
-            }
           }
         } else if (forwardedParentSession === "malformed") {
           log.warn("ignoring malformed remote parent lineage", {
@@ -374,7 +360,12 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         if (forwarded instanceof Response) return forwarded;
         const body = parseSessionMessageBody(payload);
         if (body instanceof Response) return body;
-        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        const callbackRejection = await authorizeRemoteCallback({
+          body,
+          forwarder: authResult,
+          forwarderTrusted: forwarded.accepted,
+          trustedForwarders: input.trustedForwarders,
+        });
         if (callbackRejection !== null) return callbackRejection;
 
         const policyRejection = checkUploadPolicy(body, uploadPolicy);

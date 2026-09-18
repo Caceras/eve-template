@@ -1,50 +1,91 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionAuthContext } from "#channel/types.js";
-import { checkRemoteCallbackPrincipal } from "#eve-channel/remote-callback-policy.js";
+import { authorizeRemoteCallback } from "#eve-channel/remote-callback-policy.js";
 
-function principal(principalType: string): SessionAuthContext {
-  return { attributes: {}, authenticator: "test", principalId: "p-1", principalType };
+const forwarder: SessionAuthContext = {
+  attributes: {},
+  authenticator: "test",
+  principalId: "router",
+  principalType: "service",
+};
+
+function authorize(input: {
+  body?: { activityObserver?: unknown; callback?: unknown };
+  forwarderTrusted?: boolean;
+  trustedForwarders?: (forwarder: SessionAuthContext) => boolean | Promise<boolean>;
+}) {
+  return authorizeRemoteCallback({
+    body: input.body ?? { callback: {} },
+    forwarder,
+    forwarderTrusted: input.forwarderTrusted ?? false,
+    trustedForwarders: input.trustedForwarders,
+  });
 }
 
-describe("checkRemoteCallbackPrincipal", () => {
+describe("authorizeRemoteCallback", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("ignores requests without remote callback work", () => {
-    expect(checkRemoteCallbackPrincipal({}, principal("anonymous"))).toBeNull();
-    expect(
-      checkRemoteCallbackPrincipal({ activityObserver: undefined }, principal("user")),
-    ).toBeNull();
+  it("ignores requests without a callback destination", async () => {
+    await expect(authorize({ body: {} })).resolves.toBeNull();
+    await expect(authorize({ body: {}, trustedForwarders: () => false })).resolves.toBeNull();
   });
 
-  it.each(["service", "runtime"])("accepts callbacks and observers from a %s principal", (type) => {
-    expect(checkRemoteCallbackPrincipal({ callback: {} }, principal(type))).toBeNull();
-    expect(checkRemoteCallbackPrincipal({ activityObserver: {} }, principal(type))).toBeNull();
+  it("rejects callback work when no trustedForwarders policy exists", async () => {
+    const response = await authorize({});
+    expect(response?.status).toBe(403);
+    await expect(response?.json()).resolves.toMatchObject({ ok: false });
+
+    const observer = await authorize({ body: { activityObserver: {} } });
+    expect(observer?.status).toBe(403);
   });
 
-  it.each(["anonymous", "user"])(
-    "rejects callbacks and observers from a %s principal with 400",
-    async (type) => {
-      const callback = checkRemoteCallbackPrincipal({ callback: {} }, principal(type));
-      expect(callback?.status).toBe(400);
-      await expect(callback?.json()).resolves.toEqual({
-        error: "Remote callbacks require a caller authenticated as a service or runtime principal.",
-        ok: false,
-      });
-      const observer = checkRemoteCallbackPrincipal({ activityObserver: {} }, principal(type));
-      expect(observer?.status).toBe(400);
-    },
-  );
+  it("rejects callers the policy does not accept", async () => {
+    const trustedForwarders = vi.fn(() => false);
+    const response = await authorize({ trustedForwarders });
+    expect(response?.status).toBe(403);
+    await expect(response?.json()).resolves.toEqual({
+      error: "Caller is not authorized to delegate work with a callback to this deployment.",
+      ok: false,
+    });
+    expect(trustedForwarders).toHaveBeenCalledWith(forwarder);
+  });
 
-  it("exempts local eve dev but not eve dev on Vercel", () => {
+  it("accepts callers the policy accepts", async () => {
+    await expect(authorize({ trustedForwarders: () => true })).resolves.toBeNull();
+    await expect(
+      authorize({ body: { activityObserver: {} }, trustedForwarders: async () => true }),
+    ).resolves.toBeNull();
+  });
+
+  it("does not re-evaluate a policy that already trusted the forwarder", async () => {
+    const trustedForwarders = vi.fn(() => false);
+    await expect(authorize({ forwarderTrusted: true, trustedForwarders })).resolves.toBeNull();
+    expect(trustedForwarders).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 without leaking the policy failure", async () => {
+    const response = await authorize({
+      trustedForwarders: () => {
+        throw new Error("secret detail");
+      },
+    });
+    expect(response?.status).toBe(500);
+    const body = (await response?.json()) as { error: string; errorId: string };
+    expect(body.error).toBe("trustedForwarders handler failed.");
+    expect(body.error).not.toContain("secret detail");
+    expect(typeof body.errorId).toBe("string");
+  });
+
+  it("exempts local eve dev outside Vercel only", async () => {
     vi.stubEnv("EVE_DEV", "1");
-    expect(checkRemoteCallbackPrincipal({ callback: {} }, principal("user"))).toBeNull();
-    expect(
-      checkRemoteCallbackPrincipal({ activityObserver: {} }, principal("anonymous")),
-    ).toBeNull();
+    vi.stubEnv("VERCEL", "");
+    await expect(authorize({})).resolves.toBeNull();
+
     vi.stubEnv("VERCEL", "1");
-    expect(checkRemoteCallbackPrincipal({ callback: {} }, principal("user"))?.status).toBe(400);
+    const response = await authorize({});
+    expect(response?.status).toBe(403);
   });
 });
