@@ -2068,7 +2068,6 @@ describe("EveTUIRunner initial input", () => {
     vi.spyOn(client, "info").mockReturnValue(info.promise);
     const startup = {
       finish: vi.fn(() => ({ draft: "typed while loading", queuedPrompt: undefined })),
-      headerTip: "Use the /help command to see every command.",
     };
     const renderer = fakeRenderer();
     const runner = new EveTUIRunner({
@@ -2096,7 +2095,6 @@ describe("EveTUIRunner initial input", () => {
     async (result) => {
       const login = createDeferred<void>();
       const startup = {
-        headerTip: "/help",
         finish: vi.fn(() => ({ draft: "still editing", queuedPrompt: "Hello Alice" })),
       };
       const handle = vi.fn(async () => {
@@ -2137,7 +2135,6 @@ describe("EveTUIRunner initial input", () => {
         draft: "still editing",
         queuedPrompt: "first message\n\nsecond message",
       })),
-      headerTip: "Use the /help command to see every command.",
     };
     const renderer = fakeRenderer();
     const runner = new EveTUIRunner({
