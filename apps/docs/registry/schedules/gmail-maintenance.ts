@@ -6,6 +6,5 @@ export default defineSchedule({
   cron: "0 9 * * *",
   async run() {
     await gmail.watch();
-    await gmail.sync();
   },
 });
