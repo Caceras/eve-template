@@ -200,21 +200,7 @@ When the parent session ends, eve sends an authenticated `POST /eve/v1/session/:
 
 ### Callback authentication
 
-The child authenticates its callbacks with its own identity, not with a secret the parent handed it. Because those credentials go wherever the `callback` or `activityObserver` URL points, the child binds that destination to the caller who nominated it: a `POST /eve/v1/session` or session-message body that carries either field is only accepted when the verified route-auth principal may nominate a callback destination, so credentials never reach a host an unauthorized caller chose. Local `eve dev` servers skip this check.
-
-- **Default (no `trustedForwarders`)**: the caller must be a `service` or `runtime` principal, that is, a verified deployment identity. Other callers get `400 Remote callbacks require a caller authenticated as a service or runtime principal.`
-- **`trustedForwarders` set (recommended)**: the caller must satisfy the policy, which lets you name the specific parents this deployment calls back. Other callers, including other deployments, get `403 Caller is not authorized to nominate a callback destination.`
-
-```ts title="agent/channels/eve.ts"
-import { vercelOidc, vercelSubject } from "eve/channels/auth";
-import { eveChannel } from "eve/channels/eve";
-
-export default eveChannel({
-  auth: [vercelOidc()],
-  trustedForwarders: (forwarder) =>
-    forwarder.subject === vercelSubject({ teamSlug: "acme", projectName: "router" }),
-});
-```
+The child authenticates its callbacks with its own identity, not with a secret the parent handed it. Because those credentials go wherever the `callback` or `activityObserver` URL points, eve only performs callback work for callers that are themselves authenticated as a deployment: a `POST /eve/v1/session` or session-message body that carries either field is accepted only from a `service` or `runtime` principal. Other callers get `400 Remote callbacks require a caller authenticated as a service or runtime principal.` Local `eve dev` servers skip this check.
 
 On Vercel, the child sends its deployment's OIDC token on every HTTPS callback, as both the `Authorization: Bearer` header and the `x-vercel-trusted-oidc-idp-token` header. The parent's `/eve/v1/callback/*` and `/eve/v1/activity/*` routes are authorized by the capability token in the URL; when the parent runs behind [Vercel Deployment Protection](https://vercel.com/docs/deployment-protection), allow the child project with [Trusted Sources](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/trusted-sources) so the trusted-IdP header passes, or verify the bearer token in front of eve the same way `vercelOidc()` does for the eve channel.
 

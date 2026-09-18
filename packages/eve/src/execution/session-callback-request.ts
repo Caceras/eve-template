@@ -93,8 +93,8 @@ async function resolveSessionCallbackHeaders(urlValue: string): Promise<Record<s
   const headers: Record<string, string> = { "content-type": "application/json" };
   // Credentials never travel over plaintext.
   if (URL.parse(urlValue)?.protocol !== "https:") return headers;
-  // Safe to attach credentials: `bindRemoteCallbackToCaller` guarantees this URL
-  // was nominated by an authorized parent, never by an arbitrary HTTPS host.
+  // `checkRemoteCallbackPrincipal` already required the caller who nominated
+  // this URL to be a service or runtime principal.
 
   const auth = callbackAuthRegistry[SESSION_CALLBACK_AUTH] ?? defaultSessionCallbackAuth;
   try {

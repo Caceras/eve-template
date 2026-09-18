@@ -28,9 +28,8 @@ const authenticateLaterParentCaller: AuthFn<Request> = (request) =>
     ? principal("later-parent-caller")
     : null;
 
-// The loopback parent dispatches with a callback. This channel sets no
-// `trustedForwarders`, so eve only accepts that destination from a service or
-// runtime principal.
+// The loopback parent dispatches with a callback, which eve only accepts from
+// service or runtime principals.
 const authenticateRemoteChild: AuthFn<Request> = (request) =>
   request.headers.get("authorization") === REMOTE_CHILD
     ? { ...principal("remote-http-child"), principalType: "service" }

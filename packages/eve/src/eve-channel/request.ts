@@ -7,15 +7,12 @@ import type {
   SessionCapabilities,
   TurnPolicy,
 } from "#channel/types.js";
-import type { TrustedForwarders } from "#channel/forwarded-principal.js";
 import type { Session } from "#channel/session.js";
 import { parseSessionCallback } from "#channel/session-callback.js";
 import {
   parseActivityObserverField,
   validateActivityObserverBinding,
 } from "#eve-channel/activity-observer-request.js";
-import { isEveDevEnvironment } from "#internal/application/dev-environment.js";
-import { createLogger, logError } from "#internal/logging.js";
 import { hasInternalRefScheme } from "#internal/attachments/url-refs.js";
 import {
   EVE_MESSAGE_STREAM_CONTENT_TYPE,
@@ -39,8 +36,6 @@ import { parseJsonObject, type JsonObject } from "#shared/json.js";
 import type { RunMode } from "#shared/run-mode.js";
 import { type ParsedCreateBody, validateMessageFreeCreate } from "#eve-channel/create-request.js";
 
-const log = createLogger("eve.channel.request");
-
 const SESSION_STREAM_HEARTBEAT_MS = 10_000;
 const SESSION_STREAM_LEASE_MS = 60_000;
 
@@ -62,58 +57,6 @@ export async function deriveOperationContinuationToken(input: {
     "",
   );
   return `eve:op:${hex.slice(0, 32)}`;
-}
-
-/**
- * Binds the callback destination a request nominates (`callback`,
- * `activityObserver`) to the verified route-auth caller. This deployment
- * authenticates its callbacks with its own identity, so the destination must
- * come from an authorized parent: with a `trustedForwarders` policy, the
- * caller must satisfy it (403 otherwise); without one, the caller must be a
- * verified deployment identity — a `service` or `runtime` principal (400
- * otherwise). Local `eve dev` is exempt.
- *
- * Invariant: a callback URL reaches `postSessionCallbackRequest` only if it
- * was asserted in a request whose transport caller passed this binding. The
- * destination is therefore always one nominated by an authorized parent, never
- * an arbitrary HTTPS host.
- */
-export async function bindRemoteCallbackToCaller(
-  body: { readonly activityObserver?: unknown; readonly callback?: unknown },
-  auth: SessionAuthContext,
-  trustedForwarders: TrustedForwarders | undefined,
-): Promise<Response | null> {
-  if (body.callback === undefined && body.activityObserver === undefined) return null;
-  if (isEveDevEnvironment() && process.env.VERCEL !== "1") return null;
-
-  if (trustedForwarders === undefined) {
-    if (auth.principalType === "service" || auth.principalType === "runtime") return null;
-    return Response.json(
-      {
-        error: "Remote callbacks require a caller authenticated as a service or runtime principal.",
-        ok: false,
-      },
-      { status: 400 },
-    );
-  }
-
-  let accepted: boolean;
-  try {
-    accepted = await trustedForwarders(auth);
-  } catch (error) {
-    const errorId = logError(log, "trustedForwarders handler failed", error, {
-      forwarder: auth.principalId,
-    });
-    return Response.json(
-      { error: "trustedForwarders handler failed.", errorId, ok: false },
-      { status: 500 },
-    );
-  }
-  if (accepted) return null;
-  return Response.json(
-    { error: "Caller is not authorized to nominate a callback destination.", ok: false },
-    { status: 403 },
-  );
 }
 
 export function parseCreateBody(payload: Record<string, unknown>): ParsedCreateBody | Response {

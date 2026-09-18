@@ -2,4 +2,4 @@
 "eve": patch
 ---
 
-Remote child agents now authenticate completion, progress, and activity callbacks to their parent with their own identity: on Vercel the deployment's OIDC token is sent to any HTTPS callback URL, and `eveChannel({ callbackAuth })` supplies the credential elsewhere. In return, the eve HTTP routes bind the `callback` or `activityObserver` destination to the caller who nominated it: when `trustedForwarders` is set the caller must satisfy it (403 otherwise), and without a policy the caller must be a `service` or `runtime` principal (400 otherwise), except under local `eve dev`.
+Remote child agents now authenticate completion, progress, and activity callbacks with their own identity: on Vercel the deployment's OIDC token is sent to every HTTPS callback URL, and `eveChannel({ callbackAuth })` supplies the credential elsewhere. In return, `POST /eve/v1/session` and session-message bodies carrying `callback` or `activityObserver` are rejected with 400 unless the caller is a `service` or `runtime` principal (local `eve dev` exempt).
