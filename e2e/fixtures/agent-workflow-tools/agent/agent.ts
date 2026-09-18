@@ -64,6 +64,7 @@ function respond(request: MockModelRequest): MockModelResponse | string {
 
   for (const [directive, tool] of [
     ["WORKFLOW-DEPLOY-START", "deploy_service"],
+    ["WORKFLOW-GUARDED-START", "guarded_workflow"],
     ["WORKFLOW-CONFIRM-START", "confirm_deploy"],
     ["WORKFLOW-REPORT-START", "report_deploy"],
     ["WORKFLOW-ESCALATE-START", "escalate_deploy"],

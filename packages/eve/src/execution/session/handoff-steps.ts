@@ -28,7 +28,11 @@ export function isSessionStateIdleForHandoff(sessionState: DurableSessionState):
     "eve.harness.pendingWorkflowInterrupt",
   ];
   if (pendingKeys.some((key) => state?.[key] !== undefined)) return false;
-  for (const key of ["eve.runtime.pendingInputBatches", "eve.runtime.workflowToolRuns"]) {
+  for (const key of [
+    "eve.runtime.pendingInputBatches",
+    "eve.runtime.pendingApprovalCoordinationBatches",
+    "eve.runtime.workflowToolRuns",
+  ]) {
     const value = state?.[key];
     if (value !== undefined && (!Array.isArray(value) || value.length > 0)) return false;
   }

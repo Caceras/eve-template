@@ -1,3 +1,8 @@
+import {
+  appendPendingApprovalCoordinationBatch,
+  promoteApprovedCoordinationBatch,
+  removePendingApprovalCoordinationRequests,
+} from "#harness/approval-coordination.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { BoundaryHookError } from "#shared/boundary-hook-error.js";
 import { GenerationSteering } from "#harness/generation-steering.js";
@@ -205,6 +210,7 @@ import {
 import { resolveFrameworkToolFromUpstreamType } from "#harness/provider-tools.js";
 import {
   createCoordinationRequestFromToolCall,
+  getPendingCoordinationBatch,
   resolvePendingCoordination,
   setPendingCoordinationBatch,
 } from "#harness/coordination.js";
@@ -660,6 +666,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
     });
     session = stepInput.session;
 
+    session = promoteApprovedCoordinationBatch(session);
     const resolvedCoordination = await resolvePendingCoordination({
       emit,
       session,
@@ -843,7 +850,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       };
     }
 
-    const pending = resolvePendingInput({
+    let pending = resolvePendingInput({
       deferMessagesWhileApprovalsPending: config.mode !== "conversation",
       history: resolvedCoordination.messages,
       resolveApprovalKey: resolveApprovalKeyFromTools(responseAuthorizationTools),
@@ -985,6 +992,26 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
           );
         }
       }
+    }
+
+    if ((pending.rejectedActions?.length ?? 0) > 0) {
+      pending = {
+        ...pending,
+        session: removePendingApprovalCoordinationRequests(
+          pending.session,
+          pending.rejectedActions ?? [],
+        ),
+      };
+    }
+
+    pending = { ...pending, session: promoteApprovedCoordinationBatch(pending.session) };
+
+    const promotedCoordination = getPendingCoordinationBatch(pending.session.state) !== undefined;
+    if (promotedCoordination && config.mode !== "conversation") {
+      return {
+        next: null,
+        session: { ...pending.session, history: validateHarnessModelMessages(pending.messages) },
+      };
     }
 
     // --- Turn preamble ------------------------------------------------------
@@ -1145,6 +1172,13 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
     }
 
     messages = [...messages, ...preparedTurnInput];
+
+    if (promotedCoordination) {
+      return {
+        next: null,
+        session: { ...session, history: messages },
+      };
+    }
 
     const createModelMessages = (
       durableMessages: readonly HarnessModelMessage[],
@@ -2706,14 +2740,74 @@ async function handleStepResult(input: {
       };
     }
 
+    const event = {
+      sequence: emissionState.sequence,
+      stepIndex: emissionState.stepIndex,
+      turnId: emissionState.turnId,
+    };
+    const approvalCallIds = new Set(
+      inputRequests
+        .filter((request) => request.kind === "tool-approval")
+        .map((request) => request.action.callId),
+    );
+    const mustWaitForApproval = [...runtimeActions, ...tasks].some((request) =>
+      approvalCallIds.has(request.callId),
+    );
+
+    if (mustWaitForApproval) {
+      let parkedSession = appendPendingApprovalCoordinationBatch({
+        runtimeActions,
+        tasks,
+        event,
+        responseMessages: [],
+        session: { ...baseSession, history: parkedInputHistory },
+      });
+      const responseAuthorizationTools = buildResponseAuthorizationTools({
+        authoredTools: config.tools,
+        context: contextStorage.getStore(),
+      });
+      parkedSession = appendPendingInputBatch({
+        event,
+        requests: inputRequests,
+        responseAuthRequiredRequestIds: approvalRequests
+          .filter((request) => {
+            const approval = responseAuthorizationTools.get(request.action.toolName)?.approval;
+            return (
+              approval !== undefined &&
+              typeof approval !== "function" &&
+              approval.response !== undefined
+            );
+          })
+          .map((request) => request.requestId),
+        responseMessages: pendingResponseMessages,
+        session: parkedSession,
+      });
+
+      if (emit) {
+        await emit(
+          createInputRequestedEvent({
+            requests: inputRequests,
+            sequence: event.sequence,
+            stepIndex: event.stepIndex,
+            turnId: event.turnId,
+          }),
+        );
+        if (config.mode === "conversation") {
+          emissionState = await emitTurnEpilogue(emit, emissionState, config.mode);
+          parkedSession = setHarnessEmissionState(parkedSession, emissionState);
+        }
+      }
+
+      return {
+        next: hasDeferredStepInput(parkedSession) ? runStep : null,
+        session: parkedSession,
+      };
+    }
+
     let parkedSession = setPendingCoordinationBatch({
       runtimeActions,
       tasks,
-      event: {
-        sequence: emissionState.sequence,
-        stepIndex: emissionState.stepIndex,
-        turnId: emissionState.turnId,
-      },
+      event,
       responseMessages: pendingResponseMessages,
       session: { ...baseSession, history: parkedInputHistory },
     });

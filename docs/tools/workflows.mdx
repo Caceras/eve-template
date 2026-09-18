@@ -300,7 +300,9 @@ if (answer === undefined) return { deployed: false, reason: "timed out" };
   normal `turnPolicy`.
 
 Compare the [`approval`](/docs/human-in-the-loop) policy, which gates the call before `execute` runs
-and can only show the model's input. Both compose: `approval` before the run, `ctx.ask` inside it.
+and can only show the model's input. For both blocking and background workflow tools, a pending
+approval prevents the workflow from starting; denying it prevents execution. Both compose:
+`approval` before the run, `ctx.ask` inside it.
 
 ## Delegate work: `ctx.agent`
 
