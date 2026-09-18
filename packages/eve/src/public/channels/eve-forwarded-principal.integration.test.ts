@@ -224,7 +224,10 @@ describe("eveChannel forwarded principal → runtime principal", () => {
     });
     // The audit attribute never enters Connect token-cache keying.
     expect(principalKey(principal)).toBe('["user","slack","slack:U123"]');
-    expect(trustedForwarders).toHaveBeenCalledTimes(1);
+    // Consulted once for the forwarded principal and once to bind the callback
+    // destination; both see the verified transport caller, never the assertion.
+    expect(trustedForwarders).toHaveBeenCalledTimes(2);
+    for (const call of trustedForwarders.mock.calls) expect(call[0]).toEqual(ROUTER_CALLER);
   });
 
   it.each(["eve.audience=public;ceiling=i1", "eve.audience=public"])(

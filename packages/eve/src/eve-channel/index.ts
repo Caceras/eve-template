@@ -63,7 +63,7 @@ import { mergeUploadPolicy } from "#public/channels/upload-policy.js";
 import { defineChannel, DELETE, GET, HEAD, PATCH, POST, PUT } from "#public/definitions/channel.js";
 import { setSessionCallbackAuth } from "#execution/session-callback-request.js";
 import {
-  checkRemoteCallbackPrincipal,
+  bindRemoteCallbackToCaller,
   checkUploadPolicy,
   createSessionStreamResponse,
   deriveOperationContinuationToken,
@@ -168,7 +168,11 @@ export function eveChannel(input: EveChannelInput): EveChannel {
 
         const body = parseCreateBody(payload);
         if (body instanceof Response) return body;
-        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        const callbackRejection = await bindRemoteCallbackToCaller(
+          body,
+          authResult,
+          input.trustedForwarders,
+        );
         if (callbackRejection !== null) return callbackRejection;
         const forwardedParentSession =
           body.callback === undefined
@@ -374,7 +378,11 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         if (forwarded instanceof Response) return forwarded;
         const body = parseSessionMessageBody(payload);
         if (body instanceof Response) return body;
-        const callbackRejection = checkRemoteCallbackPrincipal(body, authResult);
+        const callbackRejection = await bindRemoteCallbackToCaller(
+          body,
+          authResult,
+          input.trustedForwarders,
+        );
         if (callbackRejection !== null) return callbackRejection;
 
         const policyRejection = checkUploadPolicy(body, uploadPolicy);

@@ -200,11 +200,25 @@ When the parent session ends, eve sends an authenticated `POST /eve/v1/session/:
 
 ### Callback authentication
 
-The child authenticates its callbacks with its own identity, not with a secret the parent handed it. In return, the child only accepts remote-callback work from callers that authenticated as a deployment: a `POST /eve/v1/session` or session-message body that carries `callback` or `activityObserver` is rejected with `400 Remote callbacks require a caller authenticated as a service or runtime principal.` unless the route-auth principal is a `service` or `runtime` principal. Local `eve dev` servers skip this check.
+The child authenticates its callbacks with its own identity, not with a secret the parent handed it. Because those credentials go wherever the `callback` or `activityObserver` URL points, the child binds that destination to the caller who nominated it: a `POST /eve/v1/session` or session-message body that carries either field is only accepted when the verified route-auth principal may nominate a callback destination, so credentials never reach a host an unauthorized caller chose. Local `eve dev` servers skip this check.
+
+- **Default (no `trustedForwarders`)**: the caller must be a `service` or `runtime` principal, that is, a verified deployment identity. Other callers get `400 Remote callbacks require a caller authenticated as a service or runtime principal.`
+- **`trustedForwarders` set (recommended)**: the caller must satisfy the policy, which lets you name the specific parents this deployment calls back. Other callers, including other deployments, get `403 Caller is not authorized to nominate a callback destination.`
+
+```ts title="agent/channels/eve.ts"
+import { vercelOidc, vercelSubject } from "eve/channels/auth";
+import { eveChannel } from "eve/channels/eve";
+
+export default eveChannel({
+  auth: [vercelOidc()],
+  trustedForwarders: (forwarder) =>
+    forwarder.subject === vercelSubject({ teamSlug: "acme", projectName: "router" }),
+});
+```
 
 On Vercel, the child sends its deployment's OIDC token on every HTTPS callback, as both the `Authorization: Bearer` header and the `x-vercel-trusted-oidc-idp-token` header. The parent's `/eve/v1/callback/*` and `/eve/v1/activity/*` routes are authorized by the capability token in the URL; when the parent runs behind [Vercel Deployment Protection](https://vercel.com/docs/deployment-protection), allow the child project with [Trusted Sources](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/trusted-sources) so the trusted-IdP header passes, or verify the bearer token in front of eve the same way `vercelOidc()` does for the eve channel.
 
-Outside Vercel, pass `callbackAuth` on the child's eve channel with `bearer()`, `basic()`, or a custom `OutboundAuthFn` from `eve/agents/auth`:
+Outside Vercel, pass `callbackAuth` on the child's eve channel with `bearer()`, `basic()`, or a custom `OutboundAuthFn` from `eve/agents/auth`. Callback credentials are only attached to `https:` callback URLs; if the auth function throws, the callback is sent without credentials and the failure is logged.
 
 ```ts title="agent/channels/eve.ts"
 import { bearer } from "eve/agents/auth";
@@ -215,8 +229,6 @@ export default eveChannel({
   callbackAuth: bearer(() => process.env.PARENT_CALLBACK_TOKEN!),
 });
 ```
-
-Callback credentials are only attached to `https:` callback URLs. If the auth function throws, the callback is sent without credentials and the failure is logged.
 
 A failed _start_ rejects admission before a task receipt is returned. After a remote starts, a terminal failure callback fails the task and notifies the parent with the remote's error (or `REMOTE_AGENT_FAILED` when none is supplied). Terminal callback delivery runs as a durable step on the underlying workflow engine (see [Execution model & durability](../concepts/execution-model-and-durability)). A failed callback POST is rethrown rather than marking the task complete, so the engine retries it.
 

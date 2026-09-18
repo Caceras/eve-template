@@ -289,7 +289,7 @@ describe("eve ID-addressed session routes", () => {
         sessionId: "wrun_A",
       });
       const args = attachRouteSessionCreator(createArgs(), createSession);
-      const trustedForwarders = vi.fn(() => false);
+      const trustedForwarders = vi.fn(() => true);
 
       const response = await route("POST", "/eve/v1/session", {
         auth: service,
@@ -330,19 +330,23 @@ describe("eve ID-addressed session routes", () => {
             : undefined,
         }),
       );
-      expect(trustedForwarders).not.toHaveBeenCalled();
+      // Trace correlation never consults the policy; the single call with a
+      // callback is the callback-destination binding.
+      expect(trustedForwarders).toHaveBeenCalledTimes(callback ? 1 : 0);
     },
   );
 
-  it.each([true, false])(
-    "promotes remote parent lineage only from a trusted forwarder (%s)",
-    async (trusted) => {
+  it.each([
+    ["a trusted forwarder", () => true, true],
+    ["a service principal without a trusted-forwarders policy", undefined, false],
+  ])(
+    "promotes remote parent lineage only from %s",
+    async (_description, trustedForwarders, promoted) => {
       const createSession = vi.fn().mockResolvedValue({
         events: new ReadableStream(),
         sessionId: "wrun_A",
       });
       const args = attachRouteSessionCreator(createArgs(), createSession);
-      const trustedForwarders = vi.fn(() => trusted);
       const parent = {
         callId: "call-1",
         rootSessionId: "root-session",
@@ -366,10 +370,9 @@ describe("eve ID-addressed session routes", () => {
       );
 
       expect(response.status).toBe(202);
-      expect(trustedForwarders).toHaveBeenCalledTimes(1);
       expect(createSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          parent: trusted ? parent : undefined,
+          parent: promoted ? parent : undefined,
         }),
       );
     },
@@ -464,6 +467,127 @@ describe("eve ID-addressed session routes", () => {
 
       expect(response.status).toBe(202);
       expect(createSession).toHaveBeenCalledTimes(1);
+    });
+
+    describe("with a trustedForwarders policy", () => {
+      const policyRejection = {
+        error: "Caller is not authorized to nominate a callback destination.",
+        ok: false,
+      };
+
+      it("accepts a callback from a caller the policy trusts on session creation", async () => {
+        const createSession = vi.fn().mockResolvedValue({
+          events: new ReadableStream(),
+          sessionId: "wrun_A",
+        });
+        const args = attachRouteSessionCreator(createArgs(), createSession);
+        const trustedForwarders = vi.fn(() => true);
+
+        const response = await route("POST", "/eve/v1/session", {
+          auth: () => USER_AUTH,
+          trustedForwarders,
+        })(
+          new Request("https://eve.test/eve/v1/session", {
+            body: JSON.stringify({ callback: CALLBACK, message: "hello" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+          args,
+        );
+
+        expect(response.status).toBe(202);
+        expect(trustedForwarders).toHaveBeenCalledWith(USER_AUTH);
+        expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ callback: CALLBACK }));
+      });
+
+      it("rejects a callback from a service principal the policy refuses with 403", async () => {
+        const createSession = vi.fn();
+        const args = attachRouteSessionCreator(createArgs(), createSession);
+
+        const response = await route("POST", "/eve/v1/session", {
+          auth: service,
+          trustedForwarders: () => false,
+        })(
+          new Request("https://eve.test/eve/v1/session", {
+            body: JSON.stringify({ callback: CALLBACK, message: "hello" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+          args,
+        );
+
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toEqual(policyRejection);
+        expect(createSession).not.toHaveBeenCalled();
+      });
+
+      it("returns 500 when the policy throws on session creation", async () => {
+        const createSession = vi.fn();
+        const args = attachRouteSessionCreator(createArgs(), createSession);
+
+        const response = await route("POST", "/eve/v1/session", {
+          auth: service,
+          trustedForwarders: () => {
+            throw new Error("boom");
+          },
+        })(
+          new Request("https://eve.test/eve/v1/session", {
+            body: JSON.stringify({ callback: CALLBACK, message: "hello" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+          args,
+        );
+
+        expect(response.status).toBe(500);
+        await expect(response.json()).resolves.toEqual({
+          error: "trustedForwarders handler failed.",
+          errorId: expect.any(String),
+          ok: false,
+        });
+        expect(createSession).not.toHaveBeenCalled();
+      });
+
+      it("rejects a callback from a caller the policy refuses on session messages", async () => {
+        const session = createFixedSession();
+
+        const response = await route("POST", "/eve/v1/session/:sessionId", {
+          auth: service,
+          trustedForwarders: () => false,
+        })(
+          new Request("https://eve.test/eve/v1/session/wrun_A", {
+            body: JSON.stringify({ callback: CALLBACK, message: "follow-up" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+          createArgs(session),
+        );
+
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toEqual(policyRejection);
+        expect(session.send).not.toHaveBeenCalled();
+      });
+
+      it("does not consult the policy for callback-free requests", async () => {
+        const session = createFixedSession();
+        const trustedForwarders = vi.fn(() => false);
+
+        const response = await route("POST", "/eve/v1/session/:sessionId", {
+          auth: () => USER_AUTH,
+          trustedForwarders,
+        })(
+          new Request("https://eve.test/eve/v1/session/wrun_A", {
+            body: JSON.stringify({ message: "follow-up" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }),
+          createArgs(session),
+        );
+
+        expect(response.status).toBe(202);
+        expect(trustedForwarders).not.toHaveBeenCalled();
+        expect(session.send).toHaveBeenCalledTimes(1);
+      });
     });
   });
 
