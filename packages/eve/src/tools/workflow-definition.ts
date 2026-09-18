@@ -71,7 +71,7 @@ export interface WorkflowAgentMetadata {
 /** Context capabilities available inside an authored `"use step"` helper. */
 export type WorkflowStepToolContext = Pick<
   ToolContext,
-  "abortSignal" | "callId" | "session" | "toolName" | "getToken" | "requireAuth"
+  "abortSignal" | "callId" | "getSandbox" | "session" | "toolName" | "getToken" | "requireAuth"
 >;
 
 interface WorkflowAgent {
@@ -88,7 +88,7 @@ interface WorkflowAgent {
  */
 export type WorkflowToolContext = Pick<
   ToolContext,
-  "abortSignal" | "callId" | "session" | "toolName" | "getToken" | "requireAuth"
+  "abortSignal" | "callId" | "getSandbox" | "session" | "toolName" | "getToken" | "requireAuth"
 > & {
   /** Invoke an agent by its invocation name. */
   agent: WorkflowAgent;
@@ -106,6 +106,8 @@ export interface BlockingWorkflowToolDefinition<
   TOutput = unknown,
 > extends PublicToolDefinition<TInput, TOutput> {
   readonly [WORKFLOW_TOOL_BRAND]: true;
+  /** Prepare the session sandbox before dispatch and reconnect inside authored steps. */
+  readonly sandbox?: true;
   readonly execution?: never;
   execute(input: TInput, ctx: WorkflowToolContext): Promise<TOutput> | AsyncIterable<TOutput>;
   approval?: Approval<unknown extends TInput ? Record<string, unknown> : TInput>;
@@ -117,6 +119,8 @@ type BackgroundWorkflowToolDefinition<TInput, TOutput> = Omit<
   "execute"
 > & {
   readonly [WORKFLOW_TOOL_BRAND]: true;
+  /** Prepare the session sandbox before dispatch and reconnect inside authored steps. */
+  readonly sandbox?: true;
   execute(
     input: TInput,
     ctx: WorkflowToolContext,

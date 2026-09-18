@@ -117,7 +117,13 @@ async function createPreparedRuntimeTool(
               resultKind: "subagent",
               workflowId,
             }
-          : { workflowId },
+          : {
+              sandbox:
+                definition.behavior?.handling?.kind === "workflow-tool"
+                  ? definition.behavior.handling.sandbox
+                  : undefined,
+              workflowId,
+            },
   };
 }
 
@@ -152,6 +158,7 @@ function prepareToolBehavior(
       kind: "dispatch",
       target: {
         kind: "workflow-tool-call",
+        sandbox: behavior.handling.sandbox,
         workflowId: workflowIdOverride ?? behavior.handling.workflowId,
       },
     };

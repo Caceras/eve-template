@@ -1,3 +1,4 @@
+import { openWorkflowSandboxStep } from "#execution/sandbox/workflow-session-step.js";
 import { getStepMetadata } from "#compiled/@workflow/core/index.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { AuthKey, InitiatorAuthKey, SessionIdKey, SessionKey } from "#context/keys.js";
@@ -39,6 +40,7 @@ export function withWorkflowStepAuthorization(execute: (...args: never[]) => unk
         scope: input.toolName,
         completeAuthorization: completeWorkflowStepAuthorization,
       });
+      let sandbox: ReturnType<typeof openWorkflowSandboxStep> | undefined;
       const ctx = {
         ...buildBaseToolContext({
           toolName: input.toolName,
@@ -46,6 +48,18 @@ export function withWorkflowStepAuthorization(execute: (...args: never[]) => unk
         }),
         agent: () => unavailableInStep("ctx.agent()", "Call ctx.agent() in the workflow body."),
         ask: () => unavailableInStep("ctx.ask()", "Call ctx.ask() in the workflow body."),
+        getSandbox: () => {
+          if (input.sandbox === undefined) {
+            return unavailableInStep(
+              "ctx.getSandbox()",
+              "Set sandbox: true on defineWorkflowTool() to use the session sandbox.",
+            );
+          }
+          return (sandbox ??= openWorkflowSandboxStep({
+            abortSignal: input.abortSignal,
+            reference: input.sandbox,
+          }));
+        },
         getToken: auth.getToken,
         requireAuth: auth.requireAuth,
       };

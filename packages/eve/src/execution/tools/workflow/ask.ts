@@ -1,3 +1,4 @@
+import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
 import { createHook, type Hook } from "#compiled/@workflow/core/index.js";
 
 import type {
@@ -15,6 +16,7 @@ const WORKFLOW_TOOL_RUN_CONTEXT = Symbol.for("eve.workflow-tool-run.context");
 export interface WorkflowToolRunContext {
   readonly from: WorkflowToolRunRef;
   readonly owner: WorkflowToolRunOwner;
+  readonly sandbox?: WorkflowSandboxReferenceData;
 }
 
 type WorkflowToolRunContextCarrier = {

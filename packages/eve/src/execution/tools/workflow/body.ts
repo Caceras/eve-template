@@ -1,3 +1,4 @@
+import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
 import { getWorkflowMetadata } from "#compiled/@workflow/core/index.js";
 
 import type { SessionContext } from "#context/session-context.js";
@@ -23,6 +24,7 @@ export interface WorkflowBodyDefinition {
   readonly callId: string;
   readonly executeInput?: JsonValue;
   readonly input: JsonObject;
+  readonly sandbox?: WorkflowSandboxReferenceData;
   readonly resultKind?: "subagent" | "tool";
   readonly session: SessionContext["session"];
   readonly stepIndex: number;
@@ -59,6 +61,7 @@ export async function executeWorkflowBody(
   attachWorkflowToolRunContext(ctx, {
     from,
     owner: input.owner,
+    sandbox: input.sandbox,
   });
   let reportCount = 0;
 
@@ -153,7 +156,11 @@ function createWorkflowBodyContext(
     ask: (request) => ask(ctx, request),
     abortSignal: signal,
     callId: input.callId,
-    getSandbox: () => unavailable("getSandbox()", "the session sandbox belongs to the turn"),
+    getSandbox: () =>
+      unavailable(
+        "getSandbox()",
+        'pass ctx directly to a "use step" helper and enable sandbox: true',
+      ),
     getSkill: () => unavailable("getSkill()", "skills are read through the session sandbox"),
     getToken: () =>
       unavailable("getToken()", 'pass ctx directly to a "use step" helper to resolve credentials'),

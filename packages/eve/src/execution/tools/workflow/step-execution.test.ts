@@ -1,3 +1,4 @@
+import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withWorkflowStepAuthorization } from "#execution/tools/workflow/step-execution.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
@@ -37,6 +38,11 @@ vi.mock("#internal/workflow/runtime.js", () => ({
       cancel: async () => {},
     }),
   }),
+}));
+
+const openSandbox = vi.hoisted(() => vi.fn());
+vi.mock("#execution/sandbox/workflow-session-step.js", () => ({
+  openWorkflowSandboxStep: openSandbox,
 }));
 
 function context(user = "user-1"): WorkflowStepContext {
@@ -80,6 +86,37 @@ describe("workflow step authorization", () => {
     durable.entries.clear();
   });
   afterEach(() => vi.unstubAllEnvs());
+  it("rejects sandbox access without opt-in before opening a backend", async () => {
+    openSandbox.mockClear();
+    await expect(runStep((ctx) => ctx.getSandbox())).rejects.toMatchObject({ fatal: true });
+    expect(openSandbox).not.toHaveBeenCalled();
+  });
+
+  it("reuses one sandbox handle within a step and forwards only its reconnect record", async () => {
+    const sandbox = mockSandbox();
+    openSandbox.mockResolvedValue(sandbox.session);
+    const input: WorkflowStepContext = {
+      ...context(),
+      sandbox: {
+        compiledArtifactsSource: { kind: "bundled" },
+        nodeId: "root",
+        sessionId: "parent-session",
+        state: null,
+      },
+    };
+    const result = await runStep(async (ctx) => {
+      const first = await ctx.getSandbox();
+      const second = await ctx.getSandbox();
+      expect(second).toBe(first);
+      return first.id;
+    }, input);
+    expect(result).toMatchObject({ kind: "result", output: sandbox.session.id });
+    expect(openSandbox).toHaveBeenCalledExactlyOnceWith({
+      abortSignal: input.abortSignal,
+      reference: input.sandbox,
+    });
+  });
+
   it.each([
     {
       access: (ctx: WorkflowToolContext) => ctx.agents,

@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from "#shared/json.js";
 import type { TaskExecutorBinding } from "#tools/task.js";
 import type { WorkflowToolRunOwner } from "#execution/tools/workflow/messages.js";
 import type { WorkflowAgentMetadata } from "#tools/workflow-definition.js";
+import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
 
 export type WorkflowToolRunSessionContext = SessionContext["session"];
 
@@ -38,6 +39,7 @@ export interface WorkflowToolRunInput {
   readonly input: JsonObject;
   readonly owner: WorkflowToolRunOwner;
   readonly resultKind?: "subagent" | "tool";
+  readonly sandbox?: WorkflowSandboxReferenceData;
   readonly session: WorkflowToolRunSessionContext;
   readonly stepIndex: number;
   readonly toolName: string;
