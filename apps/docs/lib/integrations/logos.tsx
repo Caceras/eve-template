@@ -8,7 +8,6 @@ import {
   SiCoda,
   SiDatadog,
   SiEgnyte,
-  SiGmail,
   SiGooglechat,
   SiResend,
   SiHuggingface,
@@ -606,7 +605,30 @@ export const typefullyLogo = (props: LogoProps) => (
   </svg>
 );
 
-export const gmailLogo = (props: LogoProps) => <SiGmail color="default" {...props} />;
+export const gmailLogo = (props: LogoProps) => (
+  <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M1.827 20.455h3.637v-8.819L.165 7.737v11.055c0 .92.743 1.663 1.662 1.663Z"
+      fill="#4285F4"
+    />
+    <path
+      d="M18.636 20.455h3.637c.92 0 1.663-.743 1.663-1.663V7.737l-5.3 3.899v8.819Z"
+      fill="#34A853"
+    />
+    <path
+      d="M18.636 4.686v6.95l5.3-3.899V5.518c0-2.055-2.345-3.227-3.99-1.991l-1.31 1.159Z"
+      fill="#FBBC04"
+    />
+    <path
+      d="M5.364 11.636v-6.95L12 9.682l6.636-4.996v6.95L12 16.591l-6.636-4.955Z"
+      fill="#EA4335"
+    />
+    <path
+      d="M.165 5.518v2.219l5.199 3.899v-6.95l-1.31-.982C2.408 2.468.165 3.64.165 5.518Z"
+      fill="#C5221F"
+    />
+  </svg>
+);
 
 export const googlechatLogo = (props: LogoProps) => <SiGooglechat color="default" {...props} />;
 
