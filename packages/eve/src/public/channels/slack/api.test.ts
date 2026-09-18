@@ -1044,6 +1044,36 @@ describe("Slack Web API base URL", () => {
     ]);
   });
 
+  it("normalizes the parsed pathname rather than the raw string", () => {
+    expect(resolveSlackApiUrl({ url: "https://sim.example" })).toBe("https://sim.example/");
+    expect(resolveSlackApiUrl({ url: "https://sim.example:8443/nested/api" })).toBe(
+      "https://sim.example:8443/nested/api/",
+    );
+  });
+
+  it("rejects a base URL carrying a query string or fragment", async () => {
+    for (const url of ["https://sim.example/api?fixture=demo", "https://sim.example/api#frag"]) {
+      expect(() => resolveSlackApiUrl({ url })).toThrow(/query string or fragment/);
+      await expect(
+        postSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" }),
+      ).rejects.toThrow(/query string or fragment/);
+      const { thread } = buildSlackBinding({
+        api: { url },
+        botToken: "xoxb-test",
+        channelId: "C01",
+        threadTs: "1700000000.000001",
+        teamId: "T01",
+      });
+      await expect(thread.post({ text: "hi" })).rejects.toThrow(/query string or fragment/);
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a relative base URL", () => {
+    expect(() => resolveSlackApiUrl({ url: "sim.example/api" })).toThrow(/must be absolute/);
+  });
+
   it("falls back to SLACK_API_URL when no url is configured", () => {
     process.env.SLACK_API_URL = "http://localhost:3000/api/slack";
 
@@ -1051,6 +1081,12 @@ describe("Slack Web API base URL", () => {
     expect(resolveSlackApiUrl({ url: "https://sim.example/api/" })).toBe(
       "https://sim.example/api/",
     );
+  });
+
+  it("rejects an invalid SLACK_API_URL the same way", () => {
+    process.env.SLACK_API_URL = "https://env.example/api?fixture=demo";
+
+    expect(() => resolveSlackApiUrl()).toThrow(/query string or fragment/);
   });
 
   it("keeps the default host for every binding call when nothing is configured", async () => {
@@ -1087,7 +1123,6 @@ describe("Slack Web API base URL", () => {
     await thread.startTyping("Thinking...");
     await thread.refresh();
     await slack.request("auth.test", {});
-    await slack.uploadFiles([]);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(requestedUrls(apiFetch)).toEqual([
@@ -1096,6 +1131,44 @@ describe("Slack Web API base URL", () => {
       "https://sim.example/api/assistant.threads.setStatus",
       "https://sim.example/api/conversations.replies",
       "https://sim.example/api/auth.test",
+    ]);
+  });
+
+  it("routes the whole upload handshake through a configured api.url and api.fetch", async () => {
+    const apiFetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "https://sim.example/api/files.getUploadURLExternal") {
+        return Response.json({
+          ok: true,
+          upload_url: "https://sim.example/files/upload/abc",
+          file_id: "F1",
+        });
+      }
+      if (url === "https://sim.example/files/upload/abc") return new Response("OK");
+      return Response.json({ ok: true, files: [{ id: "F1", title: "report.csv" }] });
+    });
+    const { slack } = buildSlackBinding({
+      api: { url: "https://sim.example/api", fetch: apiFetch },
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1700000000.000001",
+      teamId: "T01",
+    });
+
+    const result = await slack.uploadFiles([
+      {
+        data: new TextEncoder().encode("a,b\n1,2\n").buffer as ArrayBuffer,
+        filename: "report.csv",
+        mimeType: "text/csv",
+      },
+    ]);
+
+    expect(result.fileIds).toEqual(["F1"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requestedUrls(apiFetch)).toEqual([
+      "https://sim.example/api/files.getUploadURLExternal",
+      "https://sim.example/files/upload/abc",
+      "https://sim.example/api/files.completeUploadExternal",
     ]);
   });
 

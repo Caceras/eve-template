@@ -528,7 +528,7 @@ export default slackChannel({
 });
 ```
 
-When `api.url` is omitted, eve reads `SLACK_API_URL`, and otherwise uses `https://slack.com/api/`. The value is normalized to a trailing slash, so `https://sim.example/api` and `https://sim.example/api/` both resolve `chat.postMessage` to `https://sim.example/api/chat.postMessage`.
+When `api.url` is omitted, eve reads `SLACK_API_URL`, and otherwise uses `https://slack.com/api/`. The value must be an absolute URL, and its path is normalized to a trailing slash, so `https://sim.example/api` and `https://sim.example/api/` both resolve `chat.postMessage` to `https://sim.example/api/chat.postMessage`. A base URL carrying a query string or fragment is rejected with an error: Slack method names are appended as a path segment, so anything after the path would be dropped along with the path itself.
 
 `api.fetch` supplies the fetch implementation used for those calls, for a test double or an instrumented client:
 

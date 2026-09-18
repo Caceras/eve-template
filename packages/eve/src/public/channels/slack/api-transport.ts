@@ -36,7 +36,8 @@ const DEFAULT_SLACK_API_URL = "https://slack.com/api/";
 export interface SlackApiConfig {
   /**
    * Slack Web API base URL. Falls back to `process.env.SLACK_API_URL`,
-   * then to `https://slack.com/api/`. Normalized to a trailing slash so
+   * then to `https://slack.com/api/`. Must be absolute and carry no query
+   * string or fragment; its path is normalized to a trailing slash so
    * method names resolve as an extra path segment instead of replacing
    * the last one.
    */
@@ -51,13 +52,36 @@ export interface SlackApiConfig {
 /**
  * Resolves the Slack Web API base URL from explicit config, then
  * `SLACK_API_URL`, then Slack's own host. Read at call time so a process
- * that sets the env var after import still picks it up. Always ends in `/`.
+ * that sets the env var after import still picks it up.
+ *
+ * Method names are appended by relative URL resolution, which keeps only
+ * the origin and the directory part of the base. Normalizing the parsed
+ * pathname — rather than the raw string — is what makes `…/api` behave as
+ * `…/api/`, and a query or fragment is rejected because resolution would
+ * silently drop it along with the path it trails.
  */
 export function resolveSlackApiUrl(api?: SlackApiConfig): string {
   const configured = api?.url ?? process.env.SLACK_API_URL;
   const base =
     configured !== undefined && configured.length > 0 ? configured : DEFAULT_SLACK_API_URL;
-  return base.endsWith("/") ? base : `${base}/`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(base);
+  } catch {
+    throw new Error(
+      `Slack API base URL must be absolute, received ${JSON.stringify(base)}. ` +
+        `Set a full URL such as "http://localhost:3000/api/slack".`,
+    );
+  }
+  if (parsed.search !== "" || parsed.hash !== "") {
+    throw new Error(
+      `Slack API base URL must not carry a query string or fragment, received ${JSON.stringify(base)}. ` +
+        `Slack method names are appended as a path segment, so anything after the path would be dropped.`,
+    );
+  }
+  if (!parsed.pathname.endsWith("/")) parsed.pathname = `${parsed.pathname}/`;
+  return parsed.toString();
 }
 
 /**
@@ -94,7 +118,7 @@ export async function callSlackApi(input: {
   readonly body: unknown;
   /**
    * Slack Web API base URL. Falls back to `process.env.SLACK_API_URL`,
-   * then to Slack's own host.
+   * then to Slack's own host. Same constraints as {@link SlackApiConfig.url}.
    */
   readonly apiUrl?: string;
   /** Fetch implementation for this call. Defaults to the global `fetch`. */
@@ -146,7 +170,7 @@ export function createSlackApiOptions(
  * surfaces (`views.open`, the answered-card `chat.update`) whose payloads
  * Slack only accepts as JSON.
  */
-export function postSlackApiJson(input: {
+export async function postSlackApiJson(input: {
   readonly api: SlackApiConfig | undefined;
   readonly body: unknown;
   readonly method: string;
