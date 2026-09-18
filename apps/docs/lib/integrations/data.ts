@@ -1273,14 +1273,27 @@ await bot.initialize();
 export default channel;
 \`\`\`
 
+**Installing or deploying this channel does not start Gmail listening.** After configuring credentials and Pub/Sub, run the maintenance job once as described under [Configure](#configure). Otherwise, registration waits until the first successful daily job.
+
 Gmail receives only messages with the configured handoff label. Responses are sent after the turn completes because email cannot edit an in-progress response. The registry installs Redis-backed state so Gmail's cursor, delivery receipts, and lock survive serverless invocations. See the [Gmail adapter documentation](https://chat-sdk.dev/adapters/official/gmail) for credentials, label selection, and delivery semantics.`,
     configure: `Enable the Gmail API and Pub/Sub, then configure user-context OAuth for the mailbox, an authenticated wrapped Pub/Sub push subscription, and a Gmail handoff-label ID. Set \`GMAIL_MAILBOX\`, \`GMAIL_LABEL_ID\`, \`GMAIL_CLIENT_ID\`, \`GMAIL_CLIENT_SECRET\`, \`GMAIL_REFRESH_TOKEN\`, \`GMAIL_PUBSUB_AUDIENCE\`, \`GMAIL_PUBSUB_SERVICE_ACCOUNT_EMAIL\`, \`GMAIL_SUBSCRIPTION\`, and \`GMAIL_TOPIC_NAME\`. Set \`REDIS_URL\` to a durable Redis connection URL; Upstash REST credentials are not compatible with this adapter. The adapter mounts its authenticated Pub/Sub webhook at \`/eve/v1/gmail\`.
 
 The registry also writes \`agent/schedules/gmail-maintenance.ts\`, which calls \`gmail.watch()\` on a daily \`0 9 * * *\` schedule (09:00 UTC on Vercel) to register or renew Gmail's watch. Adjust the cadence for your host and plan. Incoming Pub/Sub webhooks run synchronization from the saved cursor; the schedule does not process messages. Do not call \`gmail.sync()\` from this schedule or at startup: the generated message handlers use \`send()\`, which requires an active Chat SDK webhook context. Missed changes can be picked up by a later successful webhook, but this scaffold does not provide an independent recovery sync.
 
-After deploying and configuring Pub/Sub, run the maintenance job once before testing inbound email; deployment does not run it automatically. In a linked Vercel project, use \`vercel crons list\` to find the maintenance job's route, then \`vercel crons run <path>\` to trigger it. Confirm the job succeeds in the runtime logs. Otherwise, setup waits until the first scheduled run.
+### Start listening — required after deployment
 
-The first successful \`watch()\` initializes the cursor at registration time; it does not import already-labelled email. Send a new message from another account and apply the handoff label after initialization. Later watch renewals preserve the existing cursor. See the [Gmail adapter setup guide](https://chat-sdk.dev/adapters/official/gmail#setup) for Google Cloud, Pub/Sub, OAuth scopes, and watch-renewal requirements.`,
+**Run the maintenance job once after configuring credentials, deploying, and setting up Pub/Sub.** Installing the channel or deploying the app does not register Gmail's watch. Without this step, registration waits until the first successful daily job.
+
+From your linked Vercel project:
+
+\`\`\`bash
+vercel crons list
+vercel crons run <maintenance-job-path>
+\`\`\`
+
+Replace \`<maintenance-job-path>\` with the Gmail maintenance route listed by the first command. Confirm the job succeeds in Vercel runtime logs before testing email. The job calls \`gmail.watch()\` using the deployed credentials and Redis state; the daily schedule then renews it. You do not need a faster cron schedule to start listening immediately.
+
+**Existing labelled mail is not imported on first setup.** The first successful \`watch()\` initializes the cursor at registration time. Send a new message from another account and apply the handoff label after initialization. Later watch renewals preserve the existing cursor. See the [Gmail adapter setup guide](https://chat-sdk.dev/adapters/official/gmail#setup) for Google Cloud, Pub/Sub, OAuth scopes, and watch-renewal requirements.`,
   },
 };
 const baseExtensionPresentations: Record<string, ExtensionPresentation> = {
