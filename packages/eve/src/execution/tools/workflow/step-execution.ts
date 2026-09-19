@@ -1,7 +1,7 @@
-import { openWorkflowSandboxStep } from "#execution/sandbox/workflow-session-step.js";
+import { createWorkflowSandboxAccess } from "#execution/sandbox/workflow-session-step.js";
 import { getStepMetadata } from "#compiled/@workflow/core/index.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
-import { AuthKey, InitiatorAuthKey, SessionIdKey, SessionKey } from "#context/keys.js";
+import { AuthKey, InitiatorAuthKey, SandboxKey, SessionIdKey, SessionKey } from "#context/keys.js";
 import { isConnectionAuthorizationFailedError } from "#connections/errors.js";
 import {
   isAuthorizationSignal,
@@ -34,13 +34,13 @@ export function withWorkflowStepAuthorization(execute: (...args: never[]) => unk
     context.set(CallbackBaseUrlKey, resolveWorkflowCallbackBaseUrl(input.baseUrl));
     context.setVirtualContext(AuthorizationHookKey, input.token);
     context.setVirtualContext(PendingAuthorizationResultKey, input.authorizationResults);
+    context.setVirtualContext(SandboxKey, createWorkflowSandboxAccess(input));
 
     return contextStorage.run(context, async (): Promise<WorkflowStepResult> => {
       const auth = createAuthorizationContext({
         scope: input.toolName,
         completeAuthorization: completeWorkflowStepAuthorization,
       });
-      let sandbox: ReturnType<typeof openWorkflowSandboxStep> | undefined;
       const ctx = {
         ...buildBaseToolContext({
           toolName: input.toolName,
@@ -48,18 +48,8 @@ export function withWorkflowStepAuthorization(execute: (...args: never[]) => unk
         }),
         agent: () => unavailableInStep("ctx.agent()", "Call ctx.agent() in the workflow body."),
         ask: () => unavailableInStep("ctx.ask()", "Call ctx.ask() in the workflow body."),
-        getSandbox: () => {
-          if (input.run === undefined) {
-            return unavailableInStep(
-              "ctx.getSandbox()",
-              "Pass the workflow context directly to this step.",
-            );
-          }
-          return (sandbox ??= openWorkflowSandboxStep({
-            abortSignal: input.abortSignal,
-            run: input.run,
-          }));
-        },
+        getSkill: () =>
+          unavailableInStep("ctx.getSkill()", "Read skill files through ctx.getSandbox()."),
         getToken: auth.getToken,
         requireAuth: auth.requireAuth,
       };

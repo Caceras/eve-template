@@ -1,59 +1,51 @@
-import { bindSandboxAbortSignal } from "#execution/sandbox/abort-bound-session.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import type { WorkflowToolRunContext } from "#execution/tools/workflow/ask.js";
 import { requestWorkflowSandbox } from "#execution/sandbox/workflow-request.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
-import type { RuntimeSandboxSession, SandboxSession } from "#shared/sandbox-session.js";
+import type { SandboxAccess } from "#sandbox/state.js";
 
-export async function openWorkflowSandboxStep(input: {
+export function createWorkflowSandboxAccess(input: {
   readonly abortSignal: AbortSignal;
-  readonly run: WorkflowToolRunContext;
-}): Promise<RuntimeSandboxSession> {
-  const reference = await requestWorkflowSandbox(input);
-  const bundle = await getCompiledRuntimeAgentBundle({
-    compiledArtifactsSource: reference.compiledArtifactsSource,
-    nodeId: reference.nodeId,
-  });
-  const access = await ensureSandboxAccess({
-    ...reference,
-    ownsSandbox: false,
-    registry: bundle.graph.root.sandboxRegistry,
-  });
-  const sandbox = await access.get();
-  if (sandbox === null) {
-    throw new Error("The sandbox is not available in the current authored runtime context.");
+  readonly run?: WorkflowToolRunContext;
+}): SandboxAccess {
+  let access: Promise<SandboxAccess> | undefined;
+  async function open(): Promise<SandboxAccess> {
+    if (input.run === undefined) {
+      throw Object.assign(
+        new Error(
+          'ctx.getSandbox() is unavailable inside a "use step" function. Pass the workflow context directly to this step.',
+        ),
+        { fatal: true },
+      );
+    }
+    const reference = await requestWorkflowSandbox({ ...input, run: input.run });
+    const bundle = await getCompiledRuntimeAgentBundle({
+      compiledArtifactsSource: reference.compiledArtifactsSource,
+      nodeId: reference.nodeId,
+    });
+    return ensureSandboxAccess({
+      ...reference,
+      ownsSandbox: false,
+      registry: bundle.graph.root.sandboxRegistry,
+    });
   }
-  return bindSandboxAbortSignal(
-    withWorkflowSandboxLifecycle({
-      sandbox,
-    }),
-    input.abortSignal,
-  );
-}
 
-function withWorkflowSandboxLifecycle(input: {
-  readonly sandbox: SandboxSession;
-}): RuntimeSandboxSession {
   return {
-    delete() {
+    async get() {
+      return (await (access ??= open())).get();
+    },
+    async captureState() {
+      return access === undefined
+        ? { initialized: false, session: null }
+        : (await access).captureState();
+    },
+    async delete() {
       throw new Error("sandbox.delete() is not available inside a defineWorkflowTool() step.");
     },
-    id: input.sandbox.id,
-    readBinaryFile: (options) => input.sandbox.readBinaryFile(options),
-    readFile: (options) => input.sandbox.readFile(options),
-    readTextFile: (options) => input.sandbox.readTextFile(options),
-    removePath: (options) => input.sandbox.removePath(options),
-    resolvePath: (path) => input.sandbox.resolvePath(path),
-    run: (options) => input.sandbox.run(options),
-    setNetworkPolicy: (policy) => input.sandbox.setNetworkPolicy(policy),
-    spawn: (options) => input.sandbox.spawn(options),
-    stop() {
+    async stop() {
       throw new Error(
         "sandbox.stop() is unavailable inside a workflow step; the session owns its lifecycle.",
       );
     },
-    writeBinaryFile: (options) => input.sandbox.writeBinaryFile(options),
-    writeFile: (options) => input.sandbox.writeFile(options),
-    writeTextFile: (options) => input.sandbox.writeTextFile(options),
   };
 }

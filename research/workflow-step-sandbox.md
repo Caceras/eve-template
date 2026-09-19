@@ -19,10 +19,10 @@ Use `defineWorkflowTool({ execute })` and pass `ctx` directly to a `"use step"` 
 - A workflow that never calls `getSandbox` does not open a sandbox.
 - On first access in each step, the step requests initialization through its owner inbox. The owning session checks the recorded run, opens or reconnects its sandbox, and persists the updated session checkpoint before returning a serializable reconnect record. Background tasks forward this request through their existing parent delivery path.
 - A durable response stream keyed by the requesting step lets retries reuse the response. Concurrent steps are initialized through the owning session so they share its initialization state. This adds an owner round trip on first access in each step.
-- The existing workflow step context wrapper reconnects the backend and binds operations to the step's abort signal. Repeated calls in one step reuse its handle.
+- Each workflow step binds a lazy `SandboxAccess` under `SandboxKey` and uses the existing tool getter and cancellation wrapper. Calls in one step share access; later steps reconstruct it from the session's saved state.
 - Steps cannot stop or delete the shared sandbox. They consume or kill spawned processes before returning and return serializable results, never live handles or streams.
 - Sandbox expiration and backend failures retain the backend's existing recovery behavior; this change adds no new persistence guarantees.
 
 ## Validation
 
-Runtime integration coverage checks file persistence across a durable sleep and successive steps for blocking and background tools, plus concurrent first accesses, step retries, and a clear failure from the workflow body. Fixture evals exercise the same contract through an agent. CI is required for the fixture evals.
+Runtime integration coverage checks regular tools and workflow steps reading and updating the same sandbox. It also covers durable waits, concurrent first accesses, step retries, and rejected access from the workflow body for blocking and background tools. Fixture evals exercise the same contract through an agent. CI is required for the fixture evals.

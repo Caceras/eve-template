@@ -105,8 +105,9 @@ the build with the missing import in the error.
 
 Call `ctx.getSandbox()` in an authored step to open or reconnect the session sandbox. Both
 blocking and background tools support this accessor without configuration. Workflows that
-never call it do not open a sandbox. Each step reconnects to the same sandbox; files written
-by an earlier step remain available to later steps.
+never call it do not open a sandbox. Regular tools and workflow steps use the same session
+sandbox. Each step reconstructs access from the session's saved state, so files remain available
+across tools and later steps.
 
 ```ts title="agent/tools/read_report.ts"
 import { defineWorkflowTool, type WorkflowStepToolContext } from "eve/tools";

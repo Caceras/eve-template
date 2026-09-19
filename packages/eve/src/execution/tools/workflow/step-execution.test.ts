@@ -2,7 +2,7 @@ import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withWorkflowStepAuthorization } from "#execution/tools/workflow/step-execution.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
-import { AuthKey } from "#context/keys.js";
+import { AuthKey, SandboxKey } from "#context/keys.js";
 import {
   ConnectionAuthorizationRequiredError,
   ConnectionAuthorizationFailedError,
@@ -40,9 +40,9 @@ vi.mock("#internal/workflow/runtime.js", () => ({
   }),
 }));
 
-const openSandbox = vi.hoisted(() => vi.fn());
-vi.mock("#execution/sandbox/workflow-session-step.js", () => ({
-  openWorkflowSandboxStep: openSandbox,
+const requestSandbox = vi.hoisted(() => vi.fn());
+vi.mock("#execution/sandbox/workflow-request.js", () => ({
+  requestWorkflowSandbox: requestSandbox,
 }));
 
 function context(user = "user-1"): WorkflowStepContext {
@@ -86,41 +86,42 @@ describe("workflow step authorization", () => {
     durable.entries.clear();
   });
   afterEach(() => vi.unstubAllEnvs());
-  it("rejects sandbox access without a workflow owner before opening a backend", async () => {
-    openSandbox.mockClear();
-    await expect(runStep((ctx) => ctx.getSandbox())).rejects.toMatchObject({ fatal: true });
-    expect(openSandbox).not.toHaveBeenCalled();
+  it("does not request a sandbox when the step never accesses it", async () => {
+    requestSandbox.mockClear();
+    await expect(runStep(() => "done")).resolves.toMatchObject({ output: "done" });
+    expect(requestSandbox).not.toHaveBeenCalled();
   });
 
-  it("reuses one sandbox handle within a step and forwards its owner identity", async () => {
+  it("rejects sandbox access without a workflow owner before opening a backend", async () => {
+    requestSandbox.mockClear();
+    await expect(runStep((ctx) => ctx.getSandbox())).rejects.toMatchObject({ fatal: true });
+    expect(requestSandbox).not.toHaveBeenCalled();
+  });
+
+  it("uses the context sandbox accessor and binds the tool's cancellation signal", async () => {
     const sandbox = mockSandbox();
-    openSandbox.mockResolvedValue(sandbox.session);
-    const input: WorkflowStepContext = {
-      ...context(),
-      run: {
-        owner: { inbox: "owner-inbox" },
-        from: {
-          callId: "call-1",
-          execution: "blocking" as const,
-          input: {},
-          runId: "run-1",
-          sequence: 0,
-          stepIndex: 0,
-          toolName: "probe",
-          turnId: "turn-1",
-        },
-      },
-    };
+    const run = vi.spyOn(sandbox.session, "run");
+    const controller = new AbortController();
+    const input = { ...context(), abortSignal: controller.signal };
     const result = await runStep(async (ctx) => {
+      contextStorage.getStore()!.setVirtualContext(SandboxKey, sandbox.access);
       const first = await ctx.getSandbox();
       const second = await ctx.getSandbox();
-      expect(second).toBe(first);
+      expect(second.id).toBe(first.id);
+      await first.run({ command: "echo ready" });
       return first.id;
     }, input);
     expect(result).toMatchObject({ kind: "result", output: sandbox.session.id });
-    expect(openSandbox).toHaveBeenCalledExactlyOnceWith({
-      abortSignal: input.abortSignal,
-      run: input.run,
+    const signal = run.mock.calls[0]?.[0].abortSignal;
+    expect(signal?.aborted).toBe(false);
+    controller.abort();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("keeps getSkill unavailable in workflow steps", async () => {
+    await expect(runStep((ctx) => ctx.getSkill("example"))).rejects.toMatchObject({
+      fatal: true,
+      message: expect.stringContaining("ctx.getSkill()"),
     });
   });
 

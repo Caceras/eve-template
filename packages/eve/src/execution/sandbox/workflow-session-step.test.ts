@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { openWorkflowSandboxStep } from "#execution/sandbox/workflow-session-step.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createWorkflowSandboxAccess } from "#execution/sandbox/workflow-session-step.js";
 import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
 
@@ -8,51 +8,75 @@ vi.mock("#execution/sandbox/ensure.js", () => ({ ensureSandboxAccess: mocks.ensu
 vi.mock("#runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: mocks.bundle,
 }));
-
 vi.mock("#execution/sandbox/workflow-request.js", () => ({
   requestWorkflowSandbox: mocks.request,
 }));
 
+const reference: WorkflowSandboxReferenceData = {
+  compiledArtifactsSource: { kind: "bundled" },
+  nodeId: "root",
+  sessionId: "parent-session",
+  state: { initialized: true, session: null },
+};
+const run = {
+  owner: { inbox: "owner-inbox" },
+  from: {
+    callId: "call-1",
+    execution: "blocking" as const,
+    input: {},
+    runId: "run-1",
+    sequence: 0,
+    stepIndex: 0,
+    toolName: "probe",
+    turnId: "turn-1",
+  },
+};
+const registry = { sandbox: null };
+
+function createAccess() {
+  return createWorkflowSandboxAccess({ run, abortSignal: new AbortController().signal });
+}
+
 describe("workflow sandbox access", () => {
-  it("borrows the recorded sandbox, binds cancellation, and forbids lifecycle mutations", async () => {
-    const sandbox = mockSandbox();
-    const run = vi.spyOn(sandbox.session, "run");
-    const stop = vi.fn();
-    const remove = vi.fn();
-    mocks.ensure.mockResolvedValue({ ...sandbox.access, stop, delete: remove });
-    const registry = { sandbox: null };
+  beforeEach(() => {
+    vi.resetAllMocks();
     mocks.bundle.mockResolvedValue({ graph: { root: { sandboxRegistry: registry } } });
-    const reference: WorkflowSandboxReferenceData = {
-      compiledArtifactsSource: { kind: "bundled" },
-      nodeId: "root",
-      sessionId: "parent-session",
-      state: { initialized: true, session: null },
-    };
     mocks.request.mockResolvedValue(reference);
-    const context = {
-      owner: { inbox: "owner-inbox" },
-      from: {
-        callId: "call-1",
-        execution: "blocking" as const,
-        input: {},
-        runId: "run-1",
-        sequence: 0,
-        stepIndex: 0,
-        toolName: "probe",
-        turnId: "turn-1",
-      },
-    };
-    const controller = new AbortController();
-    const handle = await openWorkflowSandboxStep({ run: context, abortSignal: controller.signal });
-    expect(mocks.ensure).toHaveBeenCalledWith({ ...reference, ownsSandbox: false, registry });
-    await handle.run({ command: "echo ready" });
-    const signal = run.mock.calls[0]?.[0].abortSignal;
-    expect(signal?.aborted).toBe(false);
-    controller.abort();
-    expect(signal?.aborted).toBe(true);
-    expect(() => handle.stop()).toThrow("session owns its lifecycle");
-    expect(() => handle.delete()).toThrow("not available");
-    expect(stop).not.toHaveBeenCalled();
-    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("opens lazily and shares access between concurrent callers in one step", async () => {
+    const sandbox = mockSandbox();
+    mocks.ensure.mockResolvedValue(sandbox.access);
+    const access = createAccess();
+    expect(mocks.request).not.toHaveBeenCalled();
+    await access.captureState();
+    expect(mocks.request).not.toHaveBeenCalled();
+    const [first, second] = await Promise.all([access.get(), access.get()]);
+    expect(first).toBe(sandbox.session);
+    expect(second).toBe(first);
+    expect(mocks.request).toHaveBeenCalledOnce();
+    expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({
+      ...reference,
+      ownsSandbox: false,
+      registry,
+    });
+  });
+
+  it("reconstructs access from the owner's state for a new step context", async () => {
+    const sandbox = mockSandbox();
+    mocks.ensure.mockImplementation(async () => ({ ...sandbox.access }));
+    const first = createAccess();
+    const second = createAccess();
+    expect(first).not.toBe(second);
+    expect(await first.get()).toBe(await second.get());
+    expect(mocks.ensure).toHaveBeenCalledTimes(2);
+    for (const [input] of mocks.ensure.mock.calls) expect(input.state).toBe(reference.state);
+  });
+
+  it("leaves sandbox lifecycle mutations with the owning session", async () => {
+    const access = createAccess();
+    await expect(access.stop()).rejects.toThrow("session owns its lifecycle");
+    await expect(access.delete!()).rejects.toThrow("not available");
+    expect(mocks.request).not.toHaveBeenCalled();
   });
 });

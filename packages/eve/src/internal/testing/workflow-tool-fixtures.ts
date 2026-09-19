@@ -213,6 +213,22 @@ export async function sandboxAcrossStepsWorkflow(
   return await inspectSandboxMarkerStep(ctx, marker);
 }
 
+export async function sharedSandboxWorkflow(_input: DeployInput, ctx: WorkflowToolContext) {
+  "use workflow";
+  await appendSharedSandboxStep(ctx);
+  await workflowSleep("10ms");
+  return await appendSharedSandboxStep(ctx);
+}
+
+async function appendSharedSandboxStep(ctx: WorkflowToolContext) {
+  "use step";
+  const sandbox = await ctx.getSandbox();
+  const previous = await sandbox.readTextFile({ path: "shared.txt" });
+  const content = `${previous}|workflow`;
+  await sandbox.writeTextFile({ path: "shared.txt", content });
+  return { id: sandbox.id, content };
+}
+
 export async function recoverSandboxFailureWorkflow(_input: DeployInput, ctx: WorkflowToolContext) {
   "use workflow";
   return await recoverSandboxFailureStep(ctx);
