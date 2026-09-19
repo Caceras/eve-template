@@ -1,95 +1,50 @@
 name: eve-code
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/eve-code-benchmark.yml"
-      - ".github/scripts/resolve-benchmark-request*"
-      - "packages/eve-code/**"
-  issue_comment:
-    types: [created]
   workflow_dispatch:
-    inputs:
-      harness:
-        description: Harness to benchmark on SWE-lean
-        type: choice
-        default: eve-code
-        options: [eve-code, codex, opencode, claude-code, pi, hermes, oracle]
 
-# OIDC alternative: add `id-token: write` here and omit `vercel-token` below
-# after configuring a matching Vercel team OIDC policy.
 permissions:
   contents: read
-  actions: read
-  pull-requests: write
 
 jobs:
-  request:
-    name: Resolve benchmark request
-    if: >-
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'issue_comment' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/benchmark')))
+  model-preflight:
+    name: Model preflight (no benchmarks)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      run: ${{ steps.request.outputs.run }}
-      harness: ${{ steps.request.outputs.harness }}
-      sha: ${{ steps.request.outputs.sha }}
-      pr: ${{ steps.request.outputs.pr }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          persist-credentials: false
-      - id: request
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const { pathToFileURL } = await import('node:url');
-            const { resolveBenchmarkRequest } = await import(pathToFileURL(
-              `${process.env.GITHUB_WORKSPACE}/.github/scripts/resolve-benchmark-request.mjs`).href);
-            const request = await resolveBenchmarkRequest({ github, context });
-            core.setOutput('run', Boolean(request));
-            if (request) for (const [key, value] of Object.entries(request)) core.setOutput(key, value);
-
-  benchmark:
-    name: Benchmark harness
-    needs: request
-    if: needs.request.outputs.run == 'true'
-    concurrency:
-      group: eve-code-${{ needs.request.outputs.pr || github.ref }}-${{ needs.request.outputs.harness }}
-      cancel-in-progress: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    steps:
-      # vercel/eve is public and eve-bench is private; GitHub never lets a public
-      # repository `uses:` a private action, so fetch the pinned runner with a
-      # read-only deploy key and run it as a local action instead.
-      - name: Checkout pinned eve-bench action
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: vercel-labs/eve-bench
-          ref: 336dbe0099b3727c82bd04f5c63fc47b574a420c
-          ssh-key: ${{ secrets.EVE_BENCH_SSH_KEY }}
-          path: .eve-bench-action
-          persist-credentials: false
-      - name: Run selected harness
-        uses: ./.eve-bench-action
-        with:
-          harness: ${{ needs.request.outputs.harness }}
-          agent-repository: vercel/eve
-          agent-path: packages/eve-code
-          agent-ref: ${{ needs.request.outputs.sha }}
-          dataset: swe-lean
-          model: ${{ vars.EVE_CODE_BENCH_MODEL || 'openai/gpt-5.6-terra' }}
-          attempts: "1"
-          concurrency: "4"
-          native-build: "false"
-          baseline-artifact-id: ${{ needs.request.outputs.harness == 'eve-code' && vars.EVE_BENCH_BASELINE_ARTIFACT_ID || '' }}
-          artifact-name: swe-lean-${{ needs.request.outputs.harness }}
-          gateway-key: ${{ secrets.AI_GATEWAY_API_KEY }}
-          github-token: ${{ github.token }}
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-team-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          node-version: "24"
+      - name: Check configured Gateway model
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          MODEL: ${{ vars.EVE_CODE_BENCH_MODEL || 'google/gemini-3.8-flash' }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const key = process.env.AI_GATEWAY_API_KEY;
+          if (!key) throw new Error('AI_GATEWAY_API_KEY is not configured for this workflow.');
+          const model = process.env.MODEL;
+          const response = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
+            method: 'POST',
+            redirect: 'error',
+            signal: AbortSignal.timeout(60_000),
+            headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with only OK.' }], max_tokens: 16 }),
+          });
+          const reader = response.body.getReader();
+          const chunks = [];
+          let bytes = 0;
+          for (;;) {
+            const next = await reader.read();
+            if (next.done) break;
+            bytes += next.value.byteLength;
+            if (bytes > 16_384) { await reader.cancel(); throw new Error('Gateway preflight response exceeded 16 KiB.'); }
+            chunks.push(next.value);
+          }
+          const text = Buffer.concat(chunks).toString('utf8').replaceAll(key, '[REDACTED]');
+          let data;
+          try { data = JSON.parse(text); } catch { data = { error: { message: text.slice(0, 1000) } }; }
+          console.log(JSON.stringify({ model, status: response.status, error: data.error?.message ?? data.error ?? null,
+            reply: data.choices?.[0]?.message?.content ?? null, usage: data.usage ?? null }, null, 2));
+          if (!response.ok) process.exitCode = 1;
+          JS
