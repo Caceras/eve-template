@@ -75,9 +75,9 @@ Complete all edits and registry installations before publication, and call publi
 
 const packagedSubagentGuidance = `## Configure this subagent
 
-Configure this self-modification subagent's model, reasoning, and policy only through its authored mount at /source/extensions/self-modification/extension.ts. If that file exists, read and modify it. If it does not exist, this subagent is the bundled eve development default and is using the default settings: first call registry_add with the exact address eve/self-modification to scaffold the authored mount. This known scaffold does not require search_registry.
+Configure this self-modification subagent's model, reasoning, and policy only through its authored mount. Check /source/extensions/self-modification.ts and /source/extensions/self-modification/extension.ts; modify whichever exists. If neither file exists, this subagent is the bundled eve development default and is using the default settings: first call registry_add with the exact address eve/self-modification to scaffold the authored mount. This known scaffold does not require search_registry.
 
-After registry_add reports successful installation, try to read /source/extensions/self-modification/extension.ts. If it is available, modify it. If it is not yet available, you may need to wait for the next turn, by asking the requester to confirm.`;
+After registry_add reports successful installation, try to read /source/extensions/self-modification.ts and /source/extensions/self-modification/extension.ts. If either is available, modify it. If neither is yet available, you may need to wait for the next turn, by asking the requester to confirm.`;
 
 function readTrace(
   event: unknown,

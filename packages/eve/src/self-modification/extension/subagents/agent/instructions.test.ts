@@ -15,9 +15,7 @@ describe("self-modification subagent instructions", () => {
         ),
       });
       expect(resolved).toMatchObject({
-        markdown: expect.stringContaining(
-          "you may need to wait for the next turn, by asking the requester to confirm",
-        ),
+        markdown: expect.stringContaining("Check /source/extensions/self-modification.ts"),
       });
     } finally {
       if (originalEveDev === undefined) delete process.env.EVE_DEV;
