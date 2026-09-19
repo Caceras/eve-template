@@ -2,4 +2,4 @@
 "eve": patch
 ---
 
-`/login` now connects a Vercel account or AI Gateway key to an agent whose `model` is a gateway SDK call (such as `gateway(...)`) without trying to rewrite `agent.ts`. Previously the failed source edit discarded the connection and returned to the connection picker, leaving the agent unusable.
+`/login` now works for agents whose `model` is a gateway SDK call such as `gateway("anthropic/claude-sonnet-5")`. In `eve dev`, a gateway-routed model instance is served through the connection saved by `/login` (Vercel account, AI Gateway key, or project), the same way a string model id is, and `/login` no longer tries to rewrite `agent.ts` for it. Previously the failed source edit sent you back to the connection picker after every sign-in.
