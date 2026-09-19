@@ -9,7 +9,6 @@ export interface WorkflowToolHarnessDefinitionInput {
   readonly definition: HarnessToolDefinition;
   readonly executeInput?: (input: unknown) => JsonValue;
   readonly nodeId?: string;
-  readonly sandbox?: true;
   readonly resultKind?: "subagent" | "tool";
   readonly workflowId: string;
 }
@@ -22,7 +21,6 @@ export function createWorkflowToolHarnessDefinition(
     executeInput: input.executeInput,
     nodeId: input.nodeId,
     resultKind: input.resultKind,
-    sandbox: input.sandbox,
     workflowId: input.workflowId,
   };
   if (definition.execution !== "background") {
@@ -60,7 +58,6 @@ export function createPreparedWorkflowToolHarnessDefinition(
     },
     nodeId: tool.task.nodeId,
     resultKind: tool.task.resultKind,
-    sandbox: tool.task.sandbox,
     workflowId: tool.task.workflowId,
   };
   return createWorkflowToolHarnessDefinition(input);

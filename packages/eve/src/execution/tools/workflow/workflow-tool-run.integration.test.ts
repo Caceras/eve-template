@@ -18,6 +18,7 @@ import {
   holdUntilAbortedWorkflow,
   reportingDeployWorkflow,
   sandboxAcrossStepsWorkflow,
+  concurrentSandboxWorkflow,
   sandboxFromWorkflowBodyWorkflow,
   stepThenRaceWorkflow,
   stepReferenceWorkflow,
@@ -84,7 +85,6 @@ async function createWorkflowToolRuntime(input: {
   readonly background?: boolean;
   readonly execute: (...args: never[]) => unknown;
   readonly inputSchema?: ResolvedToolDefinition["inputSchema"];
-  readonly sandbox?: true;
   readonly toolName: string;
 }): Promise<TestRuntime> {
   return await createTestRuntime({
@@ -96,7 +96,6 @@ async function createWorkflowToolRuntime(input: {
           default: defineWorkflowTool({
             approval: input.approval,
             execution: input.background === true ? "background" : undefined,
-            sandbox: input.sandbox,
             description: `Deploys a service (${input.toolName}).`,
             execute: input.execute as BlockingWorkflowToolDefinition["execute"],
             inputSchema: serializeInputSchema(input.inputSchema ?? DEPLOY_INPUT_SCHEMA) ?? {},
@@ -535,11 +534,10 @@ describe("workflow tools", () => {
     expect(output).toContain("Attempt 1.");
   });
 
-  it("reattaches an opted-in sandbox across workflow steps", async () => {
+  it("reattaches the session sandbox across workflow steps", async () => {
     const runtime = await createWorkflowToolRuntime({
       agentName: "workflow-tool-sandbox",
       execute: sandboxAcrossStepsWorkflow,
-      sandbox: true,
       toolName: "sandbox_probe",
     });
 
@@ -564,11 +562,56 @@ describe("workflow tools", () => {
     expect(output).toContain('"processExitCode":0');
   });
 
+  it.each([false, true])(
+    "initializes the sandbox once across concurrent steps and retries (background=%s)",
+    async (background) => {
+      const runtime = await createWorkflowToolRuntime({
+        agentName: "workflow-lazy-sandbox",
+        background,
+        execute: concurrentSandboxWorkflow,
+        toolName: "sandbox_probe",
+      });
+      await runtime.run(async () => {
+        const bundle = await getCompiledRuntimeAgentBundle({
+          compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
+        });
+        const initialized = vi.fn(async () => {});
+        Object.assign(bundle.graph.root.sandboxRegistry.sandbox!.definition, {
+          onSession: initialized,
+        });
+        const run = await start(workflowEntry, [
+          {
+            kind: "initial",
+            ownerDeploymentId: "dpl_inline",
+            input: { message: 'Run sandbox_probe with service "api"' },
+            serializedContext: buildSerializedContext({
+              continuationToken: "http:concurrent-sandbox",
+              mode: "conversation",
+            }),
+          },
+        ]);
+        const stream = captureTurnEvents(run);
+        try {
+          let text = "";
+          for (let turn = 0; turn < 4 && !text.includes("sameSandbox"); turn++)
+            text += eventsText(await stream.nextTurn());
+          expect(text).toContain("sameSandbox");
+          expect(text).toMatch(/sameSandbox[\\"\s:]+true/u);
+          expect(text).toMatch(/attempt[\\"\s:]+2/u);
+          expect(initialized).toHaveBeenCalledTimes(1);
+        } finally {
+          stream.dispose();
+          await run.cancel();
+        }
+      });
+    },
+    60_000,
+  );
+
   it("rejects sandbox access from the workflow body", async () => {
     const runtime = await createWorkflowToolRuntime({
       agentName: "workflow-tool-sandbox-body",
       execute: sandboxFromWorkflowBodyWorkflow,
-      sandbox: true,
       toolName: "sandbox_probe",
     });
 
@@ -591,33 +634,6 @@ describe("workflow tools", () => {
     expect(output).toContain("ctx.getSandbox() is not available inside a workflow tool");
   });
 
-  it("requires sandbox opt-in before a workflow step can access it", async () => {
-    const runtime = await createWorkflowToolRuntime({
-      agentName: "workflow-tool-sandbox-unopted",
-      execute: sandboxAcrossStepsWorkflow,
-      toolName: "sandbox_probe",
-    });
-
-    const output = await runtime.run(async () => {
-      const run = await start(workflowEntry, [
-        {
-          kind: "initial",
-          ownerDeploymentId: "dpl_inline",
-          input: { message: 'Run sandbox_probe with service "api"' },
-          serializedContext: buildSerializedContext({
-            continuationToken: "schedule:workflow-tool-sandbox-unopted",
-            mode: "task",
-          }),
-        },
-      ]);
-      const result = await run.returnValue;
-      return String(result.output);
-    });
-
-    expect(output).toContain(
-      "Set sandbox: true on defineWorkflowTool() to use the session sandbox.",
-    );
-  });
   it.each(
     [
       { background: false, decision: "approve" },
@@ -636,7 +652,6 @@ describe("workflow tools", () => {
         agentName: "workflow-tool-approval",
         approval: always(),
         background,
-        sandbox: sandbox ? true : undefined,
         execute: sandbox ? sandboxAcrossStepsWorkflow : deployServiceWorkflow,
         toolName: "deploy_service",
       });
@@ -700,6 +715,7 @@ describe("workflow tools", () => {
           expect(filterEventsByType(completed, "turn.failed")).toEqual([]);
           expect(completed.at(-1)?.type).toBe("session.waiting");
           if (sandbox) expect(provision).toHaveBeenCalled();
+          else expect(provision).not.toHaveBeenCalled();
           if (!background) {
             expect(JSON.stringify(completed)).toContain(
               sandbox ? "workflow-sandbox:api" : "plan:api",
@@ -818,11 +834,10 @@ describe("workflow tools", () => {
     });
   }, 60_000);
 
-  it("reattaches an opted-in sandbox for a background workflow tool", async () => {
+  it("reattaches the session sandbox for a background workflow tool", async () => {
     const runtime = await createWorkflowToolRuntime({
       agentName: "workflow-tool-background-sandbox",
       execute: sandboxAcrossStepsWorkflow,
-      sandbox: true,
       toolName: "sandbox_probe",
     });
 

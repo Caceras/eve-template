@@ -1,3 +1,7 @@
+import {
+  prepareWorkflowSandboxStep,
+  respondWorkflowSandboxStep,
+} from "#execution/sandbox/workflow-owner-step.js";
 import type { DeliverHookPayload, DeliverPayload } from "#channel/types.js";
 import { coalesceDeliverPayloads } from "#execution/deliver-payloads.js";
 import type { DurableSessionState } from "#execution/durable-session-store.js";
@@ -51,6 +55,18 @@ export async function routeDeliverToChildren(input: {
     });
     serializedContext = emitted.serializedContext;
     sessionState = emitted.sessionState;
+  }
+
+  for (const delivery of payload.task?.sandboxRequests ?? []) {
+    const prepared = await prepareWorkflowSandboxStep({
+      ...delivery,
+      serializedContext,
+      sessionState,
+    });
+    sessionState = prepared.sessionState;
+    if (prepared.response !== undefined) {
+      await respondWorkflowSandboxStep({ message: delivery.message, response: prepared.response });
+    }
   }
 
   for (const request of payload.task?.agentRequests ?? []) {

@@ -473,7 +473,6 @@ export function createCoordinationRequestFromToolCall(input: {
         input: inputObject,
         kind: "workflow-task",
         resultKind: definition.resultKind,
-        sandbox: definition.sandbox,
         toolName: input.toolCall.toolName,
         workflowId: definition.workflowId,
       },

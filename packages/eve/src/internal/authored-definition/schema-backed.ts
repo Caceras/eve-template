@@ -42,7 +42,6 @@ type NormalizedAuthoredTool = Readonly<
     readonly hasExecute: boolean;
     readonly hasModelOutputProjection: boolean;
     readonly workflowProgram?: WorkflowProgramOptions;
-    readonly sandbox?: true;
   }
 >;
 type MutableNormalizedAuthoredTool = {
@@ -97,8 +96,7 @@ export function normalizeToolDefinition(value: unknown, message: string): Normal
 
   const record = expectObjectRecord(value, message);
   const workflowId = readWorkflowFunctionId(record.execute);
-  const isWorkflowTool = isWorkflowToolDefinition(value);
-  if (isWorkflowTool) {
+  if (isWorkflowToolDefinition(value)) {
     if (workflowId === undefined) {
       throw new Error(
         `${message} defineWorkflowTool() requires a compiled workflow executor. Start execute with "use workflow" and export defineWorkflowTool() as the default export of a static tool module.`,
@@ -123,13 +121,9 @@ export function normalizeToolDefinition(value: unknown, message: string): Normal
       "approvalKey",
       "outputSchema",
       "toModelOutput",
-      ...(isWorkflowTool ? ["sandbox"] : []),
     ],
     message,
   );
-  if (record.sandbox !== undefined && record.sandbox !== true) {
-    throw new Error(`${message} Expected "sandbox" to be true.`);
-  }
   const inputSchema =
     record.inputSchema === undefined
       ? null
@@ -177,9 +171,6 @@ export function normalizeToolDefinition(value: unknown, message: string): Normal
   }
   if (outputSchema !== undefined) {
     definition.outputSchema = outputSchema;
-  }
-  if (record.sandbox === true) {
-    definition.sandbox = true;
   }
 
   /*

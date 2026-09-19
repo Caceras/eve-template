@@ -6,7 +6,6 @@ import type { AgentView } from "#subagents/handles/prompt.js";
 import type { JsonValue } from "#shared/json.js";
 
 export interface BackgroundExecutableTool {
-  readonly sandbox?: true;
   readonly label?: InternalToolLabelDefinition;
   readonly execute: (input: unknown, options: ToolExecuteOptions, task: TaskExec) => unknown;
   readonly executeInput?: (input: unknown) => JsonValue;

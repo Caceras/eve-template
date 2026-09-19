@@ -49,15 +49,15 @@ export function withWorkflowStepAuthorization(execute: (...args: never[]) => unk
         agent: () => unavailableInStep("ctx.agent()", "Call ctx.agent() in the workflow body."),
         ask: () => unavailableInStep("ctx.ask()", "Call ctx.ask() in the workflow body."),
         getSandbox: () => {
-          if (input.sandbox === undefined) {
+          if (input.run === undefined) {
             return unavailableInStep(
               "ctx.getSandbox()",
-              "Set sandbox: true on defineWorkflowTool() to use the session sandbox.",
+              "Pass the workflow context directly to this step.",
             );
           }
           return (sandbox ??= openWorkflowSandboxStep({
             abortSignal: input.abortSignal,
-            reference: input.sandbox,
+            run: input.run,
           }));
         },
         getToken: auth.getToken,

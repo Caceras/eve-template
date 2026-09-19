@@ -1,3 +1,7 @@
+import {
+  prepareWorkflowSandboxStep,
+  respondWorkflowSandboxStep,
+} from "#execution/sandbox/workflow-owner-step.js";
 import { emitWorkflowToolRunReportStep } from "#execution/tools/workflow/emit-workflow-tool-run-report-step.js";
 import type {
   WorkflowToolRunMessage,
@@ -124,6 +128,18 @@ async function handleWorkflowToolRunRequest(
   input: HandlerInput<WorkflowToolRunRequestMessage>,
 ): Promise<void> {
   const { cursor, message } = input;
+  if (message.request.kind === "sandbox-request") {
+    const prepared = await prepareWorkflowSandboxStep({
+      message,
+      serializedContext: cursor.serializedContext,
+      sessionState: cursor.sessionState,
+    });
+    await cursor.apply({ sessionState: prepared.sessionState });
+    if (prepared.response !== undefined) {
+      await respondWorkflowSandboxStep({ message, response: prepared.response });
+    }
+    return;
+  }
   if (message.request.kind === "agent-invoke" || message.request.kind === "agent-settled") {
     const recorded = findWorkflowToolRun(
       cursor.sessionState.snapshot.session.state,

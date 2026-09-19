@@ -7,6 +7,7 @@ import {
   appendTaskViewStep,
   deliverTaskInputResponsesStep,
   wakeTaskAgentRequestParentStep,
+  wakeTaskSandboxRequestParentStep,
   wakeTaskAuthorizationParentStep,
   wakeTaskMessageParentStep,
   wakeTaskParentStep,
@@ -150,7 +151,12 @@ export async function taskRunWorkflow(input: TaskRunWorkflowInput): Promise<void
       }
       const request = message;
       const kind = request.request.kind;
-      if (kind === "agent-invoke" || kind === "agent-settled" || kind === "authorization-request") {
+      if (
+        kind === "sandbox-request" ||
+        kind === "agent-invoke" ||
+        kind === "agent-settled" ||
+        kind === "authorization-request"
+      ) {
         await handleOwnerRequest(request);
         continue;
       }
@@ -342,6 +348,14 @@ export async function taskRunWorkflow(input: TaskRunWorkflowInput): Promise<void
     if (request.kind === "authorization-request") {
       await wakeTaskAuthorizationParentStep({
         request,
+        taskId: view.taskId,
+        token: input.parentContinuationToken,
+      });
+      return;
+    }
+    if (request.kind === "sandbox-request") {
+      await wakeTaskSandboxRequestParentStep({
+        message,
         taskId: view.taskId,
         token: input.parentContinuationToken,
       });

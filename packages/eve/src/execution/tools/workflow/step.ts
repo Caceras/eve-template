@@ -126,7 +126,7 @@ async function invokeAuthorizedStep(input: {
   const { args, authorizationResults, callbackToken, ctx, execute, receiver } = input;
   const context: WorkflowStepContext = {
     callId: ctx.callId,
-    sandbox: input.run.sandbox,
+    run: input.run,
     toolName: ctx.toolName,
     session: ctx.session,
     abortSignal: ctx.abortSignal,

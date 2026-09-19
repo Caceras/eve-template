@@ -61,7 +61,7 @@ const result = await sandbox.run({ command: "npm test" });
 
 The accessor is asynchronous because eve may need to bind or restore the sandbox. A subagent sees its own sandbox, not its parent's. The returned handle also exposes `stop()` and `delete()`; see [Sandbox lifecycle](../sandbox#lifecycle) for their behavior.
 
-For `defineWorkflowTool`, set `sandbox: true` and call `ctx.getSandbox()` inside a `"use step"`
+For `defineWorkflowTool`, call `ctx.getSandbox()` inside a `"use step"`
 helper. Pass `ctx` directly to that helper. Workflow steps cannot stop or delete the session
 sandbox. See [Workflow sandbox access](../tools/workflows#access-the-session-sandbox-from-a-step).
 

@@ -3,10 +3,14 @@ import { openWorkflowSandboxStep } from "#execution/sandbox/workflow-session-ste
 import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
 
-const mocks = vi.hoisted(() => ({ ensure: vi.fn(), bundle: vi.fn() }));
+const mocks = vi.hoisted(() => ({ ensure: vi.fn(), bundle: vi.fn(), request: vi.fn() }));
 vi.mock("#execution/sandbox/ensure.js", () => ({ ensureSandboxAccess: mocks.ensure }));
 vi.mock("#runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: mocks.bundle,
+}));
+
+vi.mock("#execution/sandbox/workflow-request.js", () => ({
+  requestWorkflowSandbox: mocks.request,
 }));
 
 describe("workflow sandbox access", () => {
@@ -24,8 +28,22 @@ describe("workflow sandbox access", () => {
       sessionId: "parent-session",
       state: { initialized: true, session: null },
     };
+    mocks.request.mockResolvedValue(reference);
+    const context = {
+      owner: { inbox: "owner-inbox" },
+      from: {
+        callId: "call-1",
+        execution: "blocking" as const,
+        input: {},
+        runId: "run-1",
+        sequence: 0,
+        stepIndex: 0,
+        toolName: "probe",
+        turnId: "turn-1",
+      },
+    };
     const controller = new AbortController();
-    const handle = await openWorkflowSandboxStep({ reference, abortSignal: controller.signal });
+    const handle = await openWorkflowSandboxStep({ run: context, abortSignal: controller.signal });
     expect(mocks.ensure).toHaveBeenCalledWith({ ...reference, ownsSandbox: false, registry });
     await handle.run({ command: "echo ready" });
     const signal = run.mock.calls[0]?.[0].abortSignal;

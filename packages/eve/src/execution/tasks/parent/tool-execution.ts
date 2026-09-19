@@ -1,4 +1,3 @@
-import { captureWorkflowSandboxReference } from "#execution/sandbox/workflow-reference.js";
 import type { ContextContainer } from "#context/container.js";
 import { loadContext } from "#context/container.js";
 import { ActivityObserverKey } from "#context/keys.js";
@@ -514,10 +513,6 @@ class BackgroundToolExecutionScope implements BackgroundToolExecutor {
         };
       }
     }
-    const sandbox =
-      workflow.sandbox === true
-        ? await captureWorkflowSandboxReference({ ctx: input.ctx, session: this.initialSession })
-        : undefined;
     await startTaskRun({
       activityObserver: taskInput.activityObserver,
       initialView: { metadata: task.metadata, status: "working", taskId: task.taskId },
@@ -525,7 +520,6 @@ class BackgroundToolExecutionScope implements BackgroundToolExecutor {
       taskInboxToken: task.taskInboxToken,
       workflow: {
         agents: resolveWorkflowAgentMetadata(input.ctx),
-        sandbox,
         callId: taskInput.callId,
         executeInput: workflow.executeInput?.(workflowInput),
         input: workflowInput,

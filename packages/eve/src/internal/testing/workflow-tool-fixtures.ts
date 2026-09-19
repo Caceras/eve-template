@@ -215,6 +215,30 @@ export async function sandboxAcrossStepsWorkflow(
   return await inspectSandboxMarkerStep(ctx, marker);
 }
 
+export async function concurrentSandboxWorkflow(input: DeployInput, ctx: WorkflowToolContext) {
+  "use workflow";
+  const identities = await Promise.all([sandboxIdentityStep(ctx), sandboxIdentityStep(ctx)]);
+  const retried = await retrySandboxStep(ctx);
+  return {
+    sameSandbox: identities.every((id) => id === retried.id),
+    attempt: retried.attempt,
+    service: input.service,
+  };
+}
+
+async function sandboxIdentityStep(ctx: WorkflowToolContext) {
+  "use step";
+  return (await ctx.getSandbox()).id;
+}
+
+async function retrySandboxStep(ctx: WorkflowToolContext) {
+  "use step";
+  const sandbox = await ctx.getSandbox();
+  const { attempt } = getStepMetadata();
+  if (attempt === 1) throw new Error("Retry after accessing the sandbox.");
+  return { id: sandbox.id, attempt };
+}
+
 export async function sandboxFromWorkflowBodyWorkflow(
   _input: DeployInput,
   ctx: WorkflowToolContext,

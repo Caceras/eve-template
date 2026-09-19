@@ -363,3 +363,16 @@ export function formatTaskNotification(view: TaskView): string {
 function formatTaskOutput(output: JsonValue): string {
   return typeof output === "string" ? output : (JSON.stringify(output) ?? "null");
 }
+
+export async function wakeTaskSandboxRequestParentStep(input: {
+  readonly message: WorkflowToolRunRequestMessage;
+  readonly taskId: string;
+  readonly token: string;
+}): Promise<void> {
+  "use step";
+  await resumeSessionInbox(input.token, {
+    kind: "send",
+    payload: { task: { sandboxRequests: [{ taskId: input.taskId, message: input.message }] } },
+    taskDeliveryId: `${input.taskId}:sandbox:${input.message.from.runId}:${input.message.replyTo}`,
+  });
+}

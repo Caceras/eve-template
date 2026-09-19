@@ -86,22 +86,29 @@ describe("workflow step authorization", () => {
     durable.entries.clear();
   });
   afterEach(() => vi.unstubAllEnvs());
-  it("rejects sandbox access without opt-in before opening a backend", async () => {
+  it("rejects sandbox access without a workflow owner before opening a backend", async () => {
     openSandbox.mockClear();
     await expect(runStep((ctx) => ctx.getSandbox())).rejects.toMatchObject({ fatal: true });
     expect(openSandbox).not.toHaveBeenCalled();
   });
 
-  it("reuses one sandbox handle within a step and forwards only its reconnect record", async () => {
+  it("reuses one sandbox handle within a step and forwards its owner identity", async () => {
     const sandbox = mockSandbox();
     openSandbox.mockResolvedValue(sandbox.session);
     const input: WorkflowStepContext = {
       ...context(),
-      sandbox: {
-        compiledArtifactsSource: { kind: "bundled" },
-        nodeId: "root",
-        sessionId: "parent-session",
-        state: null,
+      run: {
+        owner: { inbox: "owner-inbox" },
+        from: {
+          callId: "call-1",
+          execution: "blocking" as const,
+          input: {},
+          runId: "run-1",
+          sequence: 0,
+          stepIndex: 0,
+          toolName: "probe",
+          turnId: "turn-1",
+        },
       },
     };
     const result = await runStep(async (ctx) => {
@@ -113,7 +120,7 @@ describe("workflow step authorization", () => {
     expect(result).toMatchObject({ kind: "result", output: sandbox.session.id });
     expect(openSandbox).toHaveBeenCalledExactlyOnceWith({
       abortSignal: input.abortSignal,
-      reference: input.sandbox,
+      run: input.run,
     });
   });
 

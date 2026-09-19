@@ -838,7 +838,6 @@ const compiledToolBehaviorSchema: z.ZodType<CompiledToolBehavior> = z
         z
           .object({
             kind: z.literal("workflow-tool"),
-            sandbox: z.literal(true).optional(),
             workflowId: z.string(),
           })
           .strict(),

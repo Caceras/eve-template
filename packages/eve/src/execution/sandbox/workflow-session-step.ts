@@ -1,19 +1,21 @@
 import { bindSandboxAbortSignal } from "#execution/sandbox/abort-bound-session.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
-import type { WorkflowSandboxReferenceData } from "#execution/sandbox/workflow-reference.js";
+import type { WorkflowToolRunContext } from "#execution/tools/workflow/ask.js";
+import { requestWorkflowSandbox } from "#execution/sandbox/workflow-request.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import type { RuntimeSandboxSession, SandboxSession } from "#shared/sandbox-session.js";
 
 export async function openWorkflowSandboxStep(input: {
   readonly abortSignal: AbortSignal;
-  readonly reference: WorkflowSandboxReferenceData;
+  readonly run: WorkflowToolRunContext;
 }): Promise<RuntimeSandboxSession> {
+  const reference = await requestWorkflowSandbox(input);
   const bundle = await getCompiledRuntimeAgentBundle({
-    compiledArtifactsSource: input.reference.compiledArtifactsSource,
-    nodeId: input.reference.nodeId,
+    compiledArtifactsSource: reference.compiledArtifactsSource,
+    nodeId: reference.nodeId,
   });
   const access = await ensureSandboxAccess({
-    ...input.reference,
+    ...reference,
     ownsSandbox: false,
     registry: bundle.graph.root.sandboxRegistry,
   });
