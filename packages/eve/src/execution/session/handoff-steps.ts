@@ -1,3 +1,4 @@
+import { getWorkflowToolRuns, readWorkflowTaskView } from "#harness/workflow-tool-runs.js";
 import { deserializeContext } from "#context/serialize.js";
 import { readDurableSession, type DurableSessionState } from "#execution/durable-session-store.js";
 import {
@@ -9,13 +10,15 @@ import { resumeHook } from "#internal/workflow/runtime.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
 import { isObject } from "#shared/guards.js";
 import { getAgentHandleStore } from "#subagents/handles/store.js";
-import { getSessionTaskIndex } from "#tasks/session-index.js";
 
 /** Parses retained work with this deployment's code before deciding whether it can move. */
 export function isSessionStateIdleForHandoff(sessionState: DurableSessionState): boolean {
   const { state } = readDurableSession(sessionState);
   // Parse all entries, including terminal tasks, before any busy-work shortcut.
-  const tasks = getSessionTaskIndex(state);
+  const invocations = getWorkflowToolRuns(state);
+  for (const entry of invocations) {
+    if (entry.lifetime === "session") readWorkflowTaskView(entry.task);
+  }
   const handles = getAgentHandleStore(state);
 
   // These registries are deleted when work settles. Their ordinary readers
@@ -31,7 +34,6 @@ export function isSessionStateIdleForHandoff(sessionState: DurableSessionState):
   for (const key of [
     "eve.runtime.pendingInputBatches",
     "eve.runtime.pendingApprovalCoordinationBatches",
-    "eve.runtime.workflowToolRuns",
   ]) {
     const value = state?.[key];
     if (value !== undefined && (!Array.isArray(value) || value.length > 0)) return false;
@@ -47,7 +49,7 @@ export function isSessionStateIdleForHandoff(sessionState: DurableSessionState):
       handles.handles.every(
         (handle) => handle.phase === "parked" || handle.phase === "available",
       )) &&
-    tasks.every((task) => task.terminalView !== undefined)
+    invocations.every((entry) => entry.lifetime === "session" && entry.task.outcome !== undefined)
   );
 }
 

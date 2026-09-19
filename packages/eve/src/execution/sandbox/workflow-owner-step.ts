@@ -10,11 +10,16 @@ import {
 import { captureWorkflowSandboxReference } from "#execution/sandbox/workflow-reference.js";
 import type { WorkflowSandboxResponse } from "#execution/sandbox/workflow-request.js";
 import type { WorkflowToolRunRequestMessage } from "#execution/tools/workflow/messages.js";
-import { findWorkflowToolRun } from "#harness/workflow-tool-runs.js";
-import { findSessionTaskEntry } from "#tasks/session-index.js";
-import { readLatestTaskView } from "#execution/tasks/parent/run-parent.js";
-import { isTerminalTaskStatus } from "#tasks/types.js";
+import {
+  findBlockingWorkflowToolRun,
+  findBackgroundWorkflowToolRun,
+  readWorkflowTaskView,
+} from "#harness/workflow-tool-runs.js";
+import { createLogger, logError } from "#internal/logging.js";
+
 import { getRun } from "#internal/workflow/runtime.js";
+
+const log = createLogger("execution.workflow-sandbox");
 
 export async function prepareWorkflowSandboxStep(input: {
   readonly message: WorkflowToolRunRequestMessage;
@@ -36,21 +41,15 @@ export async function prepareWorkflowSandboxStep(input: {
   }
   const durable = readDurableSession(input.sessionState);
   const { from } = input.message;
-  let accepted: boolean;
-  if (input.taskId === undefined) {
-    const recorded = findWorkflowToolRun(durable.state, from.callId);
-    accepted = recorded?.runId === from.runId && recorded.toolName === from.toolName;
-  } else {
-    const entry = findSessionTaskEntry(durable.state, input.taskId);
-    accepted =
-      entry?.taskRunId === from.runId &&
-      entry.metadata.name === from.toolName &&
-      entry.createdByTurnId === from.turnId;
-    if (accepted) {
-      const view = await readLatestTaskView({ taskRunId: from.runId });
-      accepted = view !== undefined && !isTerminalTaskStatus(view.status);
-    }
-  }
+  const recorded =
+    input.taskId === undefined
+      ? findBlockingWorkflowToolRun(durable.state, from.callId, from.turnId)
+      : findBackgroundWorkflowToolRun(durable.state, input.taskId);
+  const accepted =
+    recorded?.address.runId === from.runId &&
+    recorded.toolName === from.toolName &&
+    recorded.origin.turnId === from.turnId &&
+    (recorded.lifetime === "turn" || readWorkflowTaskView(recorded.task) === undefined);
   if (!accepted) {
     return {
       sessionState: input.sessionState,
@@ -70,6 +69,14 @@ export async function prepareWorkflowSandboxStep(input: {
         session: projectToDurableSession(scoped.session),
       }),
       response: { reference: scoped.result },
+    };
+  } catch (error) {
+    logError(log, "workflow sandbox initialization failed", error, {
+      sessionId: session.sessionId,
+    });
+    return {
+      sessionState: input.sessionState,
+      response: { error: "Could not initialize the session sandbox. Check the server logs." },
     };
   } finally {
     ctx.clearVirtualContext();

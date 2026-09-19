@@ -12,7 +12,6 @@ import {
 } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { DynamicModelSelectionError } from "#context/dynamic-model-lifecycle.js";
 import { dispatchDynamicInstructionEvent } from "#context/dynamic-instruction-lifecycle.js";
@@ -82,7 +81,7 @@ import {
 } from "#harness/input-requests.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
 import { derivePendingState } from "#execution/session/pending-turn-state.js";
-import { recordSessionTask } from "#tasks/session-index.js";
+import { registerWorkflowToolRun } from "#harness/workflow-tool-runs.js";
 import { getPendingCoordinationBatch } from "#harness/coordination.js";
 import { AGENT_HANDLES_STATE_KEY } from "#subagents/handles/store.js";
 import { BackgroundToolExecutorKey } from "#harness/background-tools.js";
@@ -304,14 +303,17 @@ const analysisTaskAnnouncement =
   '[Task state]\n{"tasks":[{"name":"analysis","status":"pending","taskId":"analysis"}]}';
 
 function recordBackgroundTask(session: HarnessSession, taskId = "analysis"): HarnessSession {
-  return recordSessionTask(session, {
-    createdByTurnId: activeTurnId(getHarnessEmissionState(session.state)),
-    dispatchContext: { auth: { current: null, initiator: null } },
-    executor: { data: {}, kind: "workflow-tool" },
-    metadata: { kind: "report-probe", name: taskId },
-    taskId,
-    taskInboxToken: `token-${taskId}`,
-    taskRunId: `run-${taskId}`,
+  return registerWorkflowToolRun(session, {
+    callId: taskId,
+    toolName: { kind: "report-probe", name: taskId }.name,
+    lifetime: "session" as const,
+    origin: { turnId: activeTurnId(getHarnessEmissionState(session.state)), stepIndex: 0 },
+    address: { runId: `run-${taskId}`, hookToken: `token-${taskId}` },
+    task: {
+      dispatchContext: { auth: { current: null, initiator: null } },
+      metadata: { kind: "report-probe", name: taskId },
+      taskId,
+    },
   });
 }
 
@@ -357,7 +359,6 @@ function createDelegationToolMap(): ToolLoopHarnessConfig["tools"] {
         description: "Delegate to a subagent.",
         inputSchema: jsonSchema({ type: "object" }),
         name: "delegate",
-        resultKind: "subagent",
         workflowId: "workflow//./agent/subagents/researcher//execute",
       },
     ],
@@ -1245,6 +1246,7 @@ describe("createToolLoopHarness", () => {
               execution: "background" as const,
               inputSchema: jsonSchema({ type: "object" }),
               name: "background_work",
+              workflowId: "workflow//test//background_work",
             },
           ],
         ]),
@@ -1845,7 +1847,6 @@ describe("createToolLoopHarness", () => {
         callId: "call-1",
         input: { message: "delegate from child" },
         kind: "workflow-task",
-        resultKind: "subagent",
         toolName: "delegate",
       }),
     ]);
@@ -4331,7 +4332,6 @@ describe("createToolLoopHarness", () => {
             description: "Delegate to a subagent.",
             inputSchema: jsonSchema({ type: "object" }),
             name: "delegate",
-            resultKind: "subagent",
             workflowId: "workflow//./agent/subagents/researcher//execute",
           },
         ],
@@ -4388,7 +4388,6 @@ describe("createToolLoopHarness", () => {
             description: "Delegate to a subagent.",
             inputSchema: jsonSchema({ type: "object" }),
             name: "delegate",
-            resultKind: "subagent",
             workflowId: "workflow//./agent/subagents/researcher//execute",
           },
         ],
@@ -11855,9 +11854,9 @@ describe("createToolLoopHarness", () => {
       const attemptCompleted = vi.fn();
       const hooks = createInstrumentationHooks([
         {
-          capture: "content",
           events: { "step.attempt.completed": attemptCompleted },
           name: "analytics",
+          tracePolicy: () => ({ emit: true, recordInputs: true, recordOutputs: true }),
         },
       ]);
       const runStep = createToolLoopHarness(
@@ -11897,7 +11896,12 @@ describe("createToolLoopHarness", () => {
         recordOutputs: true,
         tracePolicy: () => ({ emit: true, recordInputs: false, recordOutputs: false }),
       });
-      const hooks = createInstrumentationHooks([{ capture: "content", name: "analytics" }]);
+      const hooks = createInstrumentationHooks([
+        {
+          name: "analytics",
+          tracePolicy: () => ({ emit: true, recordInputs: true, recordOutputs: true }),
+        },
+      ]);
       const runStep = createToolLoopHarness(
         createTestConfig("conversation", undefined, {
           instrumentation: bindHookInstrumentation(hooks, undefined, true),

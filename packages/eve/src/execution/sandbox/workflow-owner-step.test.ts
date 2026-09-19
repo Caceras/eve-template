@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   view: vi.fn(),
 }));
 vi.mock("#context/serialize.js", () => ({ deserializeContext: mocks.deserialize }));
-vi.mock("#harness/workflow-tool-runs.js", () => ({ findWorkflowToolRun: mocks.run }));
-vi.mock("#tasks/session-index.js", () => ({ findSessionTaskEntry: mocks.task }));
-vi.mock("#execution/tasks/parent/run-parent.js", () => ({ readLatestTaskView: mocks.view }));
+vi.mock("#harness/workflow-tool-runs.js", () => ({
+  findBlockingWorkflowToolRun: mocks.run,
+  findBackgroundWorkflowToolRun: mocks.task,
+  readWorkflowTaskView: mocks.view,
+}));
 
 const message: WorkflowToolRunRequestMessage = {
   from: {
@@ -33,8 +35,8 @@ describe("workflow sandbox owner admission", () => {
   beforeEach(() => vi.resetAllMocks());
   it.each([
     undefined,
-    { runId: "other-run", toolName: "probe" },
-    { runId: "run-1", toolName: "other-tool" },
+    { address: { runId: "other-run" }, toolName: "probe" },
+    { address: { runId: "run-1" }, toolName: "other-tool" },
   ])("does not initialize or reply for an unowned blocking run %j", async (recorded) => {
     mocks.run.mockReturnValue(recorded);
     const sessionState = createTestSessionState();
@@ -44,12 +46,30 @@ describe("workflow sandbox owner admission", () => {
     expect(mocks.deserialize).not.toHaveBeenCalled();
   });
   it.each([
-    { taskRunId: "other-run", metadata: { name: "probe" }, createdByTurnId: "turn-1" },
-    { taskRunId: "run-1", metadata: { name: "probe" }, createdByTurnId: "other-turn" },
-    { taskRunId: "run-1", metadata: { name: "probe" }, createdByTurnId: "turn-1" },
+    {
+      address: { runId: "other-run" },
+      toolName: "probe",
+      lifetime: "session",
+      task: {},
+      origin: { turnId: "turn-1" },
+    },
+    {
+      address: { runId: "run-1" },
+      toolName: "probe",
+      lifetime: "session",
+      task: {},
+      origin: { turnId: "other-turn" },
+    },
+    {
+      address: { runId: "run-1" },
+      toolName: "probe",
+      lifetime: "session",
+      task: {},
+      origin: { turnId: "turn-1" },
+    },
   ])("does not initialize or reply for an unowned or terminal background run %j", async (entry) => {
     mocks.task.mockReturnValue(entry);
-    mocks.view.mockResolvedValue({ status: "cancelled" });
+    mocks.view.mockReturnValue({ status: "cancelled" });
     const sessionState = createTestSessionState();
     expect(
       await prepareWorkflowSandboxStep({

@@ -19,6 +19,7 @@ import {
   reportingDeployWorkflow,
   sandboxAcrossStepsWorkflow,
   concurrentSandboxWorkflow,
+  recoverSandboxFailureWorkflow,
   sandboxFromWorkflowBodyWorkflow,
   stepThenRaceWorkflow,
   stepReferenceWorkflow,
@@ -26,10 +27,7 @@ import {
 } from "#internal/testing/workflow-tool-fixtures.js";
 import { waitForHook } from "#internal/testing/workflow-test-helpers.js";
 import { getRun, getWorld, start } from "#internal/workflow/runtime.js";
-import {
-  workflowToolRunWorkflowReference,
-  taskRunWorkflowReference,
-} from "#execution/workflow-runtime.js";
+import { workflowToolRunWorkflowReference } from "#execution/workflow-runtime.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import type { InputRequestedStreamEvent } from "#protocol/message.js";
@@ -107,17 +105,14 @@ async function createWorkflowToolRuntime(input: {
 }
 
 /** Ids of every workflow tool run in the shared world, so a test can spot the one it started. */
-async function listWorkflowToolRunIds(background = false): Promise<Set<string>> {
+async function listWorkflowToolRunIds(): Promise<Set<string>> {
   const world = await getWorld();
   const page = await world.runs.list({ pagination: { limit: 100 } });
   return new Set(
     page.data
       .filter(
         (entry: { readonly workflowName?: string }) =>
-          entry.workflowName ===
-          (background
-            ? taskRunWorkflowReference.workflowId
-            : workflowToolRunWorkflowReference.workflowId),
+          entry.workflowName === workflowToolRunWorkflowReference.workflowId,
       )
       .map((entry: { readonly runId: string }) => entry.runId),
   );
@@ -127,13 +122,10 @@ async function listWorkflowToolRunIds(background = false): Promise<Set<string>> 
 async function waitForNewWorkflowToolRun(
   before: ReadonlySet<string>,
   timeout = 15_000,
-  background = false,
 ): Promise<string> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const started = [...(await listWorkflowToolRunIds(background))].filter(
-      (runId) => !before.has(runId),
-    );
+    const started = [...(await listWorkflowToolRunIds())].filter((runId) => !before.has(runId));
     if (started.length === 1) return started[0]!;
     if (started.length > 1)
       throw new Error(`Expected one new workflow tool run, found ${started.length}.`);
@@ -594,7 +586,7 @@ describe("workflow tools", () => {
         try {
           let text = "";
           for (let turn = 0; turn < 4 && !text.includes("sameSandbox"); turn++)
-            text += eventsText(await stream.nextTurn());
+            text += JSON.stringify(await stream.nextTurn());
           expect(text).toContain("sameSandbox");
           expect(text).toMatch(/sameSandbox[\\"\s:]+true/u);
           expect(text).toMatch(/attempt[\\"\s:]+2/u);
@@ -607,6 +599,36 @@ describe("workflow tools", () => {
     },
     60_000,
   );
+
+  it("returns initialization failures to the calling step without failing its owner", async () => {
+    const runtime = await createWorkflowToolRuntime({
+      agentName: "sandbox-failure",
+      execute: recoverSandboxFailureWorkflow,
+      toolName: "sandbox_probe",
+    });
+    await runtime.run(async () => {
+      const bundle = await getCompiledRuntimeAgentBundle({
+        compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
+      });
+      Object.assign(bundle.graph.root.sandboxRegistry.sandbox!.definition, {
+        onSession: async () => {
+          throw new Error("initialization failed");
+        },
+      });
+      const run = await start(workflowEntry, [
+        {
+          kind: "initial",
+          ownerDeploymentId: "dpl_inline",
+          input: { message: 'Run sandbox_probe with service "api"' },
+          serializedContext: buildSerializedContext({
+            continuationToken: "schedule:sandbox-failure",
+            mode: "task",
+          }),
+        },
+      ]);
+      expect(String((await run.returnValue).output)).toContain("sandbox failure handled");
+    });
+  });
 
   it("rejects sandbox access from the workflow body", async () => {
     const runtime = await createWorkflowToolRuntime({
@@ -662,7 +684,7 @@ describe("workflow tools", () => {
         });
         const backend = bundle.graph.root.sandboxRegistry.sandbox!.definition.backend;
         const provision = vi.spyOn(backend, "create");
-        const before = await listWorkflowToolRunIds(background);
+        const before = await listWorkflowToolRunIds();
         const run = await start(workflowEntry, [
           {
             kind: "initial",
@@ -687,7 +709,7 @@ describe("workflow tools", () => {
             action: { kind: "tool-call", toolName: "deploy_service" },
             kind: "tool-approval",
           });
-          expect(await listWorkflowToolRunIds(background)).toEqual(before);
+          expect(await listWorkflowToolRunIds()).toEqual(before);
           expect(provision).not.toHaveBeenCalled();
 
           const commandToken = sessionCommandHookToken(run.runId);
@@ -699,7 +721,7 @@ describe("workflow tools", () => {
           if (decision === "cancel") {
             const denied = await stream.nextTurn();
             expect(filterEventsByType(denied, "turn.failed")).toEqual([]);
-            expect(await listWorkflowToolRunIds(background)).toEqual(before);
+            expect(await listWorkflowToolRunIds()).toEqual(before);
             expect(provision).not.toHaveBeenCalled();
             expect(filterEventsByType(denied, "action.result")).toEqual(
               expect.arrayContaining([
@@ -709,7 +731,7 @@ describe("workflow tools", () => {
             return;
           }
 
-          const executorRunId = await waitForNewWorkflowToolRun(before, 15_000, background);
+          const executorRunId = await waitForNewWorkflowToolRun(before, 15_000);
           expect(await waitForWorkflowToolRunTerminal(executorRunId)).toBe("completed");
           const completed = await stream.nextTurn();
           expect(filterEventsByType(completed, "turn.failed")).toEqual([]);
@@ -820,7 +842,7 @@ describe("workflow tools", () => {
             event.data.result.kind === "tool-result" &&
             event.data.result.toolName === "confirm_deploy",
         );
-        expect(progress).toBeGreaterThanOrEqual(0);
+        expect(progress, JSON.stringify(answered)).toBeGreaterThanOrEqual(0);
         expect(resultIndex).toBeGreaterThan(progress);
         const results = filterEventsByType(answered, "action.result");
         expect(results.map((event) => JSON.stringify(event.data.result.output))).toContainEqual(
@@ -1011,7 +1033,7 @@ describe("workflow tools", () => {
     });
   }, 60_000);
 
-  it("runs a background workflow tool as its task's executor", async () => {
+  it("runs a session-owned background workflow invocation", async () => {
     vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_inline");
     const runtime = await createWorkflowToolRuntime({
       agentName: "workflow-tool-background",
@@ -1055,7 +1077,7 @@ describe("workflow tools", () => {
           notifications.push(eventsText(filterEventsByType(woken, "message.received")));
         }
         const text = notifications.join("\n");
-        expect(text).toContain("Review plan:api");
+        expect(text).not.toContain("Review plan:api");
         expect(text).not.toContain("update: planned api");
         expect(text).toContain("is completed");
         expect(text).toContain("plan:api");
