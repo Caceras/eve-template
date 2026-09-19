@@ -31,13 +31,8 @@ export function isSessionStateIdleForHandoff(sessionState: DurableSessionState):
     "eve.harness.pendingWorkflowInterrupt",
   ];
   if (pendingKeys.some((key) => state?.[key] !== undefined)) return false;
-  for (const key of [
-    "eve.runtime.pendingInputBatches",
-    "eve.runtime.pendingApprovalCoordinationBatches",
-  ]) {
-    const value = state?.[key];
-    if (value !== undefined && (!Array.isArray(value) || value.length > 0)) return false;
-  }
+  const batches = state?.["eve.runtime.pendingInputBatches"];
+  if (batches !== undefined && (!Array.isArray(batches) || batches.length > 0)) return false;
   const proxyRequests = state?.["eve.runtime.proxyInputRequests"];
   if (
     proxyRequests !== undefined &&

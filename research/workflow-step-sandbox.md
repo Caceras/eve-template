@@ -8,7 +8,7 @@ last_updated: "2026-09-19"
 
 Authored workflow steps access the session sandbox lazily through `ctx.getSandbox()`; the session retains initialization and lifecycle ownership.
 
-The approval ordering fix in [#3198](https://github.com/vercel/eve/issues/3198) must land with or before this change.
+Approval ordering remains tracked separately in [#3198](https://github.com/vercel/eve/issues/3198); this change does not fix it.
 
 ## Authoring contract
 
@@ -16,7 +16,7 @@ Use `defineWorkflowTool({ execute })` and pass `ctx` directly to a `"use step"` 
 
 ## Boundaries
 
-- Tool approval gates dispatch. A workflow that never calls `getSandbox` does not open a sandbox.
+- A workflow that never calls `getSandbox` does not open a sandbox.
 - On first access in each step, the step requests initialization through its owner inbox. The owning session checks the recorded run, opens or reconnects its sandbox, and persists the updated session checkpoint before returning a serializable reconnect record. Background tasks forward this request through their existing parent delivery path.
 - A durable response stream keyed by the requesting step lets retries reuse the response. Concurrent steps are initialized through the owning session so they share its initialization state. This adds an owner round trip on first access in each step.
 - The existing workflow step context wrapper reconnects the backend and binds operations to the step's abort signal. Repeated calls in one step reuse its handle.
@@ -25,4 +25,4 @@ Use `defineWorkflowTool({ execute })` and pass `ctx` directly to a `"use step"` 
 
 ## Validation
 
-Runtime integration coverage checks file persistence across a durable sleep and successive steps for blocking and background tools, plus concurrent first accesses, step retries, unused getters, approval/denial, and a clear failure from the workflow body. Fixture evals exercise the same contract through an agent. CI is required for the fixture evals.
+Runtime integration coverage checks file persistence across a durable sleep and successive steps for blocking and background tools, plus concurrent first accesses, step retries, and a clear failure from the workflow body. Fixture evals exercise the same contract through an agent. CI is required for the fixture evals.

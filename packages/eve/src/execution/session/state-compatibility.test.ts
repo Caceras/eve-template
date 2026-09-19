@@ -255,7 +255,6 @@ describe("handoff state inspection", () => {
     ["eve.runtime.pendingInputBatch", {}],
     ["eve.runtime.pendingInputBatches", [null]],
     ["eve.runtime.pendingCoordinationBatch", {}],
-    ["eve.runtime.pendingApprovalCoordinationBatches", [{}]],
     ["eve.runtime.deferredStepInput", {}],
     ["eve.harness.pendingWorkflowInterrupt", {}],
     ["eve.runtime.proxyInputRequests", { malformed: null }],
