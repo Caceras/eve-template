@@ -1,0 +1,31 @@
+{
+  "kind": "eve-extension-capability-contract",
+  "capability": "tool",
+  "epoch": 54,
+  "sha256": "6d7f578d44e998077779529db20acad292e47ad1181bace72190822727dc8db5",
+  "exports": [
+    "AgentRouterAutoOptions",
+    "AgentRouterInput",
+    "AgentRouterOptions",
+    "AgentRouterSelect",
+    "AgentRouterTool",
+    "WorkflowStepToolContext",
+    "WorkflowTool",
+    "WorkflowToolInput",
+    "WorkflowToolOptions",
+    "agentRouter",
+    "auto",
+    "defaultWebSearch",
+    "defineTool",
+    "defineWorkflowTool",
+    "disableTool",
+    "evaluate",
+    "isDisabledToolSentinel",
+    "isWebSearchToolDefinition",
+    "toolOutput",
+    "toolOutputPart",
+    "toolResultFrom",
+    "webSearch",
+    "workflow"
+  ]
+}
