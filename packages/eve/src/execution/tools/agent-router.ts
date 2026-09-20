@@ -1,22 +1,41 @@
 import { z } from "#compiled/zod/index.js";
 import type { JsonObject } from "#shared/json.js";
+import type { evaluate } from "#ai/evaluate.js";
 
-export { auto, executeAgentRouterTool } from "#execution/tools/agent-router-workflow.js";
+export { executeAgentRouterTool } from "#execution/tools/agent-router-workflow.js";
 
 export const AGENT_ROUTER_TOOL_DESCRIPTION =
   "Route a task to the best available subagent based on each subagent's declared description.";
 
-export interface AgentRouterOptions {
-  /** Instructions used to select an agent. */
-  readonly instructions?: string;
-  /** Evaluation model ID. Defaults to TypeSafe Jev. */
-  readonly model?: string;
-}
+export type AgentRouterSelect = (
+  message: string,
+  agents: Readonly<Record<string, string>>,
+  abortSignal: AbortSignal,
+) => Promise<string>;
 
-export interface AgentRouterAutoOptions extends AgentRouterOptions {
+export type AgentRouterOptions =
+  | {
+      /** Instructions used to select an agent. */
+      readonly instructions?: string;
+      /** Evaluation model ID. Defaults to TypeSafe Jev. */
+      readonly model?: string;
+      readonly select?: never;
+    }
+  | {
+      readonly instructions?: never;
+      readonly model?: never;
+      /** Authored durable step that selects one name from the candidate map. */
+      readonly select: AgentRouterSelect;
+    };
+
+export interface AgentRouterAutoOptions {
   readonly abortSignal?: AbortSignal;
   readonly agents: Readonly<Record<string, string>>;
+  /** Instructions used to select an agent. */
+  readonly instructions?: string;
   readonly message: string;
+  /** Evaluation model instance or ID. Defaults to TypeSafe Jev. */
+  readonly model?: Parameters<typeof evaluate>[0]["model"];
 }
 
 export interface AgentRouterInput {
@@ -24,8 +43,14 @@ export interface AgentRouterInput {
   readonly outputSchema?: JsonObject;
 }
 
+export interface AgentRouterDurableOptions {
+  readonly instructions?: string;
+  readonly model?: string;
+  readonly selectStepId?: string;
+}
+
 export interface AgentRouterExecuteInput extends AgentRouterInput {
-  readonly routerOptions?: AgentRouterOptions;
+  readonly routerOptions?: AgentRouterDurableOptions;
 }
 
 export const AGENT_ROUTER_INPUT_SCHEMA: z.ZodType<AgentRouterInput> = z.strictObject({
@@ -40,7 +65,7 @@ export const AGENT_ROUTER_INPUT_SCHEMA: z.ZodType<AgentRouterInput> = z.strictOb
 });
 
 export function createAgentRouterInputSchema(
-  options: AgentRouterOptions,
+  options: AgentRouterDurableOptions,
 ): z.ZodType<AgentRouterExecuteInput> {
   return AGENT_ROUTER_INPUT_SCHEMA.transform((input) => ({
     ...input,

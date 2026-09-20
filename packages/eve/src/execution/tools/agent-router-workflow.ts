@@ -1,9 +1,10 @@
-import { DEFAULT_EVALUATION_MODEL, evaluate } from "#ai/evaluate.js";
 import type { JsonValue } from "#shared/json.js";
+import { auto, normalizeAgents } from "#execution/tools/agent-router-auto.js";
 import type { WorkflowToolContext } from "#tools/workflow-definition.js";
 import type {
   AgentRouterAutoOptions,
   AgentRouterExecuteInput,
+  AgentRouterSelect,
 } from "#execution/tools/agent-router.js";
 
 /** Routes one task through the complete workflow agent metadata snapshot. */
@@ -13,13 +14,30 @@ export async function executeAgentRouterTool(
 ): Promise<JsonValue> {
   "use workflow";
 
-  const target = await auto({
-    abortSignal: ctx.abortSignal,
-    agents: descriptions(ctx),
-    instructions: input.routerOptions?.instructions,
-    message: input.message,
-    model: input.routerOptions?.model,
-  });
+  const agents = normalizeAgents(descriptions(ctx));
+  const names = Object.keys(agents);
+  if (names.length === 0) {
+    throw new Error("agentRouter requires at least one available agent with a description.");
+  }
+  const target =
+    names.length === 1
+      ? names[0]!
+      : input.routerOptions?.selectStepId === undefined
+        ? await chooseTarget({
+            abortSignal: ctx.abortSignal,
+            agents,
+            instructions: input.routerOptions?.instructions,
+            message: input.message,
+            model: input.routerOptions?.model,
+          })
+        : await selectStep(input.routerOptions.selectStepId)(
+            input.message,
+            agents,
+            ctx.abortSignal,
+          );
+  if (!Object.hasOwn(agents, target)) {
+    throw new Error(`agentRouter selected unavailable agent "${target}".`);
+  }
   return ctx.agent(
     target,
     input.outputSchema === undefined
@@ -28,55 +46,18 @@ export async function executeAgentRouterTool(
   );
 }
 
-export async function auto({
-  abortSignal,
-  agents,
-  instructions = "Which subagent should handle this task?",
-  message,
-  model = DEFAULT_EVALUATION_MODEL,
-}: AgentRouterAutoOptions): Promise<string> {
+async function chooseTarget(options: AgentRouterAutoOptions): Promise<string> {
   "use step";
 
-  if (typeof message !== "string" || message.trim().length === 0) {
-    throw new Error("agentRouter auto requires a non-empty message.");
-  }
-  if (typeof agents !== "object" || agents === null || Array.isArray(agents)) {
-    throw new Error("agentRouter auto requires an agent description map.");
-  }
-  if (typeof instructions !== "string" || instructions.trim().length === 0) {
-    throw new Error("agentRouter auto requires non-empty instructions when provided.");
-  }
-  if (typeof model !== "string" || model.trim().length === 0) {
-    throw new Error("agentRouter auto requires a non-empty model ID when provided.");
-  }
-  const criteria = Object.fromEntries(
-    Object.entries(agents).flatMap(([name, description]) => {
-      if (typeof description !== "string") {
-        throw new Error(`agentRouter auto requires a string description for agent "${name}".`);
-      }
-      const trimmed = description.trim();
-      return trimmed.length === 0 ? [] : [[name, trimmed]];
-    }),
-  );
-  const names = Object.keys(criteria);
-  if (names.length === 0) {
-    throw new Error("agentRouter requires at least one available agent with a description.");
-  }
-  if (names.length === 1) return names[0]!;
+  return auto(options);
+}
 
-  const result = await evaluate({
-    abortSignal,
-    model,
-    state: { message },
-    questions: {
-      route: {
-        type: "choice",
-        instructions,
-        criteria,
-      },
-    },
-  });
-  return result.answers.route.choice;
+function selectStep(stepId: string): AgentRouterSelect {
+  const useStep = Reflect.get(globalThis, Symbol.for("WORKFLOW_USE_STEP"));
+  if (typeof useStep !== "function") {
+    throw new Error("agentRouter cannot resolve its authored selector step.");
+  }
+  return useStep(stepId) as AgentRouterSelect;
 }
 
 function descriptions(ctx: WorkflowToolContext): Record<string, string> {

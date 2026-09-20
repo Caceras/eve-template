@@ -8,6 +8,9 @@ export default defineAgent({
   model: mockModel({
     modelId: "agent-router-parent",
     respond(request) {
+      if (request.tools.some((tool) => tool.name === "worker")) {
+        throw new Error("The hidden worker was exposed to the model.");
+      }
       if (request.userMessages.some((message) => message.includes("Return the root-copy marker"))) {
         if (request.tools.some((tool) => tool.name === "agent")) {
           throw new Error("The delegated root copy exposed the root-only agent router tool.");
@@ -21,16 +24,12 @@ export default defineAgent({
         }
         return "AGENT-ROUTER-ROOT-COPY-OK";
       }
-      const exportedAuto = request.userMessages.some((message) =>
-        message.includes("E2E_AGENT_ROUTER_AUTO"),
-      );
-      const toolName = exportedAuto ? "route-one" : "agent";
-      const result = request.toolResults.find((entry) => entry.name === toolName);
+      const result = request.toolResults.find((entry) => entry.name === "agent");
       return result === undefined
         ? {
             toolCalls: [
               {
-                name: toolName,
+                name: "agent",
                 input: { message: "Return the root-copy marker." },
               },
             ],

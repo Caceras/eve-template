@@ -132,6 +132,11 @@
       "import": "./dist/src/public/tools/agent-router.js",
       "default": "./dist/src/public/tools/agent-router.js"
     },
+    "./tools/agent-router/auto": {
+      "types": "./dist/src/public/tools/agent-router/auto.d.ts",
+      "import": "./dist/src/public/tools/agent-router/auto.js",
+      "default": "./dist/src/public/tools/agent-router/auto.js"
+    },
     "./tools/sleep": {
       "types": "./dist/src/public/tools/sleep.d.ts",
       "import": "./dist/src/public/tools/sleep.js",
@@ -218,6 +223,7 @@
     },
     "./ai": {
       "types": "./dist/src/public/ai/index.d.ts",
+      "workflow": "./dist/src/public/ai/workflow.js",
       "import": "./dist/src/public/ai/index.js",
       "default": "./dist/src/public/ai/index.js"
     },

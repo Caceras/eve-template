@@ -411,22 +411,19 @@ The evaluation runs in a step so workflow replay records its result instead of m
 
 #### Reuse the routing step
 
-Use `auto()` from `eve/tools/agent-router` when you want the standard selection step but still need to choose the candidate map, model, or instructions:
+Use `auto()` from `eve/tools/agent-router/auto` inside an authored step when you want standard selection logic but need to choose the candidate map, evaluation model, or instructions:
 
 ```ts
-import { auto } from "eve/tools/agent-router";
+import { auto } from "eve/tools/agent-router/auto";
+import { evaluationModel } from "../evaluation-model";
 
-const target = await auto({
-  abortSignal: ctx.abortSignal,
-  agents: {
-    researcher: ctx.agents.researcher.description,
-    operator: ctx.agents.operator.description,
-  },
-  message: task,
-});
+async function route(message: string, agents: Record<string, string>) {
+  "use step";
+  return auto({ message, agents, model: evaluationModel });
+}
 ```
 
-`message` and `agents` are required. `model`, `instructions`, and `abortSignal` are optional; `model` accepts a serializable evaluation model ID, and the helper defaults to `typesafe-ai/jev` and `"Which subagent should handle this task?"`. It trims descriptions, ignores empty entries, skips evaluation for a sole candidate, and returns the selected agent name.
+`message` and `agents` are required. `model`, `instructions`, and `abortSignal` are optional; `model` accepts an evaluation model instance or ID, and the helper defaults to `typesafe-ai/jev` and `"Which subagent should handle this task?"`. It trims descriptions, ignores empty entries, skips evaluation for a sole candidate, and returns the selected agent name. Import or create live model instances in the step module so they do not cross the durable argument boundary.
 
 `ctx.agents` is a replay-stable metadata snapshot taken when the workflow starts. In a top-level root workflow, `ctx.agents.agent` always represents the root-copy target and carries the root's authored `description` when provided. The snapshot also includes declared agents hidden from the parent model with `tool: false` or `disableTool()`, but exposes no model definitions, credentials, or callbacks. A delegated root copy omits `agent`, so `agentRouter()` cannot select another root copy recursively. Invocation still checks each target's availability through `ctx.agent()`.
 
@@ -440,18 +437,31 @@ import { agentRouter } from "eve/tools/agent-router";
 export default agentRouter();
 ```
 
-Pass `model` or `instructions` to customize the provided router:
+Pass `model` or `instructions` to customize the default selector with serializable configuration. Pass an authored `select` step for full control, including live evaluation model instances:
 
 ```ts title="agent/tools/agent.ts"
+import { evaluate } from "eve/ai";
 import { agentRouter } from "eve/tools/agent-router";
-
-export default agentRouter({
-  model: "typesafe-ai/jev",
-  instructions: "Which agent should handle this task?",
-});
+import { evaluationModel } from "../evaluation-model";
+async function select(message: string, agents: Record<string, string>) {
+  "use step";
+  const result = await evaluate({
+    model: evaluationModel,
+    state: { message },
+    questions: {
+      route: {
+        type: "choice",
+        criteria: agents,
+        instructions: "Which agent should handle this task?",
+      },
+    },
+  });
+  return result.answers.route.choice;
+}
+export default agentRouter({ select });
 ```
 
-Both `auto()` and `agentRouter()` accept model IDs only because their configuration crosses durable workflow boundaries. To use a live evaluation model instance, write your own `"use step"` helper and create or import the model inside that step instead of passing it as an argument.
+A custom selector receives `(message, agents, abortSignal)` and must return one name from the provided map. `select` cannot be combined with `model` or `instructions`; configure those inside the selector.
 
 Its input is `{ message: string, outputSchema?: object }`. `agentRouter()` ignores entries without a non-empty description. With two or more described targets, it sends the message and effective descriptions to JEV, then invokes the selected name through `ctx.agent()`. It invokes a sole target without evaluation and forwards an optional `outputSchema` unchanged. In a top-level root session, the candidates include the root-copy `agent`; delegated root copies and declared subagent contexts include only their declared targets.
 

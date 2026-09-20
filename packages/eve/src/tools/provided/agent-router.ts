@@ -1,20 +1,19 @@
 import type { JsonValue } from "#shared/json.js";
 import {
   AGENT_ROUTER_TOOL_DESCRIPTION,
-  auto,
   createAgentRouterInputSchema,
   executeAgentRouterTool,
-  type AgentRouterAutoOptions,
+  type AgentRouterDurableOptions,
   type AgentRouterInput,
   type AgentRouterOptions,
+  type AgentRouterSelect,
 } from "#execution/tools/agent-router.js";
 import {
   defineWorkflowTool,
   type BlockingWorkflowToolDefinition,
 } from "#tools/workflow-definition.js";
 
-export { auto };
-export type { AgentRouterAutoOptions, AgentRouterInput, AgentRouterOptions };
+export type { AgentRouterInput, AgentRouterOptions, AgentRouterSelect };
 
 export type AgentRouterTool = BlockingWorkflowToolDefinition<AgentRouterInput, JsonValue>;
 
@@ -31,9 +30,26 @@ export function agentRouter(options: AgentRouterOptions = {}): AgentRouterTool {
   }) as AgentRouterTool;
 }
 
-function normalizeAgentRouterOptions(options: AgentRouterOptions): AgentRouterOptions {
+function normalizeAgentRouterOptions(options: AgentRouterOptions): AgentRouterDurableOptions {
   if (typeof options !== "object" || options === null || Array.isArray(options)) {
     throw new TypeError("agentRouter options must be an object.");
+  }
+  if (options.select !== undefined) {
+    if (typeof options.select !== "function") {
+      throw new TypeError("agentRouter select must be an authored step function.");
+    }
+    if (options.model !== undefined || options.instructions !== undefined) {
+      throw new TypeError(
+        "agentRouter select cannot be combined with model or instructions; configure them inside the selector.",
+      );
+    }
+    const stepId = Reflect.get(options.select, "stepId");
+    if (typeof stepId !== "string" || stepId.length === 0) {
+      throw new TypeError(
+        'agentRouter select must be a top-level authored function whose first statement is "use step".',
+      );
+    }
+    return { selectStepId: stepId };
   }
   if (options.model !== undefined && (typeof options.model !== "string" || !options.model.trim())) {
     throw new TypeError("agentRouter model must be a non-empty model ID.");

@@ -10,12 +10,12 @@ export {
 } from "../../src/public/tools/index.ts";
 export {
   agentRouter,
-  auto,
-  type AgentRouterAutoOptions,
   type AgentRouterInput,
   type AgentRouterOptions,
+  type AgentRouterSelect,
   type AgentRouterTool,
 } from "../../src/public/tools/agent-router.ts";
+export { auto, type AgentRouterAutoOptions } from "../../src/public/tools/agent-router/auto.ts";
 export {
   defaultWebSearch,
   isWebSearchToolDefinition,

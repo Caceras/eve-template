@@ -1,8 +1,7 @@
 export {
   agentRouter,
-  auto,
-  type AgentRouterAutoOptions,
   type AgentRouterInput,
   type AgentRouterOptions,
+  type AgentRouterSelect,
   type AgentRouterTool,
 } from "#tools/provided/agent-router.js";
