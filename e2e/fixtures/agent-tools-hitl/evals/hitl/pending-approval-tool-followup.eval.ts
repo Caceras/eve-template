@@ -1,0 +1,67 @@
+import { defineEval } from "eve/evals";
+import { equals } from "eve/evals/expect";
+
+const MARKER = "draft-status-3494";
+const READ_STATUS =
+  `Alice is checking her draft. Call the read-status tool exactly once with marker "${MARKER}". ` +
+  "After the tool returns, tell Alice the status and marker from its result.";
+
+export default [
+  defineEval({
+    description:
+      "An ungated status tool completes and produces a reply without a pending approval.",
+    timeoutMs: 120_000,
+    async test(t) {
+      const turn = await t.send(READ_STATUS);
+      turn.expectOk();
+      turn.calledTool("read-status", { status: "completed", count: 1 });
+      turn.event("turn.completed", { count: 1 });
+      turn.messageIncludes(MARKER);
+      turn.messageIncludes("ready");
+    },
+  }),
+  defineEval({
+    description:
+      "An ungated tool follow-up completes while an older approval remains answerable (#3494).",
+    timeoutMs: 120_000,
+    async test(t) {
+      const parked = await t.send(
+        'Alice is preparing an account change. Call the gate tool exactly once with marker "account-change-3494".',
+      );
+      const session = parked.session;
+      parked.calledTool("gate", { status: "pending", count: 1 });
+      parked.notEvent("action.result", { data: { result: { toolName: "gate" } } });
+      const approval = session.requireInputRequest({ toolName: "gate" });
+      t.log(`Original gate approval is pending: ${approval.requestId}`);
+
+      const live = await session.start(
+        `Alice will review the account change later. Leave its approval pending. ${READ_STATUS}`,
+      );
+      const result = await live.waitForEvent("action.result", {
+        data: { status: "completed", result: { toolName: "read-status" } },
+      });
+      t.log(`Follow-up tool completed before waiting for its reply: ${JSON.stringify(result)}`);
+      await live.waitForEvent("turn.completed");
+      const followup = await live.result();
+      followup.expectOk();
+      followup.calledTool("read-status", { status: "completed", count: 1 });
+      followup.messageIncludes(MARKER);
+      followup.messageIncludes("ready");
+      followup.notEvent("action.result", { data: { result: { toolName: "gate" } } });
+      followup.notEvent("input.requested");
+      const stillPending = session.requireInputRequest({ toolName: "gate" });
+      await t.require(stillPending.requestId, equals(approval.requestId));
+
+      const approved = await session.respond([
+        { requestId: approval.requestId, optionId: "approve" },
+      ]);
+      approved.expectOk();
+      approved.calledTool("gate", { status: "completed", count: 1 });
+      session.event("action.result", {
+        count: 1,
+        data: { status: "completed", result: { toolName: "gate" } },
+      });
+      t.check(session.pendingInputRequests.length, equals(0));
+    },
+  }),
+];

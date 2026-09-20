@@ -6,6 +6,8 @@ const AUTH_PROBE_DIRECTIVE = /call the auth-probe tool exactly once with marker 
 const SCOPED_APPROVAL_DIRECTIVE =
   /call the dynamic_scoped_approval tool exactly once with scope "([^"]+)"/iu;
 const REPLY_DIRECTIVE = /reply with exactly ([A-Z0-9-]+)/iu;
+const APPROVAL_FOLLOWUP_DIRECTIVE =
+  /call the (gate|read-status) tool exactly once with marker "([^"]+)"/iu;
 
 /**
  * Scripted mock for the world suites: untagged evals in this fixture phrase
@@ -15,6 +17,20 @@ const REPLY_DIRECTIVE = /reply with exactly ([A-Z0-9-]+)/iu;
  */
 function respond(request: MockModelRequest): MockModelResponse | string {
   const message = request.lastUserMessage ?? "";
+
+  const approvalFollowup = APPROVAL_FOLLOWUP_DIRECTIVE.exec(message);
+  if (approvalFollowup?.[1] !== undefined && approvalFollowup[2] !== undefined) {
+    const roles = request.messages.map((entry) => entry.role);
+    if (roles.lastIndexOf("tool") < roles.lastIndexOf("user")) {
+      return {
+        toolCalls: [{ name: approvalFollowup[1], input: { marker: approvalFollowup[2] } }],
+      };
+    }
+    const output = [...request.toolResults]
+      .reverse()
+      .find((result) => result.name === approvalFollowup[1])?.output;
+    return JSON.stringify(output ?? "Missing tool result");
+  }
 
   const reply = REPLY_DIRECTIVE.exec(message);
   if (reply?.[1] !== undefined) {
