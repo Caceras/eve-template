@@ -25,12 +25,8 @@ import {
 import { defineSandbox } from "#public/definitions/sandbox.js";
 import { defineSchedule } from "#public/definitions/schedule.js";
 import { defineSkill } from "#public/definitions/skill.js";
-import {
-  defineTool,
-  type TaskExec,
-  type TaskReceipt,
-  type ToolDefinition,
-} from "#public/tools/index.js";
+import { defineTool, type TaskReceipt, type ToolDefinition } from "#public/tools/index.js";
+import { defineWorkflowTool } from "#public/tools/index.js";
 
 describe("definition helper exact inputs", () => {
   it("preserves literal inference for valid definitions", () => {
@@ -111,15 +107,12 @@ describe("definition helper exact inputs", () => {
     >();
   });
 
-  it("types background tools in terms of the durable task capability", () => {
-    const backgroundTool = defineTool({
+  it("types background workflow tools in terms of their receipt", () => {
+    const backgroundTool = defineWorkflowTool({
       description: "Start a durable export.",
       execution: "background",
       inputSchema: z.object({ jobId: z.string() }),
-      async *execute(input, _ctx, task) {
-        expectTypeOf(task).toEqualTypeOf<TaskExec>();
-        expectTypeOf(task.taskId).toEqualTypeOf<string>();
-        expectTypeOf(task).not.toHaveProperty("delegated");
+      async *execute(input) {
         yield { jobId: input.jobId };
         return { jobId: input.jobId };
       },
@@ -130,6 +123,16 @@ describe("definition helper exact inputs", () => {
       Parameters<NonNullable<typeof backgroundTool.toModelOutput>>[0]
     >().toEqualTypeOf<TaskReceipt>();
     expect(backgroundTool.execution).toBe("background");
+  });
+
+  it("rejects background execution on ordinary tools", () => {
+    const definition = {
+      description: "Start a durable export.",
+      execution: "background",
+      inputSchema: z.object({ jobId: z.string() }),
+      execute: async () => null,
+    };
+    expect(() => defineTool(definition)).toThrow("Use defineWorkflowTool for background work");
   });
 
   it("infers tool input from Zod 3 schemas", () => {
@@ -295,7 +298,10 @@ function typeOnlyFixtures(): void {
     recordInputs: true,
   });
 
-  const providerWithCapture: ProviderDefinition = { capture: "content" };
+  const providerWithCapture: ProviderDefinition = {
+    // @ts-expect-error Content capture is configured through tracePolicy.
+    capture: "content",
+  };
   void providerWithCapture;
 
   defineInstrumentation({

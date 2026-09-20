@@ -1,22 +1,18 @@
+import { HookNotFoundError, RunExpiredError } from "#compiled/@workflow/errors/index.js";
+import { formatTaskNotification } from "#tasks/notification.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  appendTaskViewStep,
+  emitTaskActivityStep,
   deliverTaskInputResponsesStep,
-  formatTaskNotification,
   projectTaskActivity,
-  wakeTaskAgentRequestParentStep,
-} from "#execution/tasks/child/steps.js";
+  notifyTaskParent,
+} from "#execution/tasks/child/notify.js";
 import { resumeWorkflowToolRunAnswers } from "#execution/tools/workflow/answer.js";
 import type { TaskView } from "#tasks/types.js";
 import { resumeSessionInbox } from "#execution/session-inbox/resume.js";
-import { getWritable } from "#compiled/@workflow/core/index.js";
 import { submitActivity } from "#execution/submit-activity.js";
 
-vi.mock("#compiled/@workflow/core/index.js", async (importOriginal) => ({
-  ...(await importOriginal()),
-  getWritable: vi.fn(),
-}));
 vi.mock("#execution/submit-activity.js", () => ({ submitActivity: vi.fn() }));
 
 vi.mock("#execution/session-inbox/resume.js", () => ({ resumeSessionInbox: vi.fn() }));
@@ -64,25 +60,20 @@ const notificationCases: readonly { readonly expected: string; readonly view: Ta
   },
 ];
 
-describe("appendTaskViewStep", () => {
+describe("emitTaskActivityStep", () => {
   it("waits for best-effort activity submission before the step finishes", async () => {
     const submission = Promise.withResolvers<void>();
     const submitted = Promise.withResolvers<void>();
-    const releaseLock = vi.fn();
-    vi.mocked(getWritable).mockReturnValue({
-      getWriter: () => ({ write: vi.fn().mockResolvedValue(undefined), releaseLock }),
-    } as never);
     vi.mocked(submitActivity).mockImplementation(() => {
       submitted.resolve();
       return submission.promise;
     });
     let finished = false;
-    const appended = appendTaskViewStep({ view: notificationCases[0]!.view }).then(() => {
+    const appended = emitTaskActivityStep({ view: notificationCases[0]!.view }).then(() => {
       finished = true;
     });
     await submitted.promise;
     await Promise.resolve();
-    expect(releaseLock).toHaveBeenCalledOnce();
     expect(finished).toBe(false);
     submission.resolve();
     await appended;
@@ -116,7 +107,7 @@ describe("projectTaskActivity", () => {
     ]);
   });
 
-  it("projects task work when its initial view is written", () => {
+  it("projects task work when execution starts", () => {
     const workIdentity = {
       id: "work:task",
       kind: "task" as const,
@@ -269,7 +260,7 @@ describe("deliverTaskInputResponsesStep", () => {
   });
 });
 
-describe("wakeTaskAgentRequestParentStep", () => {
+describe("notifyTaskParent", () => {
   it("forwards an agent invocation through the typed task envelope", async () => {
     const request = {
       from: {
@@ -290,7 +281,7 @@ describe("wakeTaskAgentRequestParentStep", () => {
       },
     };
 
-    await wakeTaskAgentRequestParentStep({ request, taskId: "task-1", token: "parent-token" });
+    await notifyTaskParent({ request, taskId: "task-1", token: "parent-token" });
 
     expect(resumeSessionInbox).toHaveBeenCalledWith("parent-token", {
       kind: "send",
@@ -311,5 +302,43 @@ describe("wakeTaskAgentRequestParentStep", () => {
       },
       taskDeliveryId: "task-1:agent:run-1:call-1:research",
     });
+  });
+});
+
+describe("notifyTaskParent", () => {
+  const notification = {
+    token: "parent-token",
+    view: {
+      taskId: "task-1",
+      metadata,
+      status: "completed" as const,
+      lastOutput: { type: "result" as const, data: "done" },
+    },
+  };
+
+  it("preserves the payload and deduplication identity", async () => {
+    await notifyTaskParent(notification);
+    expect(resumeSessionInbox).toHaveBeenCalledExactlyOnceWith(notification.token, {
+      kind: "send",
+      payload: {
+        message: "Background task task-1 (reviewer) is completed.\n\nResult:\ndone",
+        task: { views: [notification.view] },
+      },
+      taskDeliveryId: "task-1:ready:completed",
+    });
+  });
+
+  it.each([
+    new HookNotFoundError("parent-token"),
+    new Error("delivery failed", { cause: new RunExpiredError("parent ended") }),
+  ])("tolerates an ended parent", async (error) => {
+    vi.mocked(resumeSessionInbox).mockRejectedValueOnce(error);
+    await expect(notifyTaskParent(notification)).resolves.toBeUndefined();
+  });
+
+  it("propagates transient delivery failures so the durable step can retry", async () => {
+    const error = new Error("storage unavailable");
+    vi.mocked(resumeSessionInbox).mockRejectedValueOnce(error);
+    await expect(notifyTaskParent(notification)).rejects.toBe(error);
   });
 });
