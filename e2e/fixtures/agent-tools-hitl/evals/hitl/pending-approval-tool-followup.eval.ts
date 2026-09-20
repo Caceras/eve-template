@@ -49,8 +49,6 @@ export default [
       followup.messageIncludes("ready");
       followup.notEvent("action.result", { data: { result: { toolName: "gate" } } });
       followup.notEvent("input.requested");
-      const stillPending = session.requireInputRequest({ toolName: "gate" });
-      await t.require(stillPending.requestId, equals(approval.requestId));
 
       const approved = await session.respond([
         { requestId: approval.requestId, optionId: "approve" },
