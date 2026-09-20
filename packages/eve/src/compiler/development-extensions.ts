@@ -5,8 +5,10 @@ import {
   type BundledExtensionMount,
 } from "#compiler/bundled-extension.js";
 import {
+  createAgentSourceRegistry,
   createProgrammaticModuleCandidates,
   type AgentModuleCandidate,
+  type AgentSourceRegistry,
   type ProgrammaticAgentSource,
 } from "#compiler/source-graph.js";
 import type { AgentSourceManifest } from "#discover/manifest.js";
@@ -14,12 +16,15 @@ import { discoverBundledExtension } from "#discover/bundled-extension.js";
 import { mountRefNamespace } from "#discover/extensions.js";
 import { resolvePackageSourceDirectoryPath } from "#internal/application/package.js";
 
+// Keep this indirect so extension-contract declaration generation does not follow the dev-only mount.
+const SELF_MODIFICATION_EXTENSION_MODULE = "#self-modification/extension/extension.js";
+
 const BUNDLED_EXTENSION_DESCRIPTORS = [
   {
     namespace: "self-modification",
     sourceDirectory: resolvePackageSourceDirectoryPath("src/self-modification/extension"),
     loadMount: async () => {
-      const { default: extension } = await import("#self-modification/extension/extension.js");
+      const { default: extension } = await import(SELF_MODIFICATION_EXTENSION_MODULE);
       return extension({ local: { enabled: true } });
     },
   },
@@ -40,6 +45,14 @@ const BUNDLED_EXTENSION_BY_ID = new Map(
 /** Declarations available to the runtime programmatic-module registry. */
 export const developmentExtensionDeclarations: readonly ProgrammaticAgentSource[] =
   BUNDLED_EXTENSION_MOUNTS.map((extension) => extension.declaration);
+
+/** Registry used only by generated local-development module maps. */
+export const developmentExtensionSourceRegistry: AgentSourceRegistry = createAgentSourceRegistry(
+  [],
+  {
+    extensionDeclarations: developmentExtensionDeclarations,
+  },
+);
 
 const DEFAULT_DEVELOPMENT_EXTENSION_IDS: readonly DevelopmentExtensionId[] = ["self-modification"];
 const NO_DEVELOPMENT_EXTENSION_IDS: readonly DevelopmentExtensionId[] = [];

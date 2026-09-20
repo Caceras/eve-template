@@ -1,4 +1,3 @@
-import { developmentExtensionDeclarations } from "#compiler/development-extensions.js";
 import { resolveInstalledPackageInfo } from "#internal/application/package.js";
 import {
   createAgentSourceRegistry,
@@ -104,10 +103,7 @@ export const frameworkAgentSourceRegistry: AgentSourceRegistry = createAgentSour
     { applyTo: "all-local-nodes", source: localDefaults },
     { applyTo: "root", source: rootDefaults },
   ],
-  {
-    extensionDeclarations: developmentExtensionDeclarations,
-    templates: [memoryWrapperTemplateSource],
-  },
+  { templates: [memoryWrapperTemplateSource] },
 );
 
 export const memoryWrapperTemplate = frameworkAgentSourceRegistry.templates.get(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultDevelopmentExtensions,
+  developmentExtensionSourceRegistry,
   prepareDevelopmentExtensions,
 } from "#compiler/development-extensions.js";
 import { createProgrammaticCompiledModuleMap } from "#compiler/module-map.js";
@@ -20,6 +21,10 @@ function manifest() {
 
 describe("development extensions", () => {
   it("mounts the built-in self-modification extension at the root", async () => {
+    expect(
+      frameworkAgentSourceRegistry.sources.has("eve:development-extension:self-modification"),
+    ).toBe(false);
+
     const compiled = await compileAgentManifest(manifest(), {
       developmentExtensions: defaultDevelopmentExtensions(),
     });
@@ -44,6 +49,7 @@ describe("development extensions", () => {
 
     const moduleMap = await createProgrammaticCompiledModuleMap(compiled, [
       frameworkAgentSourceRegistry,
+      developmentExtensionSourceRegistry,
     ]);
     expect(() => validateCompiledModuleMap(compiled, moduleMap)).not.toThrow();
   });
