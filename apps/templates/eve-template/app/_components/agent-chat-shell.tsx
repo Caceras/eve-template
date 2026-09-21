@@ -86,6 +86,21 @@ export function AgentChatShell({
     }
   }, []);
 
+  useEffect(() => {
+    if (!mobileSidebarOpen) {
+      return;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileSidebarOpen]);
+
   const requestSignIn = useCallback((draft?: string) => {
     setDraftBeforeSignIn(draft?.trim() ?? "");
     setSignInCallbackPath(window.location.pathname || "/");
@@ -365,10 +380,13 @@ export function AgentChatShell({
         />
         <div
           aria-hidden={!mobileSidebarOpen}
+          aria-modal={mobileSidebarOpen || undefined}
           className={cn(
             "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:hidden",
             mobileSidebarOpen ? "translate-x-0" : "pointer-events-none -translate-x-full",
           )}
+          inert={!mobileSidebarOpen}
+          role="dialog"
         >
           <ChatSidebar
             activeChatId={activeChatId}
