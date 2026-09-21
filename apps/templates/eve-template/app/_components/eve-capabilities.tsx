@@ -96,14 +96,14 @@ export function EveCapabilities() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 sm:py-12">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
               <BlocksIcon className={iconClass} />
               Eve reference surface
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight">Capabilities</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Capabilities</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               Runtime truth comes from Eve agent-info v4. The catalog below comes directly from the
               checked-out official Eve registry. This page intentionally does not maintain a second
@@ -153,7 +153,7 @@ export function EveCapabilities() {
           />
         </section>
 
-        <section className="mt-8 grid gap-4 lg:grid-cols-2">
+        <section className="mt-6 grid gap-3 lg:grid-cols-2">
           <CapabilityGroup title="Tools" icon={<WrenchIcon className={iconClass} />} entries={pairEntries(info?.tools)} />
           <CapabilityGroup title="Skills" icon={<SparklesIcon className={iconClass} />} entries={pairEntries(info?.skills)} />
           <CapabilityGroup title="Instructions" icon={<BrainIcon className={iconClass} />} entries={pairEntries(info?.instructions)} />
@@ -170,7 +170,7 @@ export function EveCapabilities() {
           <CapabilityGroup title="Composition: shadowed" icon={<FolderCogIcon className={iconClass} />} entries={info?.composition?.shadowed ?? []} />
         </section>
 
-        <section className="mt-8 rounded-xl border bg-card">
+        <section className="mt-6 rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <div>
               <div className="flex items-center gap-2 font-medium">
@@ -215,7 +215,7 @@ export function EveCapabilities() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-xl border bg-card">
+        <section className="mt-6 rounded-lg border bg-card">
           <div className="border-b p-4">
             <div className="flex items-center gap-2 font-medium">
               <BlocksIcon className={iconClass} /> Public Eve package surface
@@ -231,7 +231,7 @@ export function EveCapabilities() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-xl border bg-card p-4 text-sm">
+        <section className="mt-6 rounded-lg border bg-card p-4 text-sm">
           <div className="flex items-center gap-2 font-medium">
             <ShieldCheckIcon className={iconClass} /> Runtime metadata
           </div>
@@ -260,12 +260,12 @@ function SummaryCard({
   readonly detail: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-3.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon}
         {label}
       </div>
-      <div className="mt-3 text-xl font-semibold">{value}</div>
+      <div className="mt-2.5 text-lg font-semibold">{value}</div>
       <div className="mt-1 truncate text-xs text-muted-foreground">{detail}</div>
     </div>
   );
@@ -281,7 +281,7 @@ function CapabilityGroup({
   readonly entries: readonly unknown[];
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-3.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           {icon}
