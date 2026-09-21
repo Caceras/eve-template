@@ -8,15 +8,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-const title = "eve";
-const description = "A persistent AI agent powered by eve.";
-const ogImage = {
-  alt: title,
-  height: 630,
-  url: "/eve-chat-template-og.png",
-  width: 1200,
-};
-
+const title = "Ægentica";
+const description = "A persistent AI agent powered by Ægentica.";
 function resolveMetadataBase() {
   const configuredUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
@@ -54,7 +47,6 @@ export const metadata: Metadata = {
   openGraph: {
     title,
     description,
-    images: [ogImage],
     siteName: title,
     type: "website",
   },
@@ -62,7 +54,6 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: [ogImage],
   },
 };
 
