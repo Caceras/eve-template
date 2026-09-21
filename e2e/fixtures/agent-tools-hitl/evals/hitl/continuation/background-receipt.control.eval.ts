@@ -7,10 +7,13 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session has no pending approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
 
     // When the user asks to start a background draft.
-    const live = await session.start("Start the background draft and acknowledge its receipt.");
+    const live = await session.start(
+      "Start the background draft and acknowledge its receipt.",
+      scriptedSession,
+    );
 
     // Then the reply acknowledges its working receipt; a later cancellation also gets a reply.
     const turn = await expectReply(t, live, /^Background receipt: .*"status":"working"/);

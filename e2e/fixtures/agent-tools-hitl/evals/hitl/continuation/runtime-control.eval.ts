@@ -13,10 +13,13 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a background draft is running and change A is waiting for approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
     await expectReply(
       t,
-      await session.start("Start the background draft and acknowledge its receipt."),
+      await session.start(
+        "Start the background draft and acknowledge its receipt.",
+        scriptedSession,
+      ),
       /^Background receipt: .*"status":"working"/,
     );
     const parked = await session.send("Prepare change A.");

@@ -7,10 +7,10 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session has no pending approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
 
     // When the user asks to read the draft.
-    const live = await session.start("Read the draft status.");
+    const live = await session.start("Read the draft status.", scriptedSession);
 
     // Then the reply reports ready and completes its turn.
     const turn = await expectReply(t, live, "Draft status: ready.");

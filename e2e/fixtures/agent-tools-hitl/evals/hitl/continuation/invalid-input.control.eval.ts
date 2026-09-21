@@ -7,11 +7,12 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session has no pending approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
 
     // When the user asks for a read that first uses an invalid draft ID.
     const live = await session.start(
       "Try a numeric draft ID, then correct it and read the status.",
+      scriptedSession,
     );
 
     // Then the model corrects the ID and replies with ready plus the validation error.

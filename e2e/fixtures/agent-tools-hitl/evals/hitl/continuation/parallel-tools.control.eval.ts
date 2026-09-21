@@ -7,10 +7,10 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session has no pending approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
 
     // When the user asks to read and save in parallel.
-    const live = await session.start("Read and save the draft in parallel.");
+    const live = await session.start("Read and save the draft in parallel.", scriptedSession);
 
     // Then both tools execute once and their results appear in a completed reply.
     const turn = await expectReply(t, live, 'Draft status: ready. Draft saved: {"writes":1}.');

@@ -7,10 +7,13 @@ export default defineEval({
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session has no pending approval.
-    const session = await t.session(scriptedSession);
+    const session = await t.session();
 
     // When the user asks the provider to look up the draft.
-    const live = await session.start("Look up the draft with the provider and report its status.");
+    const live = await session.start(
+      "Look up the draft with the provider and report its status.",
+      scriptedSession,
+    );
 
     // Then the reply reports provider-ready and completes its turn.
     await expectReply(t, live, "Provider draft status: provider-ready.");
