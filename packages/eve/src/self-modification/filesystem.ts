@@ -12,7 +12,7 @@ export async function createLocalSelfModificationFilesystem(input: {
 }): Promise<IFileSystem> {
   const capability = getLocalDevCapability();
   if (capability === undefined) {
-    throw new Error("Self-modification requires a verified same-machine request to eve dev.");
+    throw new Error("Self-modification requires a local development request.");
   }
 
   const { MountableFs, OverlayFs, ReadWriteFs } = input.justBash;

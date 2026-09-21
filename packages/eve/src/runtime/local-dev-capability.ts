@@ -29,7 +29,7 @@ export const LOCAL_DEV_INTERACTIVE_CLIENT_HEADER = "x-eve-dev-interactive-client
 
 /**
  * Capabilities available to authored code in an execution initiated by a
- * same-machine request to `eve dev`.
+ * request whose direct peer is loopback on the `eve dev` host.
  *
  * Absence is the signal, not a disabled flag: a deployed runtime has no
  * authored tree to mutate or watcher to pause, and a request from a remote
@@ -78,8 +78,9 @@ export function installLocalDevCapabilityEnvironment(input: {
 }
 
 /**
- * Seeds durable local-dev provenance only when the parent host signed a
- * loopback peer address. Public address headers cannot grant access.
+ * Seeds durable local-dev provenance only when the dev host signed a loopback
+ * peer address. Client-supplied address headers cannot grant access; a tunnel
+ * or proxy that is itself a loopback peer can expose this capability.
  */
 export async function withLocalDevRequestScope<T>(
   request: Request,

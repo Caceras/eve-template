@@ -2,4 +2,4 @@
 "eve": patch
 ---
 
-Require verified same-machine `eve dev` request provenance before self-modification can expose its editor or mount authored source files.
+Restrict self-modification's editor and authored-source mount to local development requests.

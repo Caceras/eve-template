@@ -131,7 +131,7 @@ describe("self-modification filesystem", () => {
     });
   });
 
-  it("does not expose authored files to remote requests", async () => {
+  it("does not expose authored files to direct remote requests", async () => {
     const appRoot = await createAppRoot();
 
     await expect(
@@ -145,6 +145,6 @@ describe("self-modification filesystem", () => {
           }),
         "203.0.113.7",
       ),
-    ).rejects.toThrow("Self-modification requires a verified same-machine request to eve dev.");
+    ).rejects.toThrow("Self-modification requires a local development request.");
   });
 });

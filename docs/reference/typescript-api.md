@@ -163,7 +163,7 @@ import { getLocalDevCapability } from "eve/local-dev";
 
 const localDev = getLocalDevCapability();
 if (localDev === undefined) {
-  throw new Error("This tool is available only from a local eve dev client.");
+  throw new Error("This tool requires a local development request.");
 }
 
 await localDev.withSuspendedSource(async () => {
@@ -171,7 +171,7 @@ await localDev.withSuspendedSource(async () => {
 });
 ```
 
-The function returns `LocalDevCapability | undefined`. It returns a capability only while authored code handles a request from a client on the same machine as the `eve dev` server. Deployed runtimes and clients attached over the network receive `undefined`, even when the target is another development server. A local TUI that attaches to an existing headless server receives the capability because availability follows each request rather than the process that started the server.
+The function returns `LocalDevCapability | undefined`. It is available during normal local `eve dev` use and unavailable in deployments or for clients that connect directly over the network. A local TUI that attaches to an existing headless server receives the capability because availability follows each request rather than the process that started the server.
 
 `appRoot` is the authored application directory containing `package.json` and `agent/`, not the temporary runtime snapshot. `interactiveClient` is `true` when the requesting local client is the dev TUI; check it before starting a flow that requires terminal interaction.
 

@@ -47,7 +47,7 @@ async function withDevRequest<T>(
 }
 
 describe("self-modification local agent", () => {
-  it("is available to a verified same-machine request", async () => {
+  it("is available to a verified loopback request", async () => {
     await withDevRequest("127.0.0.1", async () => {
       const agent = defineSelfModificationAgent({ config: { local: { enabled: true } } });
 
@@ -55,7 +55,7 @@ describe("self-modification local agent", () => {
     });
   });
 
-  it("does not expose the editor to remote requests", async () => {
+  it("does not expose the editor to direct remote requests", async () => {
     await withDevRequest("203.0.113.7", async () => {
       const agent = defineSelfModificationAgent({ config: { local: { enabled: true } } });
 
