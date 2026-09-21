@@ -68,18 +68,8 @@ export async function expectResponseReply(
   await live.waitForEvent("input.resolved", {
     data: { resolutions: (items) => items.some((item) => item.requestId === requestId) },
   });
-  const result = (await live.result()).expectOk();
-  const resolvedIndex = result.events.findIndex(
-    (event) =>
-      event.type === "input.resolved" &&
-      event.data.resolutions.some((item) => item.requestId === requestId),
-  );
-  const resumed = result.events
-    .slice(resolvedIndex + 1)
-    .find((event) => event.type === "turn.started");
-  if (resumed?.type !== "turn.started") {
-    throw new Error(`No turn started after resolving ${requestId}.`);
-  }
+  // Several responses in one delivery can resolve during the same resumed turn.
+  const resumed = await live.waitForEvent("turn.started");
   const turn = await expectReply(t, live, expected, resumed.data.turnId);
   turn.eventOrder([
     {
@@ -95,13 +85,20 @@ export async function expectResponseReply(
       },
       count: 1,
     },
-    { type: "turn.started", data: { turnId: resumed.data.turnId }, count: 1 },
     {
       type: "message.completed",
       data: { turnId: resumed.data.turnId, message: expected },
       count: 1,
     },
     { type: "turn.completed", data: { turnId: resumed.data.turnId }, count: 1 },
+  ]);
+  turn.eventOrder([
+    { type: "turn.started", data: { turnId: resumed.data.turnId }, count: 1 },
+    {
+      type: "message.completed",
+      data: { turnId: resumed.data.turnId, message: expected },
+      count: 1,
+    },
   ]);
   return turn;
 }

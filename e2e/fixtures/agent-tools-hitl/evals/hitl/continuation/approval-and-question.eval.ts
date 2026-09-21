@@ -28,9 +28,11 @@ export default defineEval({
       { requestId: question.requestId, optionId: "red" },
     ]);
 
-    // Then A executes and the question's read receives its own completed reply.
+    // Then both requests resolve and both replies complete within this delivery's resumed turn.
     await expectResponseReply(t, live, "Change A resolved.", approvalA.requestId);
     const reply = await expectResponseReply(t, live, "Draft status: ready.", question.requestId);
+    reply.event("turn.started", { count: 1 });
+    reply.event("turn.completed", { count: 1 });
     reply.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
     reply.calledTool("read-draft", { status: "completed", count: 1 });
     reply.eventsSatisfy("Both saved requests resolve", (events) =>
