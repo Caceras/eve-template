@@ -533,8 +533,12 @@ describe("createVercelSandbox", () => {
       seedFiles: [],
     });
 
-    expect(staleTemplate.delete).toHaveBeenCalledTimes(1);
-    expect(sandboxModule.Sandbox.create).toHaveBeenCalledTimes(1);
+    expect(staleTemplate.delete).not.toHaveBeenCalled();
+    expect(sandboxModule.Sandbox.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: expect.stringMatching(/^eve-sbx-tpl-vercel-[0-9a-f]{32}-[0-9a-f]{8}$/u),
+      }),
+    );
     expect(rebuiltTemplate.snapshot).toHaveBeenCalledTimes(1);
     expect(prepared).toEqual({ snapshotId: "template-snapshot" });
   });

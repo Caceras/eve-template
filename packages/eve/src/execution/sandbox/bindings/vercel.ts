@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { MutableNetworkSandboxSession } from "#shared/sandbox-session.js";
 import {
   applyInitialVercelNetworkPolicy,
@@ -392,12 +394,11 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
       };
     }
     input.log?.("cached template snapshot disappeared; rebuilding sandbox template");
-    await sandbox.delete();
     sandbox = await input.createSandbox({
       sandboxModule,
       createOptions: withBaseSetupNetworkPolicy({
         ...input.createOptions,
-        name: input.templateKey,
+        name: `${input.templateKey}-${randomUUID().slice(0, 8)}`,
         persistent: true,
         tags,
       }),
