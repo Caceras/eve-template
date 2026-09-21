@@ -11,7 +11,7 @@ RUN pnpm install --no-frozen-lockfile
 FROM deps AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+RUN pnpm build:eve && pnpm build
 
 FROM base AS runner
 ENV NODE_ENV=production
