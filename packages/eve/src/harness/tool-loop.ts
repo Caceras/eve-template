@@ -205,6 +205,7 @@ import {
 import { resolveFrameworkToolFromUpstreamType } from "#harness/provider-tools.js";
 import {
   createCoordinationRequestFromToolCall,
+  getPendingCoordinationBatch,
   resolvePendingCoordination,
   setPendingCoordinationBatch,
 } from "#harness/coordination.js";
@@ -422,6 +423,18 @@ function updateCompactionThresholdForModelReference(input: {
       ),
     ),
   };
+}
+
+/** Runtime action results resume a turn; only channel input anchors a new one. */
+function isInternalContinuationInput(input: StepInput | undefined): boolean {
+  return (
+    input === undefined ||
+    (input.message === undefined &&
+      (input.attributedInputResponses?.length ?? 0) === 0 &&
+      (input.inputResponses?.length ?? 0) === 0 &&
+      (input.context?.length ?? 0) === 0 &&
+      input.outputSchema === undefined)
+  );
 }
 
 function buildHarnessToolsWithDynamicSubagents(
@@ -660,6 +673,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
     });
     session = stepInput.session;
 
+    const pendingCoordination = getPendingCoordinationBatch(session.state);
     const resolvedCoordination = await resolvePendingCoordination({
       emit,
       session,
@@ -844,8 +858,10 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
     }
 
     const pending = resolvePendingInput({
+      activeTurnId: pendingCoordination?.event.turnId ?? activeTurnId(emissionState),
       deferMessagesWhileApprovalsPending: config.mode !== "conversation",
       history: resolvedCoordination.messages,
+      internalStep: isInternalContinuationInput(input),
       resolveApprovalKey: resolveApprovalKeyFromTools(responseAuthorizationTools),
       session,
       stepInput: coordinated.stepInput,
@@ -2022,6 +2038,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         result,
         runStep,
         session,
+        deferredInputForNextUser: pending.deferredInputForNextUser === true,
         coordinationTools: modelCallCoordinationTools,
       });
     } catch (error) {
@@ -2553,6 +2570,7 @@ async function attemptEmptyResponseRecovery(input: {
  */
 async function handleStepResult(input: {
   readonly config: ToolLoopHarnessConfig;
+  readonly deferredInputForNextUser?: boolean;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
   readonly emissionState: ReturnType<typeof getHarnessEmissionState>;
   readonly durableModelPromptMessageCount?: number;
@@ -2884,7 +2902,7 @@ async function handleStepResult(input: {
     !calledFinalOutput &&
     (continuationMessages.at(-1)?.role === "tool" ||
       normalizedProviderHistory.outcomeEndsResponse ||
-      hasDeferredStepInput(nextSession));
+      (hasDeferredStepInput(nextSession) && input.deferredInputForNextUser !== true));
   if (continueLoop) {
     if (emit) {
       emissionState = advanceStep(emissionState);
