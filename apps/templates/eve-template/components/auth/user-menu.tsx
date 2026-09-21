@@ -43,7 +43,7 @@ export function UserMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:min-h-8"
           type="button"
         >
           <UserAvatar viewer={viewer} />
@@ -116,14 +116,14 @@ function UserAvatar({ viewer }: { readonly viewer: Viewer }) {
       // eslint-disable-next-line @next/next/no-img-element
       <img
         alt=""
-        className="size-7 rounded-md border border-border object-cover"
+        className="size-7 rounded-md border border-border/70 object-cover"
         src={viewer.image}
       />
     );
   }
 
   return (
-    <span className="flex size-7 items-center justify-center rounded-md border border-border bg-background">
+    <span className="flex size-7 items-center justify-center rounded-md border border-border/70 bg-background">
       <VercelIcon className="size-3 text-muted-foreground" />
     </span>
   );
