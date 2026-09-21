@@ -1,0 +1,6 @@
+{
+  "upstreamCommit": "8f93f9e9ab95b43a82d7f53689a182a677de21ef",
+  "eveVersion": "0.63.0",
+  "baseTemplate": "apps/templates/eve-chat-template",
+  "webScaffold": "apps/docs/registry/channel/web"
+}
