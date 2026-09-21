@@ -48,7 +48,7 @@ export function AgentMessage({
         className={cn(
           "min-w-0",
           isUser
-            ? "max-w-[85%] rounded-[18px] border border-border/40 bg-muted/70 px-3 py-1.5 text-[15px] leading-6 text-foreground shadow-sm"
+            ? "max-w-[82%] rounded-[20px] bg-muted/75 px-3.5 py-2 text-[15px] leading-6 text-foreground sm:max-w-[78%]"
             : "w-full max-w-none text-sm leading-relaxed text-foreground",
         )}
       >
@@ -373,7 +373,7 @@ function ToolGroup({
 
   return (
     <Collapsible
-      className="my-2 px-3"
+      className="my-2"
       onOpenChange={canExpand ? setOpen : undefined}
       open={canExpand ? open : false}
     >
