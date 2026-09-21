@@ -80,3 +80,52 @@ Before shipping a user-facing UI change:
 8. Deploy and inspect runtime logs.
 9. Verify every capability that existed before the change is still discoverable after the change.
 10. Do not call the work complete if the live deployment differs from the committed UI.
+
+
+## Surface patterns
+
+Every secondary surface must feel like a first-party extension of chat, not a separate admin app.
+
+### Agent
+- Use three scopes only: **Overview**, **Included**, **Available**.
+- Overview prioritizes live runtime truth and compact capability rows.
+- Included explains repository scaffolds without pretending they are active.
+- Available is a searchable registry list, not a marketplace card grid.
+- Prefer rows, compact metrics and grouped lists over dashboard tiles.
+
+### Channels
+- Present channels as delivery surfaces for the same agent identity.
+- The current web implementation is one channel, not a second product or second agent.
+- Match the primary composer, conversation width, message rhythm and mobile safe-area behavior.
+
+### Sessions
+- Treat session controls as an advanced utility.
+- Keep destructive lifecycle actions visually secondary and explicit.
+- Empty states should explain the next action rather than show raw developer terminology.
+
+### Authentication
+- One obvious sign-in action.
+- No simultaneous "Log in" / "Sign up" split for password-protected self-hosted deployments.
+- Password auth UI must look like part of the product shell, not a generic auth starter.
+
+## Interaction details
+
+- Composer is the highest-priority control and should feel visually elevated but not decorative.
+- Mobile primary controls should target approximately 40-44px hit areas even when desktop controls are denser.
+- Keep drawers mounted when practical so opening/closing feels continuous rather than janky.
+- Respect safe-area insets for top chrome and bottom composers.
+- A stop control must actually cancel generation; never render a fake disabled stop icon.
+- Skeletons must mirror the current production layout closely enough that hydration does not visually jump.
+- Prefer short, calm product copy: "Message eve", "Sign in", "No session loaded", "Runtime live".
+- Avoid exposing internal route names, implementation jargon, registry mechanics or framework concepts unless the surface is specifically for advanced inspection.
+
+## Completion bar
+
+A polish pass is incomplete if any of these remain:
+- starter-template promotional UI in the primary product experience;
+- inconsistent composer implementations;
+- mismatched loading skeletons;
+- mobile controls below comfortable touch size;
+- capability pages that read like raw debug output;
+- visible functionality whose label describes implementation instead of user intent;
+- a runtime that builds successfully but is not healthy after deployment.
