@@ -8,8 +8,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-const title = "eve Chat Template";
-const description = "Build your own chat agent with eve.";
+const title = "eve";
+const description = "A persistent AI agent powered by eve.";
 const ogImage = {
   alt: title,
   height: 630,
@@ -20,6 +20,7 @@ const ogImage = {
 function resolveMetadataBase() {
   const configuredUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.BETTER_AUTH_URL ??
     process.env.VERCEL_PROJECT_PRODUCTION_URL ??
     process.env.VERCEL_URL;
 
