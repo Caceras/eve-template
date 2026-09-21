@@ -14,7 +14,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "dev": "next dev",
-    "start": "next start",
+    "start": "node scripts/start-self-hosted.mjs",
     "typecheck": "next typegen && tsgo --noEmit -p tsconfig.json",
     "build:eve": "eve build",
     "dev:eve": "eve dev",
@@ -22,7 +22,8 @@
     "eval": "eve eval",
     "eve:info": "eve info",
     "eve:surface": "node scripts/sync-eve-surface.mjs",
-    "eve:surface:check": "node scripts/check-eve-surface.mjs"
+    "eve:surface:check": "node scripts/check-eve-surface.mjs",
+    "start:next": "next start"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.1.0",
@@ -58,7 +59,8 @@
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.3",
     "use-stick-to-bottom": "1.1.6",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@opentelemetry/api": "1.9.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.5",
