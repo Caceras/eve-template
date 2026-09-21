@@ -8,7 +8,11 @@ const AUTH_ENV_KEYS = [
   "VERCEL_APP_CLIENT_SECRET",
 ] as const;
 
-const CONNECTION_ENV_KEYS = ["LINEAR_CONNECTOR", "NOTION_CONNECTOR", "SENTRY_CONNECTOR"] as const;
+const CONNECTION_ENV_KEYS = {
+  linear: "LINEAR_CONNECTOR",
+  notion: "NOTION_CONNECTOR",
+  sentry: "SENTRY_CONNECTOR",
+} as const;
 
 const RATE_LIMIT_ENV_GROUPS = [
   ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
@@ -62,13 +66,19 @@ function createSetupStatus({
   const fullEnvironmentReady = databaseConfigured && vercelAuthReady && rateLimitReady;
   const passwordReady = isPasswordConfigured();
   const localDevReady = isLocalDevelopment();
-  const connectionsAvailable = localDevReady || CONNECTION_ENV_KEYS.some(hasEnv);
+  const configuredConnections = localDevReady
+    ? (Object.keys(CONNECTION_ENV_KEYS) as (keyof typeof CONNECTION_ENV_KEYS)[])
+    : (Object.entries(CONNECTION_ENV_KEYS)
+        .filter(([, envKey]) => hasEnv(envKey))
+        .map(([key]) => key) as (keyof typeof CONNECTION_ENV_KEYS)[]);
+  const connectionsAvailable = configuredConnections.length > 0;
 
   if (passwordReady || localDevReady) {
     return {
       appReady: true,
       authMode: passwordReady ? "password" : "local-dev",
       authReady: true,
+      configuredConnections,
       connectionsAvailable,
       databaseConfigured,
       databaseReady,
@@ -84,6 +94,7 @@ function createSetupStatus({
       appReady: databaseReady,
       authMode: "vercel",
       authReady: vercelAuthReady,
+      configuredConnections,
       connectionsAvailable,
       databaseConfigured,
       databaseReady,
