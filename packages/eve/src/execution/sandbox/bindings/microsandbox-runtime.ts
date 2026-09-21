@@ -59,6 +59,8 @@ const MICROSANDBOX_PACKAGE_NAME = "microsandbox";
 const MICROSANDBOX_CONNECT_TIMEOUT_MS = 10_000;
 const MICROSANDBOX_STOP_TIMEOUT_MS = 10_000;
 
+const MICROSANDBOX_HOME = `/home/${MICROSANDBOX_USER}`;
+
 export class MicrosandboxVm {
   readonly #input: {
     readonly module: MicrosandboxModule;
@@ -235,6 +237,7 @@ export class MicrosandboxVm {
 
     const env = {
       ...this.#input.options.env,
+      HOME: MICROSANDBOX_HOME,
       ...createTransformBrokerEnvironment(createMicrosandboxNetworkPlan(this.#networkPolicy)),
       ...options.env,
     };
@@ -607,7 +610,7 @@ async function createMicrosandbox(input: {
   let builder = input.module.Sandbox.builder(input.name)
     .cpus(input.options.cpus)
     .detached(true)
-    .envs(input.options.env)
+    .envs({ ...input.options.env, HOME: MICROSANDBOX_HOME })
     .labels(resolveMicrosandboxLabels(input.tags))
     .memory(input.options.memoryMiB)
     .pullPolicy(input.options.pullPolicy)
