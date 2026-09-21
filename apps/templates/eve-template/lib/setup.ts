@@ -39,8 +39,7 @@ export function getInitialSetupStatus(): SetupStatus {
 
 export async function getSetupStatus(): Promise<SetupStatus> {
   const databaseConfigured = isDatabaseConfigured();
-  const fullEnvironmentReady = databaseConfigured && isAuthConfigured() && isRateLimitConfigured();
-  const databaseSchemaReady = fullEnvironmentReady ? await isDatabaseSchemaReady() : false;
+  const databaseSchemaReady = databaseConfigured ? await isDatabaseSchemaReady() : false;
 
   return createSetupStatus({ databaseSchemaReady });
 }
@@ -65,6 +64,21 @@ function createSetupStatus({
   const localDevReady = isLocalDevelopment();
   const connectionsAvailable = localDevReady || CONNECTION_ENV_KEYS.some(hasEnv);
 
+  if (passwordReady || localDevReady) {
+    return {
+      appReady: true,
+      authMode: passwordReady ? "password" : "local-dev",
+      authReady: true,
+      connectionsAvailable,
+      databaseConfigured,
+      databaseReady,
+      databaseSchemaReady,
+      missing: [],
+      rateLimitReady,
+      storageMode: databaseReady ? "database" : "browser",
+    };
+  }
+
   if (fullEnvironmentReady) {
     return {
       appReady: databaseReady,
@@ -77,21 +91,6 @@ function createSetupStatus({
       missing: databaseSchemaReady ? [] : ["database migrations"],
       rateLimitReady,
       storageMode: "database",
-    };
-  }
-
-  if (passwordReady || localDevReady) {
-    return {
-      appReady: true,
-      authMode: passwordReady ? "password" : "local-dev",
-      authReady: true,
-      connectionsAvailable,
-      databaseConfigured,
-      databaseReady,
-      databaseSchemaReady,
-      missing: [],
-      rateLimitReady,
-      storageMode: "browser",
     };
   }
 
