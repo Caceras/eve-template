@@ -8,7 +8,7 @@ export default defineHook({
     "turn.completed"(event, ctx) {
       console.info("[eve-template] turn.completed", {
         sessionId: ctx.session.id,
-        turnId: event.turnId,
+        turnId: event.data.turnId,
       });
     },
     "subagent.completed"(event, ctx) {
