@@ -329,7 +329,7 @@ export function AgentChatShell({
             <div className="pointer-events-auto flex items-center gap-1">
               <Button
                 aria-label="Open sidebar"
-                className="md:hidden"
+                className="size-10 rounded-full md:hidden"
                 onClick={() => setMobileSidebarOpen(true)}
                 size="icon-sm"
                 type="button"
@@ -358,7 +358,7 @@ export function AgentChatShell({
 
         <div
           className={cn(
-            "fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden",
+            "fixed inset-0 z-40 bg-black/35 backdrop-blur-[1px] transition-opacity md:hidden",
             mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={() => setMobileSidebarOpen(false)}
@@ -473,7 +473,7 @@ function ShareChatButton() {
       <TooltipTrigger asChild>
         <Button
           aria-label={copied ? "Copied chat link" : "Copy chat link"}
-          className="text-muted-foreground hover:text-foreground"
+          className="size-9 rounded-full text-muted-foreground hover:text-foreground md:size-8"
           onClick={handleCopyLink}
           size="icon-sm"
           type="button"
@@ -500,7 +500,7 @@ function AuthTopActions({
 
   return (
     <Button
-      className="h-8 px-3 text-sm font-medium"
+      className="h-9 rounded-full px-3.5 text-sm font-medium md:h-8 md:rounded-md md:px-3"
       onClick={onSignIn}
       type="button"
       variant="outline"
