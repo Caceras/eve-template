@@ -1,1 +1,1 @@
-materialize
+materialize-after-actions-enable
