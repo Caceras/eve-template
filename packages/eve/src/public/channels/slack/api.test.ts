@@ -391,6 +391,125 @@ describe("Slack outbound text", () => {
   });
 });
 
+describe("Slack API failure surfaces", () => {
+  let slack: MockSlackApi;
+
+  beforeEach(() => {
+    slack = mockSlackApi();
+  });
+
+  function bind() {
+    return buildSlackBinding({
+      api: { fetch: slack.fetch },
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1.0",
+      teamId: undefined,
+    });
+  }
+
+  // Documents what eve does today, not what it should do: the vendored
+  // Slack primitive has no retry logic at all, so a 429 fails the call
+  // outright even though Slack said exactly how long to wait.
+  it("throws on HTTP 429 without honoring Retry-After (documents current behavior)", async () => {
+    slack.failNextHttp("chat.postMessage", {
+      status: 429,
+      retryAfter: 30,
+      body: { ok: false, error: "rate_limited" },
+    });
+    const { thread } = bind();
+
+    const rejection = thread.post("anything");
+    await expect(rejection).rejects.toThrow(SlackApiError);
+    await expect(rejection).rejects.toMatchObject({ method: "chat.postMessage", status: 429 });
+
+    // One attempt and nothing posted: no back-off, no second try.
+    expect(slack.callsTo("chat.postMessage")).toHaveLength(1);
+    expect(slack.messages()).toEqual([]);
+  });
+
+  it.each(["msg_too_long", "invalid_blocks", "channel_not_found", "token_revoked"])(
+    "raises a SlackApiError for a Slack-level %s on chat.postMessage",
+    async (error) => {
+      slack.failNext("chat.postMessage", error);
+      const { thread } = bind();
+
+      const rejection = thread.post({ markdown: "**too much**" });
+      await expect(rejection).rejects.toThrow(SlackApiError);
+      await expect(rejection).rejects.toMatchObject({
+        method: "chat.postMessage",
+        response: { ok: false, error },
+      });
+      expect(slack.messages()).toEqual([]);
+    },
+  );
+
+  it("raises channel_not_found from postEphemeral without delivering anything", async () => {
+    slack.failNext("chat.postEphemeral", "channel_not_found");
+    const { thread } = bind();
+
+    await expect(thread.postEphemeral("U99", { text: "psst" })).rejects.toThrow(
+      "chat.postEphemeral failed: channel_not_found",
+    );
+    expect(slack.messages({ ephemeral: true })).toEqual([]);
+  });
+
+  it("raises invalid_auth from conversations.open before any DM is posted", async () => {
+    slack.failNext("conversations.open", "invalid_auth");
+    const { thread } = bind();
+
+    await expect(thread.postDirectMessage("U99", { text: "for your eyes only" })).rejects.toThrow(
+      /invalid_auth/,
+    );
+    expect(slack.callsTo("chat.postMessage")).toEqual([]);
+  });
+
+  // The typing indicator is a UX nicety, so eve swallows its failures:
+  // a revoked token silently leaves the thread with no status rather
+  // than failing the turn.
+  it("swallows a revoked token on the typing indicator", async () => {
+    slack.failNext("assistant.threads.setStatus", "token_revoked");
+    const { thread } = bind();
+
+    await expect(thread.startTyping("Working...")).resolves.toBeUndefined();
+    expect(slack.callsTo("assistant.threads.setStatus")).toHaveLength(1);
+    expect(slack.statuses()).toEqual([]);
+    slack.assertNoViolations();
+  });
+
+  it("leaves the staged bytes orphaned when completeUploadExternal fails", async () => {
+    slack.failNext("files.completeUploadExternal", "invalid_arguments");
+    const binding = bind();
+
+    await expect(
+      binding.slack.uploadFiles([{ data: Buffer.from([1, 2]), filename: "x.bin" }]),
+    ).rejects.toThrow("invalid_arguments");
+
+    // The bytes landed, but Slack never shared them: an uncompleted
+    // upload and no thread message.
+    expect(slack.files()).toEqual([
+      expect.objectContaining({ id: "F1", completed: false, bytes: new Uint8Array([1, 2]) }),
+    ]);
+    expect(slack.messages()).toEqual([]);
+  });
+
+  // Documents current behavior: `fileIds` is built from the ids eve
+  // staged, never reconciled against the files Slack says it completed,
+  // so a partial completion is reported to the caller as a full success.
+  it("reports a partial completeUploadExternal as a full success (documents current behavior)", async () => {
+    slack.respondWith("files.completeUploadExternal", { ok: true, files: [{ id: "F1" }] });
+    const binding = bind();
+
+    const result = await binding.slack.uploadFiles([
+      { data: Buffer.from([1]), filename: "kept.bin" },
+      { data: Buffer.from([2]), filename: "dropped.bin" },
+    ]);
+
+    expect(result.fileIds).toEqual(["F1", "F2"]);
+    expect((result.raw.files as { id: string }[]).map((file) => file.id)).toEqual(["F1"]);
+  });
+});
+
 describe("SlackThread.refresh", () => {
   let slack: MockSlackApi;
 

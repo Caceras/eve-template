@@ -596,6 +596,65 @@ describe("slackChannel() default event handlers", () => {
     expect(slack.files().filter((file) => file.completed)).toEqual([]);
   });
 
+  it.each(["msg_too_long", "invalid_blocks", "channel_not_found"])(
+    "message.completed surfaces a Slack-level %s from chat.postMessage",
+    async (error) => {
+      // eve's own length guard let this reply through, but Slack's
+      // per-block limits and channel membership are checked server side.
+      slack.failNext("chat.postMessage", error);
+      const adapter = withState(
+        getAdapter(
+          slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+        ),
+        THREAD_STATE,
+      );
+      const ctx = buildAdapterContext(adapter, stubAccessor());
+
+      await expect(
+        callCompletionHandler(
+          adapter,
+          makeEvent("message.completed", {
+            finishReason: "stop",
+            message: "Hello from the agent",
+            sequence: 0,
+            stepIndex: 0,
+            turnId: "t1",
+          }),
+          ctx,
+        ),
+      ).rejects.toThrow(error);
+      expect(slack.messages()).toEqual([]);
+    },
+  );
+
+  it("message.completed throws on an HTTP 429 rather than waiting out Retry-After", async () => {
+    // Documents what eve does today: the vendored Slack primitive has no
+    // retry logic, so a rate-limited reply fails the turn.
+    slack.failNextHttp("chat.postMessage", { status: 429, retryAfter: 30 });
+    const adapter = withState(
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
+      THREAD_STATE,
+    );
+    const ctx = buildAdapterContext(adapter, stubAccessor());
+
+    await expect(
+      callCompletionHandler(
+        adapter,
+        makeEvent("message.completed", {
+          finishReason: "stop",
+          message: "Hello from the agent",
+          sequence: 0,
+          stepIndex: 0,
+          turnId: "t1",
+        }),
+        ctx,
+      ),
+    ).rejects.toThrow("HTTP 429");
+    expect(slack.callsTo("chat.postMessage")).toHaveLength(1);
+  });
+
   it("activity-owned message.completed uses the same oversized reply snippet", async () => {
     const adapter = withState(
       getAdapter(
@@ -2420,6 +2479,24 @@ describe("slackChannel() inbound mention pipeline", () => {
     expect(slack.statuses()).toEqual([
       expect.objectContaining({ channelId: "C01", status: "Thinking..." }),
     ]);
+  });
+
+  it("still dispatches when the typing indicator fails with a revoked token", async () => {
+    // The indicator is a UX nicety, so the pipeline swallows its failure
+    // rather than dropping the mention.
+    slack.failNext("assistant.threads.setStatus", "token_revoked");
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
+    const { body } = buildMentionBody();
+
+    const { response, send } = await firePost(channel, buildSignedRequest({ body }));
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(slack.callsTo("assistant.threads.setStatus")).toHaveLength(1);
+    expect(slack.statuses()).toEqual([]);
   });
 
   it("returns 200 OK without dispatching for non-app_mention events", async () => {
