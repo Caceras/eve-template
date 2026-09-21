@@ -18,7 +18,7 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
         <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex size-8 items-center justify-center rounded-md">
-              <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/eve.svg" />
+              <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/aegentica.svg" />
             </div>
             <div className="flex size-8 items-center justify-center rounded-md text-muted-foreground/55">
               <PanelLeftIcon className="size-4" />
@@ -96,7 +96,7 @@ function EmptyChatSkeleton() {
               alt=""
               className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
               draggable={false}
-              src="/eve.svg"
+              src="/aegentica.svg"
             />
           </h1>
           <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">
@@ -142,7 +142,7 @@ function StaticComposerFallback() {
       data-chat-composer
     >
       <div className="min-h-[58px] px-4 pb-1 pt-4 text-[15px] leading-6 text-muted-foreground/45 sm:px-5 dark:text-muted-foreground/60">
-        Message eve
+        Message Ægentica
       </div>
       <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:px-4">
         <div className="-ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
