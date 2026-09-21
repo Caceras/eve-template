@@ -12,13 +12,20 @@ import {
 import type { RejectedActionBatch } from "#harness/hitl/approval-input-requests.js";
 import { isApprovalRequest } from "#harness/input-request-class.js";
 import type { PendingInputBatch } from "#harness/pending-input-batches.js";
-import { getPendingInputBatches, queueDeferredStepInput } from "#harness/pending-input-batches.js";
+import {
+  getDeferredStepInput,
+  getPendingInputBatches,
+  queueDeferredStepInput,
+} from "#harness/pending-input-batches.js";
 import { compactStepInput } from "#harness/hitl/pending-input-resolution.js";
 import type {
   ResolvePendingInputResult,
   ResolvedStepInput,
 } from "#harness/hitl/pending-input-resolution.js";
-import { resolveQuestionOnlyInputBatches } from "#harness/hitl/question-input-requests.js";
+import {
+  findAnsweredQuestionBatches,
+  resolveQuestionOnlyInputBatches,
+} from "#harness/hitl/question-input-requests.js";
 import { resolveToolCallInputObject } from "#harness/coordination.js";
 import {
   clearPendingSessionLimitPrompt,
@@ -43,6 +50,41 @@ export {
 export function hasStepInput(input?: StepInput): boolean {
   if (input === undefined) return false;
   return input.message !== undefined || (input.inputResponses?.length ?? 0) > 0;
+}
+
+/** Stored partial answers are not runnable work until they can resolve a batch. */
+export function hasRunnableDeferredStepInput(session: HarnessSession): boolean {
+  const deferred = getDeferredStepInput(session);
+  if (deferred === undefined) return false;
+  if (
+    deferred.message !== undefined ||
+    (deferred.context?.length ?? 0) > 0 ||
+    readClientContext(deferred) !== undefined ||
+    deferred.outputSchema !== undefined ||
+    (deferred.runtimeActionResults?.length ?? 0) > 0
+  )
+    return true;
+
+  const responses = [
+    ...(deferred.inputResponses ?? []),
+    ...(deferred.attributedInputResponses ?? []).map(({ response }) => response),
+  ];
+  if (responses.length === 0) return false;
+  const batches = getPendingInputBatches(session.state);
+  const route = routePendingInput(batches);
+  switch (route.kind) {
+    case "session-limit":
+      return route.batch.requests.every((request) =>
+        responses.some((response) => response.requestId === request.requestId),
+      );
+    case "approval":
+      return (
+        hasAnsweredApprovalBatch(route.approvalBatches, responses) ||
+        findAnsweredQuestionBatches(route.questionBatches, responses).length > 0
+      );
+    case "question":
+      return findAnsweredQuestionBatches(batches, responses).length > 0;
+  }
 }
 
 /** Returns true when any pending batch still contains a tool approval. */
@@ -97,7 +139,6 @@ export function resolvePendingInput(input: {
     resolvedStepInput?.message === undefined
   ) {
     return {
-      deferredInputForNextUser: resolvedStepInput === undefined ? undefined : true,
       outcome: "continue",
       messages: baseHistory,
       session:
@@ -170,7 +211,8 @@ function canContinuePastHistoricalInput(input: {
   if (
     input.responses.length > 0 &&
     (input.route.kind !== "approval" ||
-      hasAnsweredApprovalBatch(input.route.approvalBatches, input.responses))
+      hasAnsweredApprovalBatch(input.route.approvalBatches, input.responses) ||
+      findAnsweredQuestionBatches(input.route.questionBatches, input.responses).length > 0)
   ) {
     return false;
   }

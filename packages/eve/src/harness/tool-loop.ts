@@ -139,7 +139,7 @@ import {
   consumeDeferredStepInput,
   getApprovedTools,
   getPendingInputRequestIds,
-  hasDeferredStepInput,
+  hasRunnableDeferredStepInput,
   hasPendingApprovalBatch,
   hasStepInput,
   resolvePendingInput,
@@ -2060,7 +2060,6 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         result,
         runStep,
         session,
-        deferredInputForNextUser: pending.deferredInputForNextUser === true,
         coordinationTools: modelCallCoordinationTools,
       });
     } catch (error) {
@@ -2592,7 +2591,6 @@ async function attemptEmptyResponseRecovery(input: {
  */
 async function handleStepResult(input: {
   readonly config: ToolLoopHarnessConfig;
-  readonly deferredInputForNextUser?: boolean;
   readonly emit?: ToolLoopHarnessConfig["handleEvent"];
   readonly emissionState: ReturnType<typeof getHarnessEmissionState>;
   readonly durableModelPromptMessageCount?: number;
@@ -2832,7 +2830,7 @@ async function handleStepResult(input: {
     }
 
     return {
-      next: hasDeferredStepInput(parkedSession) ? runStep : null,
+      next: hasRunnableDeferredStepInput(parkedSession) ? runStep : null,
       session: parkedSession,
     };
   }
@@ -2924,7 +2922,7 @@ async function handleStepResult(input: {
     !calledFinalOutput &&
     (continuationMessages.at(-1)?.role === "tool" ||
       normalizedProviderHistory.outcomeEndsResponse ||
-      (hasDeferredStepInput(nextSession) && input.deferredInputForNextUser !== true));
+      hasRunnableDeferredStepInput(nextSession));
   if (continueLoop) {
     if (emit) {
       emissionState = advanceStep(emissionState);

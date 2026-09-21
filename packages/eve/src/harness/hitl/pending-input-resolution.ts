@@ -31,8 +31,6 @@ export type ResolvePendingInputResult = {
   readonly consumedMessage?: boolean;
   readonly deferredContext?: boolean;
   readonly deferredMessage?: boolean;
-  /** A queued partial response is for the next user delivery, not this model step. */
-  readonly deferredInputForNextUser?: true;
   /** Present when a session-limit continuation prompt was resolved. */
   readonly limitContinuation?: { readonly granted: boolean };
   readonly outcome: "resolved" | "continue" | "unresolved";

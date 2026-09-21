@@ -100,7 +100,6 @@ export function resolveApprovalInputBatches(
         : queueDeferredStepInput(input.session, { inputResponses: leftoverResponses });
     return {
       consumedMessage: input.resolvedStepInput.messageConsumed,
-      deferredInputForNextUser: leftoverResponses.length > 0 ? true : undefined,
       outcome: "continue",
       messages: [...input.baseHistory],
       session,
