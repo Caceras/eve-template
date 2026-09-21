@@ -58,6 +58,28 @@ const MICROSANDBOX_PACKAGE_NAME = "microsandbox";
 const MICROSANDBOX_CONNECT_TIMEOUT_MS = 10_000;
 const MICROSANDBOX_STOP_TIMEOUT_MS = 10_000;
 
+function createSessionMetadata(input: {
+  readonly networkPolicy: SandboxNetworkPolicy | undefined;
+  readonly optionsHash: string;
+  readonly sandboxName: string;
+  readonly stateSnapshotName: string | undefined;
+}): MicrosandboxSessionMetadata {
+  const metadata: {
+    networkPolicy?: SandboxNetworkPolicy;
+    optionsHash: string;
+    sandboxName: string;
+    stateSnapshotName?: string;
+    version: typeof MICROSANDBOX_METADATA_VERSION;
+  } = {
+    optionsHash: input.optionsHash,
+    sandboxName: input.sandboxName,
+    version: MICROSANDBOX_METADATA_VERSION,
+  };
+  if (input.networkPolicy !== undefined) metadata.networkPolicy = input.networkPolicy;
+  if (input.stateSnapshotName !== undefined) metadata.stateSnapshotName = input.stateSnapshotName;
+  return metadata;
+}
+
 export class MicrosandboxVm {
   readonly #input: {
     readonly module: MicrosandboxModule;
@@ -109,17 +131,12 @@ export class MicrosandboxVm {
       if (this.#metadataPath !== undefined) {
         await this.writeMetadata(this.#metadataPath, optionsHash);
       }
-      return {
-        ...(this.#networkPolicy === undefined
-          ? {}
-          : { networkPolicy: this.#networkPolicy }),
+      return createSessionMetadata({
+        networkPolicy: this.#networkPolicy,
         optionsHash,
         sandboxName: this.#sandboxName,
-        ...(this.#stateSnapshotName === undefined
-          ? {}
-          : { stateSnapshotName: this.#stateSnapshotName }),
-        version: MICROSANDBOX_METADATA_VERSION,
-      };
+        stateSnapshotName: this.#stateSnapshotName,
+      });
     }
 
     const previousStateSnapshotName = this.#stateSnapshotName;
@@ -136,13 +153,12 @@ export class MicrosandboxVm {
     if (previousStateSnapshotName !== undefined) {
       await removeSnapshotIfExists(this.#input.module, previousStateSnapshotName);
     }
-    return {
-      ...(this.#networkPolicy === undefined ? {} : { networkPolicy: this.#networkPolicy }),
+    return createSessionMetadata({
+      networkPolicy: this.#networkPolicy,
       optionsHash,
       sandboxName: this.#sandboxName,
       stateSnapshotName,
-      version: MICROSANDBOX_METADATA_VERSION,
-    };
+    });
   }
 
   async detach(): Promise<void> {
