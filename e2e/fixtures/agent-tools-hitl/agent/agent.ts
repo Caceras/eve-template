@@ -1,6 +1,8 @@
 import { e2eAgentConfig } from "@eve-e2e/config";
-import { defineAgent } from "eve";
+import { defineAgent, defineDynamic } from "eve";
 import type { MockModelRequest, MockModelResponse } from "eve/evals";
+
+import { continuationModel } from "./lib/continuation/model.ts";
 
 const AUTH_PROBE_DIRECTIVE = /call the auth-probe tool exactly once with marker "([^"]+)"/iu;
 const SCOPED_APPROVAL_DIRECTIVE =
@@ -64,7 +66,23 @@ function respond(request: MockModelRequest): MockModelResponse | string {
   return `Mock reply: ${message}`;
 }
 
+const base = e2eAgentConfig({ mock: respond });
+
 export default defineAgent({
-  ...e2eAgentConfig({ mock: respond }),
+  experimental: base.experimental,
   reasoning: "high",
+  // Budget evals exhaust this with synthetic usage; ordinary HITL sessions do not.
+  limits: { maxOutputTokensPerSession: 1_000_000 },
+  model: defineDynamic({
+    events: {
+      "session.started": () => ({
+        model: typeof base.model === "string" ? base.model : "openai/gpt-5.6-sol",
+        modelContextWindowTokens: base.modelContextWindowTokens,
+      }),
+      "step.started": (_event, ctx) =>
+        ctx.session.auth.initiator?.attributes?.model === "continuation"
+          ? { model: continuationModel(), modelContextWindowTokens: 1_000_000 }
+          : { model: base.model, modelContextWindowTokens: base.modelContextWindowTokens },
+    },
+  }),
 });
