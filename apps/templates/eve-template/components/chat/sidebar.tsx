@@ -157,7 +157,7 @@ export function ChatSidebar({
           }}
         >
           <RadioTowerIcon className="size-4" />
-          Channels
+          Web
         </Link>
         <Link
           className={cn(
@@ -178,6 +178,7 @@ export function ChatSidebar({
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {chats.length ? (
           <div>
+            <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">Recent</p>
             {chats.map((chat) => {
               const active = activeChatId === chat.id;
 
