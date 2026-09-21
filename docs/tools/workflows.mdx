@@ -324,24 +324,15 @@ return type, so `result` in the example is typed as `{ findings: string[] }`.
 
 ### Route to a hidden subagent with JEV
 
-Use an authored workflow tool when the parent model should decide to delegate, but JEV should choose the specialist. Set `tool: false` on each specialist so the parent model sees only the routing tool. The specialists remain available through `ctx.agents` and callable through `ctx.agent()`.
+Use JEV when the parent model should decide whether to delegate, but your routing logic should choose the agent. Agents hidden from the parent model with `tool: false` or a same-named `disableTool()` remain present in `ctx.agents` and callable through `ctx.agent()`.
 
-If the router may select the root-copy `agent`, author a root `description` that explains which work should stay with a copy of the root. `ctx.agents.agent` always exists in a top-level root workflow, but its `description` is an empty string when omitted from `agent.ts`. `agentRouter()` considers only entries with a non-empty description, so it does not route to an undescribed root copy.
-
-```ts title="agent/agent.ts"
-import { defineAgent } from "eve";
-
-export default defineAgent({
-  description: "Coordinate cross-specialist tasks that need the root agent's complete toolset.",
-  model: "anthropic/claude-opus-4.8",
-});
-```
+Automatic routing depends on agent descriptions. Give each candidate a description that distinguishes its responsibilities:
 
 ```ts title="agent/subagents/researcher/agent.ts"
 import { defineAgent } from "eve";
 
 export default defineAgent({
-  description: "Investigation, analysis, and explanation",
+  description: "Investigate, analyze, and explain a topic.",
   model: "anthropic/claude-opus-4.8",
   tool: false,
 });
@@ -351,13 +342,34 @@ export default defineAgent({
 import { defineAgent } from "eve";
 
 export default defineAgent({
-  description: "Execution and operational changes",
+  description: "Make operational changes and report the result.",
   model: "openai/gpt-5.6-sol",
   tool: false,
 });
 ```
 
-Define the model-visible router under `agent/tools/`. Build the JEV criteria from the subagents' effective descriptions, then pass its typed choice directly to `ctx.agent()`:
+In a top-level root workflow, `ctx.agents` also contains `agent`, the root-copy target. To make the root copy a routing candidate, add a root description:
+
+```ts title="agent/agent.ts"
+import { defineAgent } from "eve";
+
+export default defineAgent({
+  description: "Coordinate work that needs the root agent's complete toolset.",
+  model: "anthropic/claude-opus-4.8",
+});
+```
+
+Without a root description, `ctx.agents.agent.description` is `""`. The provided routing helpers discard candidates whose descriptions are empty or contain only whitespace.
+
+Choose the routing API based on how much of the tool you need to control:
+
+1. Use `evaluate()` to define the candidate map, selection question, tool input, and invocation yourself.
+2. Use `auto()` inside an authored step to reuse the standard selection logic while controlling the candidate map or using a live evaluation model.
+3. Use `agentRouter()` for a complete workflow tool that routes across every described entry in `ctx.agents`.
+
+#### Build the complete router
+
+Use `evaluate()` directly when you need to control both selection and invocation:
 
 ```ts title="agent/tools/agent-router.ts"
 import { evaluate } from "eve/ai";
@@ -365,20 +377,20 @@ import { defineWorkflowTool } from "eve/tools";
 import { z } from "zod";
 
 async function chooseTarget(
-  task: string,
-  criteria: Record<"researcher" | "operator", string>,
+  message: string,
+  agents: Record<"researcher" | "operator", string>,
   abortSignal: AbortSignal,
 ) {
   "use step";
 
   const result = await evaluate({
     abortSignal,
-    state: { task },
+    state: { message },
     questions: {
       route: {
         type: "choice",
-        instructions: "Which specialist should handle this task?",
-        criteria,
+        criteria: agents,
+        instructions: "Which agent should handle this task?",
       },
     },
   });
@@ -388,12 +400,12 @@ async function chooseTarget(
 
 export default defineWorkflowTool({
   description: "Route a task to the appropriate specialist.",
-  inputSchema: z.object({ task: z.string().min(1).max(8000) }),
-  async execute({ task }, ctx) {
+  inputSchema: z.object({ message: z.string().min(1).max(8000) }),
+  async execute({ message }, ctx) {
     "use workflow";
 
     const target = await chooseTarget(
-      task,
+      message,
       {
         researcher: ctx.agents.researcher.description,
         operator: ctx.agents.operator.description,
@@ -401,34 +413,35 @@ export default defineWorkflowTool({
       ctx.abortSignal,
     );
 
-    return ctx.agent(target, { message: task });
+    return ctx.agent(target, { message });
   },
 });
 ```
 
-The evaluation runs in a step so workflow replay records its result instead of making the routing request again. The parent model receives `agent-router`, but not `researcher` or `operator`. JEV returns the typed `"researcher" | "operator"` choice, and the selected subagent's result becomes the `agent-router` tool result.
+The `"use step"` boundary makes the model call durable: workflow replay reuses the recorded choice instead of evaluating the route again. This example deliberately limits the candidates to `researcher` and `operator`; it does not include the root copy.
 
-#### Reuse the routing step
+#### Reuse the standard selection logic
 
-Use `auto()` from `eve/tools/agent-router/auto` inside an authored step when you want standard selection logic but need to choose the candidate map, evaluation model, or instructions:
+Use `auto()` from `eve/tools/agent-router/auto` inside your own authored step when the standard choice question is sufficient:
 
 ```ts
 import { auto } from "eve/tools/agent-router/auto";
 import { evaluationModel } from "../evaluation-model";
 
-async function route(message: string, agents: Record<string, string>) {
+async function select(message: string, agents: Record<string, string>) {
   "use step";
+
   return auto({ message, agents, model: evaluationModel });
 }
 ```
 
-`message` and `agents` are required. `model`, `instructions`, and `abortSignal` are optional; `model` accepts an evaluation model instance or ID, and the helper defaults to `typesafe-ai/jev` and `"Which subagent should handle this task?"`. It trims descriptions, ignores empty entries, skips evaluation for a sole candidate, and returns the selected agent name. Import or create live model instances in the step module so they do not cross the durable argument boundary.
+`auto()` requires `message` and `agents`. It accepts optional `model`, `instructions`, and `abortSignal` values. `model` may be an evaluation model instance or a model ID and defaults to `typesafe-ai/jev`. `auto()` does not create a durable step itself; call it from a function whose first statement is `"use step"`. Import or create a live model in that step's module rather than passing it into the step as a durable argument.
 
-`ctx.agents` is a replay-stable metadata snapshot taken when the workflow starts. In a top-level root workflow, `ctx.agents.agent` always represents the root-copy target and carries the root's authored `description` when provided. The snapshot also includes declared agents hidden from the parent model with `tool: false` or `disableTool()`, but exposes no model definitions, credentials, or callbacks. A delegated root copy omits `agent`, so `agentRouter()` cannot select another root copy recursively. Invocation still checks each target's availability through `ctx.agent()`.
+Before evaluation, `auto()` trims descriptions and removes empty entries. It returns the only candidate without calling the evaluation model, and otherwise returns the name selected by `evaluate()`. It chooses a name but does not invoke the agent.
 
 #### Use the provided router tool
 
-Use `agentRouter()` when you do not need to customize the candidate map. It routes across every described target in `ctx.agents`. To replace the model-facing `agent` tool, export it from the `agent` slot:
+Use `agentRouter()` when the tool should route across every described candidate in `ctx.agents`. Export it from `agent/tools/agent.ts` to replace the model-facing built-in `agent` tool:
 
 ```ts title="agent/tools/agent.ts"
 import { agentRouter } from "eve/tools/agent-router";
@@ -436,14 +449,29 @@ import { agentRouter } from "eve/tools/agent-router";
 export default agentRouter();
 ```
 
-Pass `model` or `instructions` to customize the default selector with serializable configuration. Pass an authored `select` step for full control, including live evaluation model instances:
+The tool accepts `{ message: string, outputSchema?: object }`. It removes candidates with empty descriptions, selects among the remaining names, and calls `ctx.agent()` with the original message and optional output schema. With one candidate, it invokes that candidate without evaluating a route.
+
+By default, `agentRouter()` uses `typesafe-ai/jev`. You can pass a serializable model ID or custom instructions:
+
+```ts title="agent/tools/agent.ts"
+import { agentRouter } from "eve/tools/agent-router";
+
+export default agentRouter({
+  model: "openai/gpt-5.6-luna-fast",
+  instructions: "Which agent should handle this task?",
+});
+```
+
+The `model` option accepts only a model ID. To use a live evaluation model or replace the selection logic, pass a top-level authored `"use step"` function as `select`:
 
 ```ts title="agent/tools/agent.ts"
 import { evaluate } from "eve/ai";
 import { agentRouter } from "eve/tools/agent-router";
 import { evaluationModel } from "../evaluation-model";
+
 async function select(message: string, agents: Record<string, string>) {
   "use step";
+
   const result = await evaluate({
     model: evaluationModel,
     state: { message },
@@ -455,18 +483,20 @@ async function select(message: string, agents: Record<string, string>) {
       },
     },
   });
+
   return result.answers.route.choice;
 }
+
 export default agentRouter({ select });
 ```
 
-A custom selector receives `(message, agents, abortSignal)` and must return one name from the provided map. `select` cannot be combined with `model` or `instructions`; configure those inside the selector.
+The selector receives the message, the filtered description map, and an `AbortSignal` as its third argument. It must return a name from that map; `agentRouter()` rejects any other result. The selector is not called when only one described candidate remains. `select` cannot be combined with the factory's `model` or `instructions` options—configure the model and question inside the selector instead.
 
-Its input is `{ message: string, outputSchema?: object }`. `agentRouter()` ignores entries without a non-empty description. With two or more described targets, it sends the message and effective descriptions to JEV, then invokes the selected name through `ctx.agent()`. It invokes a sole target without evaluation and forwards an optional `outputSchema` unchanged. In a top-level root session, the candidates include the root-copy `agent`; delegated root copies and declared subagent contexts include only their declared targets.
+`ctx.agents` is a replay-stable metadata snapshot taken when the workflow starts. It includes declared agents even when their model-facing tools are hidden, but it does not expose model definitions, credentials, or callbacks. `agentRouter()` is available only to the top-level root session and is not inherited by delegated root copies or declared subagents, which prevents recursive routing through the same tool. `ctx.agent()` still checks the selected target's availability when the router invokes it.
 
-When an authored tool accepts a JSON Schema supplied by the model, represent that input with a permissive object such as `z.looseObject({})`. Avoid `z.record(z.string(), z.json())`: its generated JSON Schema uses `propertyNames`, which OpenAI does not support. Validate the supplied value at the point where your tool consumes it.
+When an authored tool accepts a JSON Schema supplied by the model, represent that input with a permissive object such as `z.looseObject({})`. Avoid `z.record(z.string(), z.json())`: its generated JSON Schema uses `propertyNames`, which OpenAI does not support. Validate the supplied value when your tool consumes it.
 
-This pattern controls specialist selection, not whether the parent model delegates at all. Route before the parent model runs if every incoming request must go through JEV.
+This pattern controls which agent handles a delegated task. It does not force the parent model to delegate. Route before the parent model runs if every request must go through JEV.
 
 ## Report progress: `yield`
 
