@@ -1,3 +1,7 @@
+import {
+  registeredRemoteConfig,
+  isAttachedRemoteSession,
+} from "#subagents/handles/registered-remote.js";
 import { getPendingCoordinationBatch } from "#harness/coordination.js";
 import type { CancelTurnResult } from "#channel/types.js";
 import { deserializeContext } from "#context/serialize.js";
@@ -53,8 +57,9 @@ export async function cancelDescendantTurnsStep(input: {
     const workflowOwnerIds = new Set(workflowToolRuns.map((run) => run.address.runId));
     running = (getAgentHandleStore(session.state)?.handles ?? []).filter(
       (handle): handle is RunningAgentHandle =>
-        handle.phase === "running" ||
-        (handle.phase === "claimed" && workflowOwnerIds.has(handle.ownerId)),
+        !isAttachedRemoteSession(handle.identity) &&
+        (handle.phase === "running" ||
+          (handle.phase === "claimed" && workflowOwnerIds.has(handle.ownerId))),
     );
   } catch (error) {
     logError(log, "failed to read pending descendants during cancellation", error, {
@@ -129,7 +134,9 @@ async function cancelRemoteDescendant(input: {
     const { ctx, registry } = await input.remoteContext;
     const selection = getDynamicSubagentSelection(ctx, handle.identity.nodeId);
     const resolved = await resolveRemoteAgentForAction({
-      dynamicRemoteAgent: selection?.kind === "remote" ? selection.remoteAgent : undefined,
+      dynamicRemoteAgent:
+        registeredRemoteConfig(handle.identity) ??
+        (selection?.kind === "remote" ? selection.remoteAgent : undefined),
       nodeId: handle.identity.nodeId,
       remoteAgentName: handle.identity.name,
       registry,

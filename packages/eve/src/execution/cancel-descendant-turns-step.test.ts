@@ -84,6 +84,41 @@ afterEach(() => {
 });
 
 describe("cancelDescendantTurnsStep", () => {
+  it("does not propagate cancellation to an attached remote session", async () => {
+    const state = createRunningState();
+    const handle = {
+      ...REMOTE_RUNNING_HANDLE,
+      identity: {
+        ...REMOTE_RUNNING_HANDLE.identity,
+        registration: {
+          key: "shared",
+          description: "Shared conversation",
+          visible: true,
+          target: {
+            kind: "remote" as const,
+            url: "https://remote.example.com",
+            sessionId: "remote-child",
+          },
+        },
+      },
+    };
+    await cancelDescendantTurnsStep({
+      serializedContext: {},
+      sessionState: {
+        ...state,
+        snapshot: {
+          ...state.snapshot,
+          session: {
+            ...state.snapshot.session,
+            state: { [AGENT_HANDLES_STATE_KEY]: { handles: [handle] } },
+          },
+        },
+      },
+    });
+    expect(cancelRemoteAgentTurn).not.toHaveBeenCalled();
+    expect(requestWorkflowTurnCancellation).not.toHaveBeenCalled();
+  });
+
   it("cancels every running local and remote child in parallel", async () => {
     installRemoteRegistry();
     vi.mocked(resolveRemoteAgentForAction).mockReturnValue(remote as never);

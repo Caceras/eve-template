@@ -110,6 +110,36 @@ describe("terminateChildSessionsStep", () => {
     });
   });
 
+  it("does not reset an existing remote session introduced by registration", async () => {
+    const handle = parkedHandle({
+      id: "registered-existing",
+      kind: "agent/remote",
+      sessionId: "external-session",
+    });
+    await terminateChildSessionsStep({
+      sessionState: makeSessionState([
+        {
+          ...handle,
+          identity: {
+            ...handle.identity,
+            registration: {
+              key: "external",
+              description: "Existing conversation",
+              visible: true,
+              target: {
+                kind: "remote",
+                url: "https://remote.example.com",
+                sessionId: "external-session",
+              },
+            },
+          },
+        },
+      ]),
+    });
+    expect(resetRemoteAgentSessionMock).not.toHaveBeenCalled();
+    expect(cancelRunMock).not.toHaveBeenCalled();
+  });
+
   it("resets remote children and terminates local children", async () => {
     await terminateChildSessionsStep({
       serializedContext: { context: "serialized" },

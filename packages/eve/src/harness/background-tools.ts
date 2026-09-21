@@ -32,6 +32,11 @@ export interface BackgroundToolCallBatch {
 }
 
 export interface BackgroundToolExecutor {
+  invokeAgent?(
+    target: string | import("#subagents/registration.js").AgentReference,
+    input: import("#tools/workflow-definition.js").AgentInput,
+    options: ToolExecuteOptions,
+  ): Promise<import("#subagents/registration.js").AgentTaskReceipt>;
   hasPendingTasks?(): boolean;
   readAgentViews?(): Promise<readonly AgentView[]>;
   execute(input: {

@@ -19,6 +19,25 @@ export interface AgentView {
   readonly taskStatus?: "working" | "input_required";
 }
 
+/** Membership is independent of child execution; routing never enters the advertisement. */
+export function projectRegisteredAgentViews(handles: readonly AgentHandle[]): readonly AgentView[] {
+  return handles.flatMap((handle): readonly AgentView[] => {
+    const registration = handle.identity.registration;
+    if (registration?.visible !== true) return [];
+    return [
+      {
+        id: handle.identity.id,
+        name: registration.key,
+        availability:
+          handle.phase === "registered" || handle.phase === "available" || handle.phase === "parked"
+            ? "available"
+            : "busy",
+        statusLine: `${registration.description} (${handle.phase === "registered" ? "not connected; reachability unknown" : handle.phase})`,
+      },
+    ];
+  });
+}
+
 /** Returns the resumable handles: the only phases the model may continue. */
 export function projectParkedAgentHandles(
   store: AgentHandleStore,

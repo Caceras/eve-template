@@ -1,6 +1,7 @@
 import { z } from "#compiled/zod/index.js";
 
 import type { SessionStateMap } from "#harness/types.js";
+import type { AgentRegistration } from "#subagents/registration.js";
 
 import { AGENT_HANDLES_STATE_KEY } from "./state-key.js";
 
@@ -9,12 +10,13 @@ export { AGENT_HANDLES_STATE_KEY };
 const MAX_STATUS_LENGTH = 120;
 
 /**
- * Stable identity of one delegated child, minted before its start side
- * effect runs. The model-visible `id` derives from the first start
- * operation, never from the child session id, so it exists before the
- * child does and cannot collide on externally supplied session suffixes.
+ * Stable identity of one destination or delegated child, minted before its start side
+ * effect runs. Registered IDs derive from a session-local sequence; delegated
+ * child IDs derive from the first start operation. Neither derives from a
+ * remote session ID.
  */
 export interface AgentIdentity {
+  readonly registration?: AgentRegistration;
   /** Model-visible identifier: `ag_<name>:<operation-hash>`. */
   readonly id: string;
   /** Subagent tool name. */
@@ -154,20 +156,28 @@ export type TaskOwnedAgentHandle =
     };
 
 /**
- * Durable ownership record for one delegated child.
+ * Durable destination registration and optional execution state.
  *
  * The two execution policies share an identity namespace and serialized store,
- * but their lifecycle states and transitions are disjoint. A terminal child has
- * no handle: settlement deletes it.
+ * but their lifecycle states and transitions are disjoint. Registration survives
+ * settlement; an existing address is retained to prevent silent session replacement.
  */
-export type AgentHandle = TurnOwnedAgentHandle | TaskOwnedAgentHandle;
+export type AgentHandle =
+  | TurnOwnedAgentHandle
+  | TaskOwnedAgentHandle
+  | {
+      readonly phase: "registered";
+      readonly identity: AgentIdentity & { readonly registration: AgentRegistration };
+    };
 
 /** Lifecycle phase of a delegated agent handle. */
 export type AgentHandlePhase = AgentHandle["phase"];
 
-/** Session-state collection of delegated agent handles. */
+/** Session-state collection of destinations and delegated agent handles. */
 export interface AgentHandleStore {
   readonly handles: readonly AgentHandle[];
+  readonly registrationSequence?: number;
+  readonly registrationsInitialized?: boolean;
 }
 
 export const EMPTY_AGENT_HANDLE_STORE: AgentHandleStore = { handles: [] };
@@ -212,6 +222,21 @@ const identitySchema = z.looseObject({
   id: nonEmptyString,
   name: nonEmptyString,
   nodeId: nonEmptyString,
+  registration: z
+    .strictObject({
+      key: z.string().min(1).max(128),
+      description: z.string().min(1).max(2048),
+      target: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("agent"), name: nonEmptyString }),
+        z.strictObject({
+          kind: z.literal("remote"),
+          url: z.url(),
+          sessionId: nonEmptyString.optional(),
+        }),
+      ]),
+      visible: z.boolean(),
+    })
+    .optional(),
 });
 
 const startOperationSchema = z.looseObject({
@@ -342,11 +367,17 @@ const taskOwnedAgentHandleSchema: z.ZodType<TaskOwnedAgentHandle> = z.discrimina
 const agentHandleSchema: z.ZodType<AgentHandle> = z.union([
   turnOwnedAgentHandleSchema,
   taskOwnedAgentHandleSchema,
+  z.looseObject({
+    phase: z.literal("registered"),
+    identity: identitySchema.extend({ registration: identitySchema.shape.registration.unwrap() }),
+  }),
 ]);
 
 const agentHandleStoreSchema: z.ZodType<AgentHandleStore> = z
   .looseObject({
     handles: z.array(agentHandleSchema),
+    registrationSequence: z.number().int().nonnegative().optional(),
+    registrationsInitialized: z.boolean().optional(),
   })
   .refine(
     (store) =>
@@ -426,6 +457,15 @@ export function writeHandles<Session extends { readonly state?: SessionStateMap 
 ): Session {
   return {
     ...session,
-    state: setAgentHandleStore(session.state, { handles }),
+    state: setAgentHandleStore(session.state, { ...getAgentHandleStore(session.state), handles }),
   };
+}
+
+/** Keep advertised destinations after invocation lifetime ends. */
+export function retireAgentHandle(handle: AgentHandle): readonly AgentHandle[] {
+  const registration = handle.identity.registration;
+  if (registration?.visible !== true) return [];
+  if ("address" in handle)
+    return [{ phase: "available", identity: handle.identity, address: handle.address }];
+  return [{ phase: "registered", identity: { ...handle.identity, registration } }];
 }

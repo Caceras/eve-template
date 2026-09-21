@@ -1,5 +1,6 @@
 import {
   formatAgentStatus,
+  retireAgentHandle,
   EMPTY_AGENT_HANDLE_STORE,
   getAgentHandleStore,
   writeHandles,
@@ -151,7 +152,7 @@ export function rejectAgentEffect(
 
   return writeHandles(
     session,
-    handles.filter((handle) => handle !== existing),
+    handles.flatMap((handle) => (handle === existing ? retireAgentHandle(handle) : [handle])),
   );
 }
 
@@ -222,7 +223,7 @@ export function settleAgentTurn(
       kind: "settled",
       session: writeHandles(
         session,
-        handles.filter((handle) => handle !== existing),
+        handles.flatMap((handle) => (handle === existing ? retireAgentHandle(handle) : [handle])),
       ),
     };
   }
@@ -265,7 +266,7 @@ export function applyAgentHandleStoreCommand(
       return { result: { kind: "ready" }, store };
     case "reserve": {
       const existing = store.handles.find((handle) => handle.identity.id === command.identity.id);
-      if (existing !== undefined) {
+      if (existing !== undefined && existing.phase !== "registered") {
         return (existing.phase === "reserved" || existing.phase === "claimed") &&
           existing.operationId === command.operationId &&
           existing.ownerId === command.ownerId
@@ -281,7 +282,10 @@ export function applyAgentHandleStoreCommand(
       };
       return {
         result: { handle, kind: "ready" },
-        store: { handles: [...store.handles, handle] },
+        store: {
+          ...store,
+          handles: [...store.handles.filter((entry) => entry !== existing), handle],
+        },
       };
     }
     case "confirm": {
@@ -309,7 +313,8 @@ export function applyAgentHandleStoreCommand(
     }
     case "claim": {
       const existing = store.handles.find((handle) => handle.identity.id === command.agentId);
-      if (existing === undefined) return { result: { kind: "unknown" }, store };
+      if (existing === undefined || existing.phase === "registered")
+        return { result: { kind: "unknown" }, store };
       if (
         existing.phase === "starting" ||
         existing.phase === "running" ||
@@ -345,18 +350,24 @@ export function applyAgentHandleStoreCommand(
       }
       return {
         result: { kind: "ready" },
-        store: { handles: store.handles.filter((handle) => handle !== existing) },
+        store: {
+          ...store,
+          handles: store.handles.flatMap((handle) =>
+            handle === existing ? retireAgentHandle(handle) : [handle],
+          ),
+        },
       };
     }
     case "release-owner": {
       const handles = store.handles.flatMap((handle): readonly AgentHandle[] => {
-        if (handle.phase === "reserved" && handle.ownerId === command.ownerId) return [];
+        if (handle.phase === "reserved" && handle.ownerId === command.ownerId)
+          return retireAgentHandle(handle);
         if (handle.phase !== "claimed" || handle.ownerId !== command.ownerId) return [handle];
         return [{ address: handle.address, identity: handle.identity, phase: "available" }];
       });
       return {
         result: { kind: "ready" },
-        store: handlesEqual(store.handles, handles) ? store : { handles },
+        store: handlesEqual(store.handles, handles) ? store : { ...store, handles },
       };
     }
   }
@@ -369,7 +380,8 @@ export function abandonAgentInvocationOwners<Session extends { readonly state?: 
 ): Session {
   const handles = getAgentHandleStore(session.state)?.handles ?? [];
   const abandoned = handles.flatMap((handle): readonly AgentHandle[] => {
-    if (handle.phase === "reserved" && ownerIds.has(handle.ownerId)) return [];
+    if (handle.phase === "reserved" && ownerIds.has(handle.ownerId))
+      return retireAgentHandle(handle);
     if (handle.phase !== "claimed" || !ownerIds.has(handle.ownerId)) return [handle];
     return [
       {
@@ -410,6 +422,7 @@ function replaceHandle(
   return {
     result: { handle, kind: "ready" },
     store: {
+      ...store,
       handles: store.handles.map((candidate) => (candidate === existing ? handle : candidate)),
     },
   };

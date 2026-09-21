@@ -1,3 +1,4 @@
+import { registeredRemoteConfig } from "#subagents/handles/registered-remote.js";
 import type { ContextReader } from "#context/key.js";
 import { AuthKey } from "#context/keys.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
@@ -19,6 +20,8 @@ export async function steerBackgroundAgent(input: {
 }): Promise<void> {
   const action = resolveAgentInvocationAction({
     ctx: input.ctx,
+    handles: [input.handle],
+    allowUnregistered: true,
     invocationId: input.callId,
     input: {
       agentId: input.handle.identity.id,
@@ -34,7 +37,9 @@ export async function steerBackgroundAgent(input: {
     bundle: createAgentContinuationBundle({
       action,
       bundle: input.ctx.require(BundleKey),
-      dynamicRemoteAgent: dynamic?.kind === "remote" ? dynamic.remoteAgent : undefined,
+      dynamicRemoteAgent:
+        registeredRemoteConfig(input.handle.identity) ??
+        (dynamic?.kind === "remote" ? dynamic.remoteAgent : undefined),
     }),
     currentSession: input.session,
     handle: input.handle,

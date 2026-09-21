@@ -1,3 +1,7 @@
+import {
+  registeredRemoteConfig,
+  isAttachedRemoteSession,
+} from "#subagents/handles/registered-remote.js";
 import type { RuntimeSession } from "#subagents/handle-dispatch.js";
 import type { TaskExecutorCancel } from "#execution/tasks/parent/task-cancel.js";
 import { requestWorkflowTurnCancellation } from "#execution/workflow-runtime.js";
@@ -47,7 +51,9 @@ async function cancelAgentInvocationOwner(input: {
 }): Promise<void> {
   const handles = (getAgentHandleStore(input.session.state)?.handles ?? []).filter(
     (candidate): candidate is Extract<AgentHandle, { phase: "claimed" }> =>
-      candidate.phase === "claimed" && candidate.ownerId === input.ownerId,
+      candidate.phase === "claimed" &&
+      candidate.ownerId === input.ownerId &&
+      !isAttachedRemoteSession(candidate.identity),
   );
   if (handles.length === 0) return;
   let remoteContext: ReturnType<typeof deserializeContext> | undefined;
@@ -62,7 +68,9 @@ async function cancelAgentInvocationOwner(input: {
       const bundle = ctx.require(BundleKey);
       const selection = getDynamicSubagentSelection(ctx, handle.identity.nodeId);
       const remote = resolveRemoteAgentForAction({
-        dynamicRemoteAgent: selection?.kind === "remote" ? selection.remoteAgent : undefined,
+        dynamicRemoteAgent:
+          registeredRemoteConfig(handle.identity) ??
+          (selection?.kind === "remote" ? selection.remoteAgent : undefined),
         nodeId: handle.identity.nodeId,
         registry: bundle.subagentRegistry.subagentsByNodeId,
         remoteAgentName: handle.identity.name,

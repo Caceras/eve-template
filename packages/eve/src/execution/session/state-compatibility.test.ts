@@ -77,6 +77,19 @@ const startOperation = {
 
 function handle(phase: AgentHandlePhase): AgentHandle {
   switch (phase) {
+    case "registered":
+      return {
+        phase,
+        identity: {
+          ...identity,
+          registration: {
+            key: "research",
+            description: "Research",
+            target: { kind: "agent", name: "research" },
+            visible: true,
+          },
+        },
+      };
     case "starting":
       return {
         identity,

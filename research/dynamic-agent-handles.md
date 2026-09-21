@@ -6,182 +6,125 @@ last_updated: "2026-09-21"
 
 # Dynamic agent handles
 
-Generalize the existing handle store so ordinary tools can register agent destinations, invoke them through `ctx.agent(handle)`, and make them visible to the model through the same advertisement mechanism as static agents.
+Extend the existing session handle store so tools and hooks can register agent destinations before a conversation exists, then call those handles through the existing task dispatcher.
 
-This is a proposed public contract, not an implemented public API. A
-[runnable research prototype](./dynamic-agent-handles-prototype/README.md)
-exercises external-directory loading at startup, ordinary tools registering and
-updating handles, and immediate invocation through a registered handle. Search
-ranking remains outside this proposal.
+This branch implements the contract below in the runtime. The earlier isolated
+prototype has been removed. See the [authoring examples](../docs/subagents/index.mdx#register-destinations-at-runtime)
+for a startup hook reading an external directory and an ordinary tool that
+registers and optionally calls a destination.
 
-## Authoring model
+## Authoring contract
 
-A **destination** identifies an agent that can be called. A **handle** is the
-current session's registered reference to that destination. A **session binding**
-identifies a particular conversation with it. Registration requires neither a
-running conversation nor a reachable destination.
-
-Inside an ordinary `defineTool.execute` callback:
+A **destination** names a declared agent or a remote eve endpoint. A **handle** is
+its session-local `{ id }` reference. A **binding** is the particular conversation
+selected by its first call, or the remote `sessionId` supplied at registration.
+Registration requires neither a running conversation nor a reachable service.
 
 ```ts
-const handle = await ctx.registerAgent(destination);
-const result = await ctx.agent(handle, { message: "Review this change." });
+const handle = ctx.registerAgent({
+  key: "reviewer",
+  description: "Review proposed changes.",
+  target: { kind: "remote", url: "https://reviewer.example.com" },
+});
+const receipt = await ctx.agent(handle, { message: "Review this change." });
 ```
 
-The method name and destination descriptor are provisional. The intended
-composition is fixed: registration returns a handle that the same callback can
-immediately invoke. Registration alone performs no invocation or health check.
-A tool can also register destinations and return, leaving the model to choose
-which agent to call next.
+`defineTool.execute` receives these operations. Hooks receive registration,
+update, and removal. Declared agents are registered automatically; ordinary
+`ctx.agent("researcher", input)` resolves their registered destination. Named model
+tools without `agentId` retain their existing behavior of starting a separate child.
 
-Static agents already enter the runtime subagent registry during setup.
-They continue to register automatically; authors do not register them again.
-Their callable references should converge with dynamic handles on one invocation
-contract. Today, that registry and the session handle store are distinct
-constructs; unifying their contract is part of this change. [Static registration][static],
-[handle store][store].
+| Operation                          | Observable result                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerAgent(destination)`       | Returns a handle immediately, without contacting or starting the destination. Same key and content is idempotent; conflicting content fails. |
+| `updateAgent(handle, description)` | Updates the advertised description; identity, target, and binding stay fixed.                                                                |
+| `unregisterAgent(handle)`          | Removes advertisement and future access through the handle. Accepted work continues. Re-registration creates a new ID.                       |
+| Ordinary `agent(handle, input)`    | Returns `{ status: "working", taskId, agentId }` after local background admission. Completion or failure follows normal task delivery.       |
+| Workflow `agent(handle, input)`    | Waits for the final result using the existing durable invocation path. Registration mutations are unavailable inside workflow bodies.        |
 
-## What this enables
+Remote registration supports an optional `sessionId`. Without it, the first call
+starts a conversation. With it, the call addresses that conversation directly.
+After a binding exists, failure does not silently replace it. Unknown and removed
+handles fail explicitly. A failed start leaves the destination registered.
 
-- **Discovery implemented as an ordinary tool.** A future search tool can
-  register its selected results without a special discovery protocol in eve.
-  Any other tool can supply destinations through the same operation.
-- **Agents selected at runtime.** Startup code or a tool can register the
-  destinations appropriate to a customer, project, or task. Dynamic destinations
-  need not each have a predeclared subagent definition.
-- **Both code-directed and model-directed delegation.** A tool can register and
-  call an agent immediately, or populate the store for later model selection.
-  Both use the same handles and destination resolution.
-- **Destinations that outlive individual conversations.** Registration can
-  precede the first call and survive an expired session or failed invocation.
-  An offline destination can remain known and be tried later.
+A call to a busy, addressed background handle steers its current task and keeps its
+result destination. A handle whose first address is still pending can reject a
+second call as busy. This implementation does not remove task ownership or redesign
+the workflow claim protocol.
 
-These are intended capabilities of the proposed contract. Static subagents
-remain a convenient way to declare agents; they cease to be the exclusive path
-for introducing callable destinations.
+## Why this shape
 
-## Behavior and timing
+- **Discovery is an ordinary tool.** Directory lookup, search ranking, and tenant
+  selection can supply destination descriptors without a dedicated search protocol.
+- **Code and models share the store.** A tool may register and call immediately,
+  or return an unrelated result and let the model choose from the next advertisement.
+- **Knowledge survives availability changes.** Offline and busy destinations stay
+  registered; membership does not imply reachability.
+- **Static declarations keep their role.** They supply code, tools, credentials,
+  and sandbox configuration. Dynamic aliases can refer to them, while new remote
+  endpoints need no compiled declaration.
 
-The store determines membership: **every registered handle is advertised**.
-Busy, offline, and unknown reachability are descriptions of an entry, not reasons
-to hide it. The model sees safe identity, description, and relevant status;
-private routing and credentials remain outside context.
+The [registry provider](../packages/eve/src/context/agent-registry.ts) owns a
+step-local working view of the existing
+[handle store](../packages/eve/src/subagents/handles/store.ts). Registration metadata
+travels with handle identity through reservation, dispatch, and settlement.
+Ordinary calls reuse the [background task executor](../packages/eve/src/execution/tasks/parent/tool-execution.ts),
+including its admission, rollback, cancellation, and result-delivery machinery.
+There is no second persisted registry or separate agent execution loop.
 
-| Operation       | Required behavior                                                                                                                                   |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Register        | Validate and add a destination. Repeating the same identity and content is idempotent. The returned handle is immediately usable by code.           |
-| Update          | Change the registered entry and its next advertisement. Conflicting concurrent updates need an explicit policy.                                     |
-| Unregister      | Remove the entry from subsequent advertisements. This does not itself cancel accepted work.                                                         |
-| Invoke          | Resolve the handle, authorize the operation, select or create a session, and attempt delivery. Session-selection rules remain to be decided.        |
-| Fail invocation | Preserve the registered destination. Distinguish unavailable service, denied access, expired session, and unknown acceptance after a lost response. |
+## Persistence and publication
 
-Registration does not grant ownership of another session or permission to cancel
-its work. An unknown or removed handle must fail explicitly; it must not silently
-start a replacement conversation. Automatic retries, offline queueing, and health
-monitoring are outside this proposal.
+Every registered handle is advertised, including busy and never-contacted entries.
+The model sees the key, description, handle ID, and execution state, without remote
+routing coordinates. `available` describes the absence of an active invocation;
+it does not assert network health.
 
-Code visibility and model visibility have different boundaries:
+| Boundary                           | Semantics                                                                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Callback mutation                  | Later code in the same step sees the new state immediately.                                                                               |
+| Successful harness step            | Provider commit persists the handle store with session state. A tool exception reported as a tool result does not undo earlier mutations. |
+| Failed or cancelled step           | Existing provider rollback and accepted-background-task retention apply. Immediate visibility is not a separate durable commit.           |
+| `session.started` / `step.started` | Mutations enter the next model request before its context is frozen.                                                                      |
+| Tool completion                    | The next eligible request advertises changes after required tool results. The returned tool value does not control advertisement.         |
+| Resume / compaction                | Current persisted handles reconstruct the advertisement. Removal can publish an empty listing; unchanged listings are not repeated.       |
 
-| When registration happens           | When it is usable or visible                                                                                                                                               |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Within a tool                       | Subsequent code in that callback can call the returned handle immediately.                                                                                                 |
-| During startup                      | Initial registrations are published before the first model request.                                                                                                        |
-| During a tool call                  | Committed changes are advertised on the next eligible model request, after the required tool results are recorded. The tool's return value does not control advertisement. |
-| After a request's context is frozen | That request keeps its snapshot; changes appear on a later request. Dispatch revalidates a selected handle against current state.                                          |
+Registration alone does not wake an idle session. Requests already in flight retain
+their snapshots; new calls resolve current membership. Static registration happens
+once per session, so unregistering a static destination persists across resume.
+At most 128 destinations may be registered at once; removing unused entries frees
+capacity without recycling IDs.
 
-Publication replaces the model's current view conceptually, while retaining
-conversation history. Unchanged views need not be repeated; removal of the last
-entry must publish an empty view. Resume and compaction must reconstruct the
-current advertisement from persisted state when necessary. Registration alone
-does not wake an idle session.
+## Remote boundaries
 
-The exact hook cutoff and durable commit point remain open. In particular,
-“usable by subsequent code” must not be confused with “already persisted.”
+Registration validates the descriptor without network I/O. Uncompiled remote
+endpoints use HTTPS public-address validation at socket connection time, bounded
+responses, a timeout, and no redirects. They carry no authored credentials. Use a
+named declared remote agent to reuse its authored credential resolver.
 
-## Generalize the existing machinery
+The destination service authorizes each request. Registering a remote session ID
+does not grant ownership: parent termination and cancellation skip externally supplied
+sessions. Cancelling the local task stops waiting for its result; remote work may
+continue. The current remote cancellation protocol cannot prove ownership of the
+active remote turn. Automatic retries, offline queues, health monitoring, and
+ambiguous remote acceptance recovery are outside this change.
 
-Reuse the existing store, invocation machinery, and context publication path.
-The main change is separating **registered destination membership** from
-**session and invocation lifecycle**.
+## Evidence and remaining validation
 
-| Existing behavior                                                                                                                                                         | Necessary generalization                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Handles record delegated-child ownership; addressed entries require a session ID. [Store][store]                                                                          | Represent a registered destination before a session exists, and retain it independently of session lifetime.                                                |
-| Tool context has no registration operation; `ctx.agent` currently lives on workflow context. [Tool context][tool], [workflow context][workflow]                           | Expose registration and handle-based invocation to ordinary tools, while retaining the runtime's ownership of authorization, persistence, and cancellation. |
-| Invocation resolves a named subagent definition before using a handle. Unknown IDs fall back to a fresh start. [Resolution][resolution], [classification][classification] | Resolve dynamic destinations through the registered handle; distinguish a valid destination without a session from a stale handle.                          |
-| Publication filters handles by lifecycle state and runs before `step.started`; pending tool calls can defer it. [Projection][projection], [model loop][loop]              | Advertise every registered destination at one defined request boundary, preserving valid tool-call/result ordering.                                         |
+[Registry integration tests](../packages/eve/src/context/agent-registry.integration.test.ts)
+exercise actual tool contexts and the background dispatcher with task transport
+mocked. They cover immediate invocation, registration-only tools, serialization,
+removal, stale references, duplicate registration, unsafe URLs, and failed dispatch.
+[Invocation tests](../packages/eve/src/execution/tools/subagent/invoke-step.integration.test.ts)
+check attaching a remote session without starting a replacement.
+[Harness tests](../packages/eve/src/harness/tool-loop.test.ts) capture the model request
+after `step.started` registration.
 
-This is a plausible extension of existing components, but it is not just a new
-store setter. The largest feasibility question is exposing agent invocation in
-ordinary tools while preserving the durable behavior currently provided through
-workflow tools. The implementation must demonstrate that path before treating
-the API example as executable.
+The [fixture evals](../e2e/fixtures/agent-agent-tool-controls/evals/)
+cover startup advertisement, dynamic registration without returning a handle,
+stale-reference rejection, and ordinary-tool delegation through completion. These
+run in CI. Local module tests do not prove delivery to a live external service.
 
-## Decisions needed before implementation
-
-1. **Handle and destination shape.** Define destination identity, how routing and
-   credentials are resolved, how static handles are obtained, and whether calls
-   create or reuse a session. Define busy-session behavior explicitly.
-2. **Persistence and replay.** Specify what successful registration guarantees,
-   whether it survives a later tool exception, and how immediate
-   registration→invocation behaves under cancellation or replay. A lost response
-   must not be treated as proof that remote work was never accepted.
-3. **Publication cutoff.** Identify which startup and hook mutations enter each
-   request, and serialize concurrent updates without losing entries.
-4. **Model calling surface.** Decide whether the existing `agent` tool accepts
-   all advertised handles or named tools remain. Both model and authored-code
-   calls must resolve the same destination and enforce the same permissions.
-
-## Related refactor: invocation ownership and steering
-
-The parent session owns the work; a task or invocation identifies a particular
-job, while the agent handle identifies its destination or conversation. The
-current implementation also calls the active invocation the handle's “owner,”
-which obscures these distinct relationships. [Handle ownership][ownership].
-
-Refactor toward a direct contract: sending a correction to a busy agent handle
-updates its current work and preserves the task and result destination. The
-model should not need a task ID to do this. Existing steering tests already
-require preservation of the task and handle. [Steering contract][steering].
-
-Audit `taskId`, `operationId`, and `callId` against their lifetimes, replay,
-cancellation, and result routing before deciding which can be consolidated.
-Distinguishing successive jobs remains necessary; the current claim abstraction
-and number of identifiers are not assumed necessary. This follow-up is a design
-direction, not an established root cause for the reported busy error.
-
-## Validation
-
-The smallest proof is an ordinary tool registering a destination absent from
-compiled subagent definitions, calling its handle in the same callback, and
-having that handle appear in the next captured model request. Repeat with a tool
-that only registers and returns an unrelated value. Static agents must remain
-callable without manual registration.
-
-Then test the boundaries: offline registration without invocation I/O; duplicate
-and concurrent mutations; exceptions, cancellation, and replay; stale IDs; failed
-invocations preserving registration; removal of the last entry; and
-compaction/resume restoring the advertised set. Check persisted state and actual
-model requests, not only API return values.
-
-The research prototype has ten passing contract tests using real `defineTool`
-callbacks and the existing advertisement renderer. Directory reads use HTTP;
-agent dispatch and session execution are substitutes. Its captured requests and
-JSON snapshots do not prove production durability or model behavior. See its
-[policies and limitations](./dynamic-agent-handles-prototype/README.md#concrete-policies-to-evaluate).
-
-Source references below use `vercel/eve` commit
-`b333e7deace4831b58797639c4aed20649e4a0ae` (September 20); the prototype imports
-source from this branch, based on `d88aedeef375c654a04da7e81bb06e7098478306`.
-No issue is linked yet.
-
-[static]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/runtime/subagents/registry.ts#L64-L127
-[store]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/subagents/handles/store.ts#L11-L208
-[tool]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/tools/definition.ts#L139-L195
-[workflow]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/tools/workflow-definition.ts#L89-L103
-[resolution]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/execution/tools/subagent/invoke-preparation.ts#L241-L288
-[classification]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/execution/tools/subagent/invoke-preparation.ts#L109-L137
-[projection]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/subagents/handles/prompt.ts#L22-L98
-[loop]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/harness/tool-loop.ts#L1103-L1222
-[ownership]: https://github.com/vercel/eve/blob/d004e6d47e9d25d0380c24b5a47b65a18f8b2784/packages/eve/src/subagents/handles/transitions.ts#L310-L355
-[steering]: https://github.com/vercel/eve/blob/d004e6d47e9d25d0380c24b5a47b65a18f8b2784/packages/eve/src/execution/tasks/parent/tool-execution.integration.test.ts#L138-L155
+The related ownership refactor remains separate: the parent owns the work, the
+handle identifies its destination, and the task identifies a job. Removing the
+current claim abstraction requires its own replay, cancellation, and result-routing
+proof; the reported busy error is not claimed fixed by registration alone.

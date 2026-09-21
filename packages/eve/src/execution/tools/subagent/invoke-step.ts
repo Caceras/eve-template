@@ -28,6 +28,7 @@ import {
 import { projectToDurableSession } from "#execution/session.js";
 import {
   getAgentHandleStore,
+  retireAgentHandle,
   writeHandles,
   type AgentHandle,
   type AgentHandleStoreCommand,
@@ -229,7 +230,7 @@ export async function dispatchAgentInvocation(input: {
         handle.identity.name === action.name &&
         handle.identity.nodeId === action.nodeId,
     );
-    const start =
+    let start =
       reserved.length === 1
         ? { identity: reserved[0]!.identity, operation: { id: reserved[0]!.operationId } }
         : createSubagentReceiptIdentity({
@@ -240,6 +241,11 @@ export async function dispatchAgentInvocation(input: {
             parentSessionId: prepared.session.sessionId,
             parentTurnId: prepared.batch.event.turnId,
           });
+    const destination = currentAgentHandles().find(
+      (handle) => handle.identity.id === action.input.agentId,
+    );
+    if (reserved.length === 0 && destination?.phase === "registered")
+      start = { ...start, identity: destination.identity };
     if (reserved.length > 1) {
       throw new Error(
         `Invocation owner "${input.ownerId}" has multiple reservations for "${action.callId}".`,
@@ -257,31 +263,65 @@ export async function dispatchAgentInvocation(input: {
         throw new Error(`Agent handle store rejected start operation "${start.operation.id}".`);
       }
     }
-    outcome = await startSubagent({
-      auth: prepared.auth,
-      batchEvent: prepared.batch.event,
-      bundle: prepared.bundle,
-      callbackBaseUrl: input.callbackBaseUrl,
-      capabilities: prepared.capabilities,
-      channelMetadata: prepared.channelMetadata,
-      inheritedConversation: prepared.inheritedConversation,
-      currentSession: session,
-      fanoutSize: prepared.fanoutSize,
-      initiatorAuth: prepared.initiatorAuth,
-      localDevRequest: prepared.localDevRequest,
-      parentContinuationToken: input.replyTo,
-      activityObserver: prepared.activityObserver,
-      taskActivityObserver,
-      sandboxSessionId: prepared.sandboxSessionId,
-      session,
-      taskId: input.taskId,
-      target: entry.target,
-      trace: tracing.dispatch,
-    });
+    const binding = start.identity.registration?.target;
+    if (
+      binding?.kind === "remote" &&
+      binding.sessionId !== undefined &&
+      entry.target.kind === "remote"
+    ) {
+      const confirmed = applyHandleCommand({
+        kind: "confirm",
+        operationId: start.operation.id,
+        ownerId: input.ownerId,
+        address: {
+          kind: "agent/remote",
+          sessionId: binding.sessionId,
+          url: binding.url,
+          callbackBaseUrl: input.callbackBaseUrl,
+          credentialResolver: {},
+        },
+      });
+      const claimed = readClaimedHandle(confirmed);
+      if (!claimed) throw new Error("Cannot bind registered remote session.");
+      outcome = await dispatchToClaimedAgentAddress({
+        action,
+        auth: prepared.auth,
+        bundle: createAgentContinuationBundle({
+          action,
+          bundle: prepared.bundle,
+          dynamicRemoteAgent: entry.target.dynamicRemoteAgent,
+        }),
+        currentSession: session,
+        handle: claimed,
+        reply: { kind: "reply", parentToken: input.replyTo, taskId: input.taskId },
+      });
+    } else {
+      outcome = await startSubagent({
+        auth: prepared.auth,
+        batchEvent: prepared.batch.event,
+        bundle: prepared.bundle,
+        callbackBaseUrl: input.callbackBaseUrl,
+        capabilities: prepared.capabilities,
+        channelMetadata: prepared.channelMetadata,
+        inheritedConversation: prepared.inheritedConversation,
+        currentSession: session,
+        fanoutSize: prepared.fanoutSize,
+        initiatorAuth: prepared.initiatorAuth,
+        localDevRequest: prepared.localDevRequest,
+        parentContinuationToken: input.replyTo,
+        activityObserver: prepared.activityObserver,
+        taskActivityObserver,
+        sandboxSessionId: prepared.sandboxSessionId,
+        session,
+        taskId: input.taskId,
+        target: entry.target,
+        trace: tracing.dispatch,
+      });
+    }
     agentId = start.identity.id;
     if (outcome.kind === "error") {
       applyHandleCommand({ agentId, kind: "remove", ownerId: input.ownerId });
-    } else {
+    } else if (!(binding?.kind === "remote" && binding.sessionId !== undefined)) {
       const confirmed = applyHandleCommand({
         address: outcome.address,
         kind: "confirm",
@@ -437,7 +477,9 @@ export async function settleTaskAgentInvocationStep(input: {
 
   const nextHandles =
     input.result.outcome.kind === "terminal"
-      ? handles.filter((candidate) => candidate !== handle)
+      ? handles.flatMap((candidate) =>
+          candidate === handle ? retireAgentHandle(candidate) : [candidate],
+        )
       : handles.map((candidate) =>
           candidate === handle
             ? input.result.outcome.result.kind === "cancelled"

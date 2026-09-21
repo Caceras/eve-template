@@ -141,3 +141,28 @@ it("cancels remote children at their recorded address", async () => {
     sessionId: "remote",
   });
 });
+
+it("does not cancel an externally supplied remote conversation", async () => {
+  const attached = claimed("external");
+  const remoteSession = {
+    state: setAgentHandleStore(undefined, {
+      handles: [
+        {
+          ...attached,
+          identity: {
+            ...attached.identity,
+            registration: {
+              key: "external",
+              description: "External",
+              visible: true,
+              target: { kind: "remote", url: "https://external.example", sessionId: "shared" },
+            },
+          },
+        },
+      ],
+    }),
+  };
+  await cancelBackgroundAgentTask({ entry, session: remoteSession, serializedContext: {} });
+  expect(cancelRemoteAgentTurn).not.toHaveBeenCalled();
+  expect(requestWorkflowTurnCancellation).not.toHaveBeenCalled();
+});
