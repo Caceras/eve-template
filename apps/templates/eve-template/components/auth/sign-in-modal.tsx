@@ -32,7 +32,7 @@ export function SignInModal({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-[360px]">
         <DialogHeader className="items-center text-center sm:text-center">
           <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-border bg-muted">
             {usesPassword ? (
@@ -42,12 +42,12 @@ export function SignInModal({
             )}
           </div>
           <DialogTitle>
-            {usesPassword ? "Enter chat password" : "Sign up or in to get started"}
+            {usesPassword ? "Sign in" : "Continue with Vercel"}
           </DialogTitle>
           <DialogDescription>
             {usesPassword
-              ? "Use the password configured by the person who deployed this agent."
-              : "Connect your Vercel account to send messages and save sessions."}
+              ? "Enter your password to continue to eve."
+              : "Use your Vercel account to continue."}
           </DialogDescription>
         </DialogHeader>
         {usesPassword ? (
