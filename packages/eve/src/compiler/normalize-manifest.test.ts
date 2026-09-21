@@ -565,7 +565,7 @@ describe("compileAgentManifest source graph", () => {
       }),
     );
     expect(compiled.dynamicTools).toContainEqual(
-      expect.objectContaining({ slug: "queries__schedules" }),
+      expect.objectContaining({ slug: "schedule__queries" }),
     );
     expect(compiled.dynamicConnections).toContainEqual(
       expect.objectContaining({
