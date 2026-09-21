@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { HammerIcon } from "lucide-react";
+import { PlugIcon } from "lucide-react";
 import { LinearIcon, NotionIcon, SentryIcon } from "@/components/icons";
 import {
   DropdownMenu,
@@ -38,30 +38,36 @@ export function IntegrationsMenu({
   readonly setupStatus: SetupStatus;
 }) {
   const setupReady = setupStatus.appReady;
+  const configured = new Set(setupStatus.configuredConnections ?? []);
+  const visibleItems = CONNECTION_ITEMS.filter(({ key }) => configured.has(key));
+
+  if (!visibleItems.length) {
+    return null;
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label="Connections"
+          aria-label="Connection access"
           className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/75 transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:bg-muted/60 focus-visible:text-foreground focus-visible:outline-none dark:text-muted-foreground/60 [&_*]:cursor-pointer"
           type="button"
         >
-          <HammerIcon className="size-4 shrink-0 cursor-pointer" />
+          <PlugIcon className="size-4 shrink-0 cursor-pointer" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="w-48 rounded-md border-border bg-popover p-1"
+        className="w-52 rounded-lg border-border bg-popover p-1.5 shadow-lg"
         sideOffset={4}
       >
-        {CONNECTION_ITEMS.map(({ Icon, key, label }) => {
+        {visibleItems.map(({ Icon, key, label }) => {
           const enabled = enabledConnections[key];
 
           return (
             <DropdownMenuItem
               aria-checked={enabled}
-              className="h-9 cursor-pointer gap-2 rounded-sm px-2 py-1 text-sm focus:bg-muted/70"
+              className="min-h-11 cursor-pointer gap-2 rounded-md px-2 py-1.5 text-sm focus:bg-muted/70"
               disabled={!setupReady}
               key={key}
               onSelect={(event) => {
@@ -77,7 +83,7 @@ export function IntegrationsMenu({
                 <Icon className="size-[18px] text-foreground" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-foreground">{label}</span>
+                <span className="block truncate text-sm text-foreground">{label}</span><span className="block truncate text-[11px] text-muted-foreground">Allow for this chat</span>
               </span>
               <span
                 aria-hidden="true"
