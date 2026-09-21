@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
+import { ArrowRightIcon, EllipsisIcon, PanelLeftIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
@@ -122,18 +122,6 @@ export function ChatSidebar({
           <PlusIcon className="size-4" />
           New session
         </button>
-        <Link className={cn("flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors", inactiveRowClass)} href="/capabilities">
-          <BlocksIcon className="size-4" />
-          Eve capabilities
-        </Link>
-        <Link className={cn("flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors", inactiveRowClass)} href="/native">
-          <RadioTowerIcon className="size-4" />
-          Native Web Chat
-        </Link>
-        <Link className={cn("flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors", inactiveRowClass)} href="/session">
-          <ListRestartIcon className="size-4" />
-          Session lifecycle
-        </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
