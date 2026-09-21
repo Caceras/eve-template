@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowRightIcon, EllipsisIcon, PanelLeftIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
@@ -52,6 +53,7 @@ export function ChatSidebar({
 }) {
   const authDisabled = !setupStatus.appReady;
   const newSessionActive = activeChatId === null;
+  const pathname = usePathname();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function ChatSidebar({
         <button
           className={cn(
             "flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
-            newSessionActive ? activeRowClass : inactiveRowClass,
+            newSessionActive && pathname === "/" ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
             onNewChat();
@@ -122,6 +124,39 @@ export function ChatSidebar({
           <PlusIcon className="size-4" />
           New session
         </button>
+        <Link
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
+          )}
+          href="/capabilities"
+          onClick={() => onNavigate?.()}
+        >
+          <BlocksIcon className="size-4" />
+          Eve capabilities
+        </Link>
+        <Link
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            pathname === "/native" || pathname.startsWith("/native/") ? activeRowClass : inactiveRowClass,
+          )}
+          href="/native"
+          onClick={() => onNavigate?.()}
+        >
+          <RadioTowerIcon className="size-4" />
+          Native Web Chat
+        </Link>
+        <Link
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            pathname === "/session" ? activeRowClass : inactiveRowClass,
+          )}
+          href="/session"
+          onClick={() => onNavigate?.()}
+        >
+          <ListRestartIcon className="size-4" />
+          Session lifecycle
+        </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
