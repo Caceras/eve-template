@@ -35,8 +35,7 @@
 :root,
 .light {
   color-scheme: light;
-  /* Soft neutral page with white elevated surfaces so cards/composer pop. */
-  --background: oklch(0.971 0 0);
+  --background: oklch(1 0 0);
   --foreground: oklch(0.16 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.16 0 0);
@@ -44,15 +43,15 @@
   --popover-foreground: oklch(0.16 0 0);
   --primary: oklch(0.19 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.94 0 0);
+  --secondary: oklch(0.965 0 0);
   --secondary-foreground: oklch(0.19 0 0);
-  --muted: oklch(0.94 0 0);
+  --muted: oklch(0.965 0 0);
   --muted-foreground: oklch(0.6 0 0);
-  --accent: oklch(0.94 0 0);
+  --accent: oklch(0.965 0 0);
   --accent-foreground: oklch(0.19 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.916 0 0);
-  --input: oklch(0.916 0 0);
+  --border: oklch(0.925 0 0);
+  --input: oklch(0.925 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
 }
@@ -149,5 +148,17 @@ html[data-eve-chat-sidebar="closed"] [data-desktop-sidebar] {
 @media (prefers-reduced-motion: reduce) {
   .shimmer-text {
     animation: none;
+  }
+}
+
+
+::selection {
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+@media (hover: hover) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
   }
 }
