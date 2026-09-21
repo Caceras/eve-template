@@ -1,5 +1,4 @@
-import { ArrowUpIcon, HammerIcon, MenuIcon, PanelLeftIcon, PlusIcon } from "lucide-react";
-import { TemplateFooterLinks } from "@/components/chat/template-footer-links";
+import { ArrowUpIcon, BlocksIcon, HammerIcon, ListRestartIcon, MenuIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon } from "lucide-react";
 import { VercelIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +34,18 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
             <PlusIcon className="size-4" />
             New session
           </div>
+          <div className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
+            <BlocksIcon className="size-4" />
+            Agent
+          </div>
+          <div className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
+            <RadioTowerIcon className="size-4" />
+            Web
+          </div>
+          <div className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
+            <ListRestartIcon className="size-4" />
+            Sessions
+          </div>
         </div>
 
         <div className="flex-1 space-y-2 overflow-y-hidden px-2 py-2">
@@ -66,11 +77,7 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
         </div>
 
         <AgentChatContentSkeleton mode={mode} />
-        {isNew ? (
-          <div className="shrink-0 pb-4 sm:pb-6">
-            <TemplateFooterLinks />
-          </div>
-        ) : null}
+
       </main>
     </div>
   );
@@ -132,20 +139,20 @@ function ConversationSkeleton() {
 function StaticComposerFallback() {
   return (
     <div
-      className="min-w-0 rounded-[14px] border border-border/80 bg-card/95 shadow-sm dark:bg-muted/45"
+      className="min-w-0 rounded-[20px] border border-black/[0.06] bg-white/92 shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.06]"
       data-chat-composer
     >
-      <div className="min-h-12 px-3 pt-3 pb-1 text-[15px] leading-6 text-muted-foreground/45 sm:px-4 dark:text-muted-foreground/60">
-        Ask anything...
+      <div className="min-h-[58px] px-4 pb-1 pt-4 text-[15px] leading-6 text-muted-foreground/45 sm:px-5 dark:text-muted-foreground/60">
+        Message eve
       </div>
-      <div className="flex min-h-9 items-center justify-between gap-2 px-3 pt-1 pb-2 sm:gap-3 sm:px-4">
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:px-4">
         <div className="-ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 dark:text-muted-foreground/50">
             <HammerIcon className="size-4 shrink-0" />
           </span>
         </div>
         <div className="flex shrink-0 items-center">
-          <span className="inline-flex size-6 items-center justify-center rounded-md bg-foreground/55 text-background">
+          <span className="inline-flex size-8 items-center justify-center rounded-full bg-foreground/55 text-background sm:size-9">
             <ArrowUpIcon className="size-3.5" />
           </span>
         </div>
