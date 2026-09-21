@@ -27,10 +27,10 @@ Primary navigation uses short nouns:
 
 - **New session** — starts the primary persisted chat.
 - **Agent** — shows the effective compiled agent, included scaffolds, and installable Eve ecosystem.
-- **Web channel** — reference implementation of Eve's native web channel, not a second agent.
+- **Channels** — channel surfaces and delivery paths. The current web channel is one implementation, not the whole concept.
 - **Sessions** — advanced durable-session inspection and control.
 
-Do not use labels such as "Eve capabilities", "Native Web Chat", "Session lifecycle", "demo", "lab", or similarly implementation-oriented names in primary navigation.
+Do not use labels such as "Eve capabilities", "Native Web Chat", "Session lifecycle", "Web channel", "demo", "lab", or similarly implementation-oriented names in primary navigation.
 
 ## Capability truth
 
@@ -78,4 +78,5 @@ Before shipping a user-facing UI change:
 6. Test logged-out -> sign-in -> logged-in flow for the actual deployment auth mode.
 7. Run the production build.
 8. Deploy and inspect runtime logs.
-9. Do not call the work complete if the live deployment differs from the committed UI.
+9. Verify every capability that existed before the change is still discoverable after the change.
+10. Do not call the work complete if the live deployment differs from the committed UI.
