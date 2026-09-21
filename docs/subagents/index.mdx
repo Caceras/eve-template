@@ -18,15 +18,14 @@ Declared agents are registered automatically. In an ordinary tool,
 destination. A named model tool without `agentId` still starts a separate child.
 Use a registered handle to establish and reuse one conversation.
 
-### Load a directory at startup
+### Read an external directory
 
-This hook reads a trusted, operator-managed JSON file outside the agent directory.
-Deploy the file at `AGENT_DIRECTORY_PATH`. The schema limits the directory to 128
-entries; registration validates remote URL constraints without contacting agents.
+Both examples below read a trusted, operator-managed JSON file outside the agent
+directory. Deploy the file at `AGENT_DIRECTORY_PATH`. Keep source access and parsing
+in a shared helper; tools and hooks register the destinations it returns.
 
-```ts title="agent/hooks/agents.ts"
+```ts title="lib/agent-directory.ts"
 import { readFile } from "node:fs/promises";
-import { defineHook } from "eve/hooks";
 import { z } from "zod";
 
 const directory = z
@@ -35,23 +34,21 @@ const directory = z
       key: z.string().min(1).max(128),
       description: z.string().min(1).max(2048),
       url: z.string().url(),
-      sessionId: z.string().optional(),
+      sessionId: z.string().min(1).optional(),
     }),
   )
   .max(128);
 
-export default defineHook({
-  events: {
-    async "session.started"(_event, ctx) {
-      const path = process.env.AGENT_DIRECTORY_PATH;
-      if (!path) throw new Error("Set AGENT_DIRECTORY_PATH to the agent directory JSON file.");
-      const entries = directory.parse(JSON.parse(await readFile(path, "utf8")));
-      for (const { key, description, url, sessionId } of entries) {
-        ctx.registerAgent({ key, description, target: { kind: "remote", url, sessionId } });
-      }
-    },
-  },
-});
+export async function readAgentDirectory() {
+  const path = process.env.AGENT_DIRECTORY_PATH;
+  if (!path) throw new Error("Set AGENT_DIRECTORY_PATH to the agent directory JSON file.");
+  const entries = directory.parse(JSON.parse(await readFile(path, "utf8")));
+  return entries.map(({ key, description, url, sessionId }) => ({
+    key,
+    description,
+    target: { kind: "remote" as const, url, sessionId },
+  }));
+}
 ```
 
 For example, the file can contain a destination with no existing session:
@@ -66,6 +63,30 @@ For example, the file can contain a destination with no existing session:
 ]
 ```
 
+The reader limits the file to 128 entries. The session's registry also has a total
+limit of 128 destinations, including automatically registered declarations.
+Reading the directory does not contact the destination agents.
+
+### Load a directory at startup
+
+Register the external directory in `session.started` to populate the registry
+before the first model request:
+
+```ts title="agent/hooks/agents.ts"
+import { defineHook } from "eve/hooks";
+import { readAgentDirectory } from "../../lib/agent-directory";
+
+export default defineHook({
+  events: {
+    async "session.started"(_event, ctx) {
+      for (const destination of await readAgentDirectory()) {
+        ctx.registerAgent(destination);
+      }
+    },
+  },
+});
+```
+
 Remote URLs must use HTTPS, contain no embedded credentials or fragment, and resolve
 to public network addresses when called. Calls use the eve session protocol, reject
 redirects, and carry no additional credentials. To reuse authored authentication,
@@ -74,27 +95,36 @@ The remote service still decides whether to authorize the request.
 
 ### Register from an ordinary tool
 
-A discovery tool can register its results and return an unrelated value. A tool
-can also call the returned handle immediately:
+Load one destination on demand by its directory key. The tool reads the external
+source each time, registers the selected destination, and optionally calls it in
+the same execution:
 
-```ts title="agent/tools/select-reviewer.ts"
+```ts title="agent/tools/load-agent.ts"
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { readAgentDirectory } from "../../lib/agent-directory";
 
 export default defineTool({
-  description: "Make the review service available and optionally delegate a review.",
-  inputSchema: z.object({ message: z.string().optional() }),
-  async execute({ message }, ctx) {
-    const handle = ctx.registerAgent({
-      key: "reviewer",
-      description: "Review proposed changes.",
-      target: { kind: "remote", url: "https://reviewer.example.com" },
-    });
-    if (message) return ctx.agent(handle, { message });
-    return { registered: true };
+  description: "Load an agent from the directory and optionally send it a message.",
+  inputSchema: z.object({
+    key: z.string().min(1).max(128),
+    message: z.string().min(1).optional(),
+  }),
+  async execute({ key, message }, ctx) {
+    const destination = (await readAgentDirectory()).find((entry) => entry.key === key);
+    if (!destination) throw new Error(`No agent destination named "${key}" in the directory.`);
+    const handle = ctx.registerAgent(destination);
+    if (message !== undefined) return ctx.agent(handle, { message });
+    return { agentId: handle.id };
   },
 });
 ```
+
+For the sample directory, call the tool with `{ key: "reviewer" }` to advertise the
+destination, or add `message` to delegate immediately. Both examples use the same
+registration operation. Loading an unchanged entry after the startup hook returns
+the same handle. The tool's registration appears in the next eligible model
+request even if the tool returns no handle.
 
 Ordinary `ctx.agent()` returns `{ status: "working", taskId, agentId }` after local
 background work is accepted. This receipt does not prove remote delivery. Completion
