@@ -55,7 +55,7 @@ export const ROOT_COMPILED_AGENT_NODE_ID = "__root__";
 /**
  * Current compiled manifest schema version.
  */
-export const COMPILED_AGENT_MANIFEST_VERSION = 49;
+export const COMPILED_AGENT_MANIFEST_VERSION = 51;
 
 /**
  * Compiled channel entry preserved in the compiled manifest.
@@ -609,6 +609,7 @@ const compiledAgentConfigBaseFields = {
     .enum(["provider-default", "none", "minimal", "low", "medium", "high", "xhigh"])
     .optional(),
   source: moduleSourceRefSchema,
+  tool: z.boolean().optional(),
   limits: compiledAgentLimitsDefinitionSchema.optional(),
 };
 
@@ -724,10 +725,7 @@ const compiledScheduleDefinitionSchema = z.discriminatedUnion("sourceKind", [
 
 const compiledSandboxDefinitionSchema = z
   .object({
-    /**
-     * Stable provider name from the exported environment, captured at compile
-     * time so build pipelines can make provider-aware decisions.
-     */
+    /** Stable provider name from the exported environment. */
     providerName: z.string().optional(),
     environmentExportName: z.string().optional(),
     inheritsParent: z.boolean().optional(),
@@ -850,6 +848,7 @@ const compiledToolBehaviorSchema: z.ZodType<CompiledToolBehavior> = z
 
 const compiledToolDefinitionSchema = z
   .object({
+    availableInSubagents: z.boolean().optional(),
     behavior: compiledToolBehaviorSchema.optional(),
     description: z.string(),
     execution: z.literal("background").optional(),
@@ -968,7 +967,6 @@ const compiledAgentResourceFields = {
   remoteAgents: z.array(compiledRemoteAgentNodeSchema),
   skills: z.array(compiledSkillSourceSchema).readonly(),
   instructions: z.array(compiledInstructionsSchema).readonly().default([]),
-  instrumentation: moduleSourceRefSchema.optional(),
   tools: z.array(compiledToolDefinitionSchema),
   workspaceResourceRoot: compiledWorkspaceResourceRootSchema,
 };
@@ -1077,7 +1075,6 @@ export const compiledAgentManifestSchema = z
     skills: z.array(compiledSkillSourceSchema).readonly(),
     subagents: z.array(compiledSubagentNodeSchema),
     instructions: z.array(compiledInstructionsSchema).readonly().default([]),
-    instrumentation: moduleSourceRefSchema.optional(),
     tools: z.array(compiledToolDefinitionSchema),
     version: z.literal(COMPILED_AGENT_MANIFEST_VERSION),
     workspaceResourceRoot: compiledWorkspaceResourceRootSchema,
@@ -1105,7 +1102,6 @@ export interface CreateCompiledAgentResourcesInput {
   readonly schedules?: readonly CompiledScheduleDefinition[];
   readonly skills?: readonly CompiledSkillDefinition[];
   readonly instructions?: readonly CompiledInstructionsDefinition[];
-  readonly instrumentation?: ModuleSourceRef;
   readonly tools?: readonly CompiledToolDefinition[];
   readonly workspaceResourceRoot?: CompiledWorkspaceResourceRoot;
 }
@@ -1139,7 +1135,6 @@ export function createCompiledAgentResources(
     hooks: [...(input.hooks ?? [])],
     memories: [...(input.memories ?? [])],
     instructions: [...(input.instructions ?? [])],
-    instrumentation: input.instrumentation === undefined ? undefined : { ...input.instrumentation },
     remoteAgents: [...(input.remoteAgents ?? [])],
     sandbox: input.sandbox,
     sandboxWorkspaces: [...(input.sandboxWorkspaces ?? [])],
@@ -1216,6 +1211,7 @@ function cloneCompiledAgentDefinition(config: CompiledAgentDefinition): Compiled
             sessionTimeoutMs: config.limits.sessionTimeoutMs,
           },
     source: { ...config.source },
+    tool: config.tool,
   };
 
   if (config.dynamicModel !== undefined) {
@@ -1290,7 +1286,6 @@ export function createCompiledAgentManifest(input: {
   readonly skills?: readonly CompiledSkillDefinition[];
   readonly subagents?: readonly CompiledSubagentNode[];
   readonly instructions?: readonly CompiledInstructionsDefinition[];
-  readonly instrumentation?: ModuleSourceRef;
   readonly tools?: readonly CompiledToolDefinition[];
   readonly extensionMounts?: readonly CompiledExtensionMount[];
   readonly workspaceResourceRoot?: CompiledWorkspaceResourceRoot;
