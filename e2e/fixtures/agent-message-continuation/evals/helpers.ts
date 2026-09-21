@@ -5,7 +5,7 @@ import type {
   EveEvalTurn,
   InputRequest,
 } from "eve/evals";
-import { equals } from "eve/evals/expect";
+import { equals, satisfies } from "eve/evals/expect";
 
 export function requestFrom(turn: EveEvalTurn, toolName: string): InputRequest {
   turn.expectOk();
@@ -21,10 +21,32 @@ export async function expectReply(
   expected: string | RegExp,
   owner?: string,
 ): Promise<EveEvalTurn> {
+  t.log(`Accepted input in ${live.sessionId}; awaiting the reply and its turn completion.`);
   const turnId = owner ?? (await live.waitForEvent("message.received")).data.turnId;
   const turn = (await live.result()).expectOk();
-  turn.event("message.completed", { data: { turnId, message: expected }, count: 1 });
-  turn.event("turn.completed", { data: { turnId }, count: 1 });
+  const replies = turn.events.filter(
+    (event) =>
+      event.type === "message.completed" &&
+      event.data.turnId === turnId &&
+      typeof event.data.message === "string" &&
+      (typeof expected === "string"
+        ? event.data.message === expected
+        : expected.test(event.data.message)),
+  );
+  await t.require(
+    replies.length,
+    satisfies<number>(
+      (count) => count === 1,
+      `Exactly one reply matching ${String(expected)} in ${turnId}`,
+    ),
+  );
+  const completions = turn.events.filter(
+    (event) => event.type === "turn.completed" && event.data.turnId === turnId,
+  );
+  await t.require(
+    completions.length,
+    satisfies<number>((count) => count === 1, `Exactly one completion for ${turnId}`),
+  );
   turn.notEvent("input.requested", { data: { turnId } });
   t.log(`Checking answer and completion for ${turnId}.`);
   return turn;
@@ -36,6 +58,7 @@ export async function expectResponseReply(
   expected: string | RegExp,
   requestId: string,
 ): Promise<EveEvalTurn> {
+  t.log(`Accepted response for ${requestId}; awaiting resolution and its resumed turn.`);
   await live.waitForEvent("input.resolved");
   const resumed = await live.waitForEvent("turn.started");
   const turn = await expectReply(t, live, expected, resumed.data.turnId);
@@ -50,6 +73,7 @@ export async function expectResponseReply(
 }
 
 export async function expectToolResult(t: EveEvalContext, live: EveEvalLiveTurn, toolName: string) {
+  t.log(`Accepted input in ${live.sessionId}; awaiting ${toolName}.`);
   const event = await live.waitForEvent("action.result", { data: { result: { toolName } } });
   t.log(`${toolName} returned before the reply: ${JSON.stringify(event.data)}`);
   return event;

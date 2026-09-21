@@ -10,7 +10,7 @@ Start with [`evals/read.eval.ts`](./evals/read.eval.ts): prepare a change, leave
 
 [`expectReply`](./evals/helpers.ts) requires both `message.completed` with the expected answer and `turn.completed`, attributed to the same turn. A tool result, an unrelated reply, or a completion event without an answer cannot pass. Approval-response cases verify resolution of the saved request and use the resumed `turn.started` ID; new messages use their own `message.received` ID. An input request may itself close a runtime turn, so `turn.completed` alone is never proof of an answer.
 
-The eval saves each approval ID when it is first emitted. It does not infer durable pending state from the driver's latest-turn request list. After an unrelated answer, it checks that the old change has not executed and that the saved approval can still execute it exactly once.
+The eval saves each approval ID when it is first emitted. It does not infer durable pending state from the driver's latest-turn request list. After an unrelated answer, it checks that the old change has not executed. Most cases then approve the saved request and verify exactly one execution. The task-cancellation case stops after its answer, keeping subsequent background notifications outside that assertion.
 
 ## Conversations
 

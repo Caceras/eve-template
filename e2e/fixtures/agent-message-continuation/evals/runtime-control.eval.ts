@@ -1,6 +1,5 @@
 import { defineEval } from "eve/evals";
 import {
-  approveSavedChange,
   expectChangeStillUnexecuted,
   expectReply,
   requestFrom,
@@ -17,13 +16,12 @@ export default defineEval({
       /^Background receipt: .*"status":"working"/,
     );
     const parked = await session.send("Prepare change A.");
-    const approval = requestFrom(parked, "change-a");
+    requestFrom(parked, "change-a");
 
     const live = await session.start("Cancel the background draft task and confirm cancellation.");
     await expectToolResult(t, live, "task_cancel");
     const turn = await expectReply(t, live, /Cancellation result: .*"status":"cancelled"/);
     turn.calledTool("task_cancel", { status: "completed", count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
   },
 });
