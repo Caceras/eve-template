@@ -15,4 +15,16 @@ describe("hydrateSandboxFromImmutableResources", () => {
     expect(command).toContain('ln -s /eve/resources/skills "$HOME/.agents/skills"');
     expect(command).not.toContain("cp -a /eve/resources/skills");
   });
+
+  it("copies skills when the prepared image must retain them without the mount", async () => {
+    const run = vi.fn(async (_input: { readonly command: string }) => ({
+      exitCode: 0,
+      stderr: "",
+      stdout: "",
+    }));
+    await hydrateSandboxFromImmutableResources({ run } as never, true);
+    const command = run.mock.calls[0]?.[0].command ?? "";
+    expect(command).toContain('cp -a /eve/resources/skills/. "$HOME/.agents/skills/"');
+    expect(command).not.toContain("ln -s /eve/resources/skills");
+  });
 });

@@ -511,6 +511,34 @@ describe("createVercelSandbox", () => {
     });
   });
 
+  it("rebuilds a cached template whose snapshot is no longer available", async () => {
+    const snapshotExpiredError = Object.assign(new Error("snapshot expired"), {
+      response: { status: 410 },
+    });
+    const staleTemplate = createMockSandbox({ name: "template", snapshotId: "expired-snapshot" });
+    staleTemplate.runCommand.mockRejectedValue(snapshotExpiredError);
+    const rebuiltTemplate = createMockSandbox({ name: "template" });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn().mockResolvedValue(rebuiltTemplate),
+        get: vi.fn().mockResolvedValue(staleTemplate),
+      },
+    };
+    const provider = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    const prepared = await provider.prepare({
+      appRoot: "/tmp/test-app-root",
+      seedFiles: [],
+    });
+
+    expect(staleTemplate.delete).toHaveBeenCalledTimes(1);
+    expect(sandboxModule.Sandbox.create).toHaveBeenCalledTimes(1);
+    expect(rebuiltTemplate.snapshot).toHaveBeenCalledTimes(1);
+    expect(prepared).toEqual({ snapshotId: "template-snapshot" });
+  });
+
   it("reports an unavailable prepared snapshot without mutating the build template", async () => {
     const snapshotExpiredError = Object.assign(
       new Error("Vercel sandbox create API returned 410"),

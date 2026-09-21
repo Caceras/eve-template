@@ -256,6 +256,7 @@ export function createDockerSandboxProvider(
         );
 
         await hydrateSandboxProviderResources({
+          copySkills: true,
           log: context.log,
           resources: context.resources,
           session: templateSession,

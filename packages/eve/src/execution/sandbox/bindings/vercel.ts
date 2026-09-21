@@ -169,7 +169,11 @@ export function createVercelSandbox(
   return {
     async prepare(context) {
       const seedFiles = providerResourceTargetFiles(context.resources);
-      if (input.skipEmptyPreparation === true && input.prepare === undefined && seedFiles.length === 0)
+      if (
+        input.skipEmptyPreparation === true &&
+        input.prepare === undefined &&
+        seedFiles.length === 0
+      )
         return {};
       const templateKey = `eve-sbx-tpl-vercel-${createSandboxProviderIdentity({
         createOptions: vercelIdentityOptions(createOptions),
@@ -369,13 +373,31 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
       : null;
 
   if (frameworkSnapshotId !== null) {
-    return {
-      template: {
-        sandboxName: sandbox.name,
-        snapshotId: frameworkSnapshotId,
-        templateKey: input.templateKey,
-      },
-    };
+    try {
+      await ensureVercelSandboxBaseRuntime(sandbox);
+      return {
+        template: {
+          sandboxName: sandbox.name,
+          snapshotId: frameworkSnapshotId,
+          templateKey: input.templateKey,
+        },
+      };
+    } catch (error) {
+      if (!isVercelSnapshotUnavailableError(error) && !isVercelSandboxMissingError(error)) {
+        throw error;
+      }
+      input.log?.("cached template snapshot disappeared; rebuilding sandbox template");
+      await sandbox.delete();
+      sandbox = await input.createSandbox({
+        sandboxModule,
+        createOptions: withBaseSetupNetworkPolicy({
+          ...input.createOptions,
+          name: input.templateKey,
+          persistent: true,
+          tags,
+        }),
+      });
+    }
   }
 
   input.log?.("preparing base runtime inside sandbox");
