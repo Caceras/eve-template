@@ -333,3 +333,15 @@ If Notion tool calls fail, confirm that `NOTION_CONNECTOR` is set in Vercel, the
 - [System environment variables](https://vercel.com/docs/environment-variables/system-environment-variables)
 - [Sign in with Vercel prerequisites](https://vercel.com/docs/sign-in-with-vercel/getting-started#prerequisites)
 - [Sign in with Vercel scopes](https://vercel.com/docs/sign-in-with-vercel/scopes-and-permissions)
+
+
+## Self-hosted production
+
+The production app has two cooperating services inside the same container:
+
+- Next.js on `PORT` (normally `3000`)
+- the built eve runtime on `EVE_NEXT_PRODUCTION_PORT` (normally `4274`)
+
+Run `pnpm build:eve && pnpm build`, then `pnpm start`. The self-hosted start script supervises both processes and starts Next only after eve is ready. `/api/health` verifies both the product shell and the eve runtime.
+
+For a custom HTTPS domain, set `BETTER_AUTH_URL` to that origin. If `EVE_CHAT_PASSWORD` is configured, password auth is the preferred self-hosted sign-in mode even when optional Vercel OAuth variables are also present.
