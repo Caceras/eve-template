@@ -69,7 +69,7 @@ export async function pruneLocalSandboxTemplates(input: {
  */
 export function pruneLocalSandboxTemplatesInBackground(appRoot: string): void {
   void pruneLocalSandboxTemplates({ appRoot }).catch((error) => {
-    console.warn(`[eve:dev] failed to prune stale local sandbox templates: ${errorMessage(error)}`);
+    console.warn(`[eve:sandbox] failed to prune stale local templates: ${errorMessage(error)}`);
   });
 }
 
