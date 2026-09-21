@@ -29,10 +29,13 @@ export type ActiveChat = {
   readonly title: string;
 };
 
+export type ConfiguredConnection = "linear" | "notion" | "sentry";
+
 export type SetupStatus = {
   readonly appReady: boolean;
   readonly authMode: AuthMode;
   readonly authReady: boolean;
+  readonly configuredConnections?: readonly ConfiguredConnection[];
   readonly connectionsAvailable: boolean;
   readonly databaseConfigured: boolean;
   readonly databaseReady: boolean;
