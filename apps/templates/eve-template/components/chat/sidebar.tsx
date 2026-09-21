@@ -50,7 +50,7 @@ export function ChatSidebar({
   readonly viewer: Viewer | null;
 }) {
   const authDisabled = !setupStatus.appReady;
-  const newSessionActive = activeChatId === null;
+  const newSessionActive = activeChatId === null && pathname === "/";
   const [pathname, setPathname] = useState("/");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -118,7 +118,7 @@ export function ChatSidebar({
         <button
           className={cn(
             "flex h-9 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors md:h-8",
-            newSessionActive && pathname === "/" ? activeRowClass : inactiveRowClass,
+            newSessionActive ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
             setPathname("/");
@@ -192,7 +192,10 @@ export function ChatSidebar({
                   <Link
                     className="flex h-9 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
                     href={`/chat/${chat.id}`}
-                    onClick={() => onNavigate?.(chat.id)}
+                    onClick={() => {
+                      setPathname(`/chat/${chat.id}`);
+                      onNavigate?.(chat.id);
+                    }}
                   >
                     <span className="block truncate">{chat.title}</span>
                     <span className="sr-only">Updated {formatHistoryTime(chat.updatedAt)}</span>
