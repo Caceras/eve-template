@@ -2,9 +2,8 @@ import { defineEval } from "eve/evals";
 import {
   approveSavedChange,
   expectChangeStillUnexecuted,
-  expectReply,
+  expectResponseReply,
   expectToolResult,
-  ownerOf,
   requestFrom,
 } from "./helpers.ts";
 
@@ -20,7 +19,7 @@ export default defineEval({
 
     const live = await session.startRespond([{ requestId: current.requestId, optionId: "red" }]);
     await expectToolResult(t, live, "read-draft");
-    const reply = await expectReply(t, live, "Draft status: ready.", ownerOf(second));
+    const reply = await expectResponseReply(t, live, "Draft status: ready.", current.requestId);
     reply.calledTool("read-draft", { status: "completed", count: 1 });
     expectChangeStillUnexecuted(session);
     await approveSavedChange(session, approvalA);

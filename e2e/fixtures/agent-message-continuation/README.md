@@ -8,7 +8,7 @@ Start with [`evals/read.eval.ts`](./evals/read.eval.ts): prepare a change, leave
 
 ## What makes a passing answer
 
-[`expectReply`](./evals/helpers.ts) requires both `message.completed` with the expected answer and `turn.completed`, attributed to the same turn. A tool result, an unrelated reply, or a completion event without an answer cannot pass. Approval-response cases use the original requesting turn's ID; new messages use their own `message.received` ID.
+[`expectReply`](./evals/helpers.ts) requires both `message.completed` with the expected answer and `turn.completed`, attributed to the same turn. A tool result, an unrelated reply, or a completion event without an answer cannot pass. Approval-response cases verify resolution of the saved request and use the resumed `turn.started` ID; new messages use their own `message.received` ID. An input request may itself close a runtime turn, so `turn.completed` alone is never proof of an answer.
 
 The eval saves each approval ID when it is first emitted. It does not infer durable pending state from the driver's latest-turn request list. After an unrelated answer, it checks that the old change has not executed and that the saved approval can still execute it exactly once.
 
@@ -38,10 +38,10 @@ Each link is one eval, with the user messages and expected outcome in the test b
 | User repeats a resolved approval response    | Process the new input without authorizing old work | [stale response](./evals/stale-response.eval.ts)                |
 | User grants another budget window            | Run the tool and ask for the next needed grant     | [budget grant](./evals/budget-grant.eval.ts)                    |
 
-Fourteen `*.control.eval.ts` conversations cover the same tool paths without an older approval, text-only replies, resolving the only approval, accumulating partial approvals, and preserving a same-turn approval beside a workflow.
+Fourteen `*.control.eval.ts` conversations cover the same tool paths without an older approval, text-only replies, resolving the only approval, approving both calls together, and preserving a same-turn approval beside a workflow.
 
 ## Boundaries
 
-Partial approvals travel as a real accepted HTTP response followed by a separate user message; the API rejects combined message/response payloads. The provider case adds a provider-executed result at the model stream boundary, rather than faking a local tool return. Background coverage stops at admission and acknowledgement; it does not establish background completion or wake correctness. Runtime control uses the real `task_cancel` tool against a nonexistent task. The budget case expects another input request, because its granted window cannot pay for the final answer.
+Partial approvals travel as a real accepted HTTP response followed by a separate user message; the API rejects combined message/response payloads. The provider case adds a provider-executed result at the model stream boundary, rather than faking a local tool return. Background coverage stops at admission and acknowledgement; it does not establish background completion or wake correctness. Runtime control cancels an actual background task using its returned task ID. The budget case expects another input request, because its granted window cannot pay for the final answer.
 
 Run these evals in the repository's CI E2E suites. Keep the runtime unchanged until the failing cases and passing controls have been inspected. A timeout proves a missing boundary only when the captured trace also proves the intended setup and tool path ran. A fixture error is not a runtime regression.

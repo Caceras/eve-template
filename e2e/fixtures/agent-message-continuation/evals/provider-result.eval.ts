@@ -3,6 +3,7 @@ import {
   approveSavedChange,
   expectChangeStillUnexecuted,
   expectReply,
+  expectToolResult,
   requestFrom,
 } from "./helpers.ts";
 
@@ -15,6 +16,7 @@ export default defineEval({
     const session = parked.session;
 
     const live = await session.start("Look up the draft with the provider and report its status.");
+    await expectToolResult(t, live, "read-draft");
     await expectReply(t, live, "Provider draft status: provider-ready.");
     expectChangeStillUnexecuted(session);
     await approveSavedChange(session, approval);

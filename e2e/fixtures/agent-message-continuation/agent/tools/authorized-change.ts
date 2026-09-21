@@ -1,6 +1,9 @@
+import { defineState } from "eve/context";
 import { defineTool } from "eve/tools";
 import { always } from "eve/tools/approval";
 import { z } from "zod";
+
+const executions = defineState("authorized-change.executions", () => 0);
 
 export default defineTool({
   description: "Apply a change only after the fixture's authorized user approves it.",
@@ -13,6 +16,7 @@ export default defineTool({
         : { status: "rejected", reason: "Wrong responder." },
   },
   async execute() {
-    return { change: "authorized", executions: 1 };
+    executions.update((count) => count + 1);
+    return { change: "authorized", executions: executions.get() };
   },
 });

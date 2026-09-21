@@ -10,7 +10,44 @@ const call = (id: string, name: string): MockModelToolCall => ({ id, name, input
 // Each sentence is a user instruction in an eval. Results, rather than a mutable
 // call counter, select the next response so durable replay uses the same script.
 export function respond(request: MockModelRequest): MockModelResponse {
-  const message = request.lastUserMessage ?? "";
+  const isRuntimeContext = (text: string) =>
+    text.startsWith("[Task state]") || text.startsWith("Background task ");
+  const instructions = request.userMessages.filter((text) => !isRuntimeContext(text));
+  let message = instructions.at(-1) ?? "";
+  const roles = request.messages
+    .filter((entry) => entry.role !== "user" || !isRuntimeContext(entry.text))
+    .map((entry) => entry.role);
+  const lastResult = request.toolResults.at(-1);
+  if (lastResult && roles.lastIndexOf("tool") > roles.lastIndexOf("user")) {
+    // Responding to an older request resumes its instruction. A newer user
+    // message in the history does not transfer ownership of that tool result.
+    const owner = instructions.find((instruction) => {
+      switch (lastResult.id) {
+        case "change-a":
+          return (
+            instruction.startsWith("Prepare change A") ||
+            instruction === "Prepare changes A and B together."
+          );
+        case "change-b-read":
+        case "change-b":
+          return (
+            instruction.startsWith("Prepare change B") ||
+            instruction === "Prepare changes A and B together."
+          );
+        case "authorized-read":
+        case "authorized":
+          return instruction.startsWith("Prepare an authorized change");
+        case "color-read":
+        case "color":
+          return instruction.startsWith("Ask which color");
+        case "size":
+          return instruction.startsWith("Ask which size");
+        default:
+          return false;
+      }
+    });
+    if (owner !== undefined) message = owner;
+  }
   const result = (id: string) => request.toolResults.find((entry) => entry.id === id);
   const run = (calls: MockModelToolCall[], answer: () => string): MockModelResponse => {
     const missing = calls.filter((tool) => result(tool.id!) === undefined);
@@ -84,7 +121,11 @@ export function respond(request: MockModelRequest): MockModelResponse {
       } else {
         if (!result("invalid")!.isError)
           throw new Error("The numeric draft ID must fail validation.");
-        response = readStatus("corrected");
+        response = run(
+          [read("corrected")],
+          () =>
+            `Draft status: ${status("corrected")}. Validation error: ${JSON.stringify(result("invalid")!.output)}`,
+        );
       }
       break;
     case "Read the draft through a workflow.":
@@ -105,12 +146,22 @@ export function respond(request: MockModelRequest): MockModelResponse {
         () => `Background receipt: ${JSON.stringify(result("background")!.output)}`,
       );
       break;
-    case "Cancel the missing draft task and explain the result.":
+    case "Cancel the background draft task and confirm cancellation.": {
+      const receipt = result("background")?.output;
+      if (
+        receipt === null ||
+        typeof receipt !== "object" ||
+        !("taskId" in receipt) ||
+        typeof receipt.taskId !== "string"
+      ) {
+        throw new Error("The background tool must return a real task ID before cancellation.");
+      }
       response = run(
-        [{ id: "cancel", name: "task_cancel", input: { taskIds: ["missing-draft-task"] } }],
+        [{ id: "cancel", name: "task_cancel", input: { taskIds: [receipt.taskId] } }],
         () => `Cancellation result: ${JSON.stringify(result("cancel")!.output)}`,
       );
       break;
+    }
     case "Look up the draft with the provider and report its status.":
       response = run(
         [read("provider-lookup")],

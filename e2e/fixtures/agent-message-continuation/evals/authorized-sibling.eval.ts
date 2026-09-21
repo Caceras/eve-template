@@ -2,9 +2,8 @@ import { defineEval } from "eve/evals";
 import {
   approveSavedChange,
   expectChangeStillUnexecuted,
-  expectReply,
+  expectResponseReply,
   expectToolResult,
-  ownerOf,
   requestFrom,
 } from "./helpers.ts";
 
@@ -22,8 +21,12 @@ export default defineEval({
       { requestId: current.requestId, optionId: "approve" },
     ]);
     await expectToolResult(t, live, "read-draft");
-    const reply = await expectReply(t, live, "Draft status: ready.", ownerOf(second));
-    reply.calledTool("authorized-change", { status: "completed", count: 1 });
+    const reply = await expectResponseReply(t, live, "Draft status: ready.", current.requestId);
+    reply.calledTool("authorized-change", {
+      status: "completed",
+      output: { executions: 1 },
+      count: 1,
+    });
     reply.event("approval.settled", {
       data: { requestId: current.requestId, outcome: "approved" },
       count: 1,

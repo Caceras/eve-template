@@ -8,8 +8,7 @@ export default defineEval({
     const live = await session.start(
       "Try a numeric draft ID, then correct it and read the status.",
     );
-    const turn = await expectReply(t, live, "Draft status: ready.");
-    turn.calledTool("read-draft", { status: "failed", count: 1 });
+    const turn = await expectReply(t, live, /Draft status: ready\. Validation error: .*draftId/);
     turn.calledTool("read-draft", {
       status: "completed",
       input: { draftId: "draft-3494" },

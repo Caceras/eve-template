@@ -1,5 +1,5 @@
 import { defineEval } from "eve/evals";
-import { expectReply, expectToolResult, ownerOf, requestFrom } from "./helpers.ts";
+import { expectReply, expectResponseReply, expectToolResult, requestFrom } from "./helpers.ts";
 
 export default defineEval({
   description:
@@ -12,11 +12,11 @@ export default defineEval({
     const colorRequest = requestFrom(color, "ask_question");
     const size = await session.send("Ask which size to use.");
     const sizeRequest = requestFrom(size, "ask_question");
-    await expectReply(
+    await expectResponseReply(
       t,
       await session.startRespond([{ requestId: approval.requestId, optionId: "cancel" }]),
       "Change A resolved.",
-      ownerOf(first),
+      approval.requestId,
     );
     session.notEvent("action.result", {
       data: { status: "completed", result: { toolName: "change-a" } },

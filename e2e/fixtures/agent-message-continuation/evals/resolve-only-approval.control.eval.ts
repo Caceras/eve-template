@@ -1,5 +1,5 @@
 import { defineEval } from "eve/evals";
-import { expectReply, ownerOf, requestFrom } from "./helpers.ts";
+import { expectResponseReply, requestFrom } from "./helpers.ts";
 
 export default defineEval({
   description: "Control: resolving the only approval runs its tool, reads the status, and replies.",
@@ -9,8 +9,8 @@ export default defineEval({
     const live = await parked.session.startRespond([
       { requestId: approval.requestId, optionId: "approve" },
     ]);
-    const reply = await expectReply(t, live, "Draft status: ready.", ownerOf(parked));
-    reply.calledTool("change-b", { status: "completed", count: 1 });
+    const reply = await expectResponseReply(t, live, "Draft status: ready.", approval.requestId);
+    reply.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
     reply.calledTool("read-draft", { status: "completed", count: 1 });
   },
 });

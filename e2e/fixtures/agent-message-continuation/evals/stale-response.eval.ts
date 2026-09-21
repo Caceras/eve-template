@@ -3,8 +3,8 @@ import {
   approveSavedChange,
   expectChangeStillUnexecuted,
   expectReply,
+  expectResponseReply,
   expectToolResult,
-  ownerOf,
   requestFrom,
 } from "./helpers.ts";
 
@@ -18,11 +18,11 @@ export default defineEval({
     const second = await session.send("Prepare change B, then acknowledge my decision.");
     const approvalB = requestFrom(second, "change-b");
     const cancelB = [{ requestId: approvalB.requestId, optionId: "cancel" }];
-    await expectReply(
+    await expectResponseReply(
       t,
       await session.startRespond(cancelB),
       "Change B resolved.",
-      ownerOf(second),
+      approvalB.requestId,
     );
 
     const repeated = await session.startRespond(cancelB);

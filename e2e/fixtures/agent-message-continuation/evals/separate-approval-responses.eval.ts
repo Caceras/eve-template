@@ -1,9 +1,9 @@
 import { defineEval } from "eve/evals";
-import { expectReply, ownerOf, requestFrom, submitPartialApproval } from "./helpers.ts";
+import { expectResponseReply, requestFrom, submitPartialApproval } from "./helpers.ts";
 
 export default defineEval({
   description:
-    "Control: separate responses accumulate until both approvals from one batch are answered.",
+    "Separate authenticated responses must accumulate until both approvals from one batch are answered.",
   async test(t) {
     const parked = await t.send("Prepare changes A and B together.");
     const approvalA = requestFrom(parked, "change-a");
@@ -13,8 +13,8 @@ export default defineEval({
     const live = await session.startRespond([
       { requestId: approvalB.requestId, optionId: "approve" },
     ]);
-    const reply = await expectReply(t, live, "Both changes resolved.", ownerOf(parked));
-    reply.calledTool("change-a", { status: "completed", count: 1 });
-    reply.calledTool("change-b", { status: "completed", count: 1 });
+    const reply = await expectResponseReply(t, live, "Both changes resolved.", approvalB.requestId);
+    reply.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
+    reply.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
   },
 });

@@ -21,6 +21,10 @@ export default defineEval({
     turn.calledTool("background-draft", { count: 1 });
     expectChangeStillUnexecuted(session);
     await approveSavedChange(session, approval);
-    await session.cancel();
+    await expectReply(
+      t,
+      await session.start("Cancel the background draft task and confirm cancellation."),
+      /Cancellation result: .*"status":"cancelled"/,
+    );
   },
 });

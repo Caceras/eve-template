@@ -25,7 +25,7 @@ export default defineEval({
     const approved = await session.respond([
       { requestId: approvalB.requestId, optionId: "approve" },
     ]);
-    approved.calledTool("change-a", { status: "completed", count: 1 });
-    approved.calledTool("change-b", { status: "completed", count: 1 });
+    approved.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
+    approved.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
   },
 });

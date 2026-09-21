@@ -5,8 +5,13 @@ export default defineEval({
   description: "Control: runtime-control finishes without an older approval.",
   async test(t) {
     const session = await t.session();
-    const live = await session.start("Cancel the missing draft task and explain the result.");
-    const turn = await expectReply(t, live, /^Cancellation result: /);
-    turn.calledTool("task_cancel", { count: 1 });
+    await expectReply(
+      t,
+      await session.start("Start the background draft and acknowledge its receipt."),
+      /^Background receipt: .*"status":"working"/,
+    );
+    const live = await session.start("Cancel the background draft task and confirm cancellation.");
+    const turn = await expectReply(t, live, /Cancellation result: .*"status":"cancelled"/);
+    turn.calledTool("task_cancel", { status: "completed", count: 1 });
   },
 });

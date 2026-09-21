@@ -15,12 +15,6 @@ export function requestFrom(turn: EveEvalTurn, toolName: string): InputRequest {
   return matches[0]!;
 }
 
-export function ownerOf(turn: EveEvalTurn): string {
-  const started = turn.events.find((event) => event.type === "turn.started");
-  if (!started) throw new Error("Expected turn.started.");
-  return started.data.turnId;
-}
-
 export async function expectReply(
   t: EveEvalContext,
   live: EveEvalLiveTurn,
@@ -32,7 +26,26 @@ export async function expectReply(
   turn.event("message.completed", { data: { turnId, message: expected }, count: 1 });
   turn.event("turn.completed", { data: { turnId }, count: 1 });
   turn.notEvent("input.requested", { data: { turnId } });
-  t.log(`Reply and completion belong to ${turnId}.`);
+  t.log(`Checking answer and completion for ${turnId}.`);
+  return turn;
+}
+
+export async function expectResponseReply(
+  t: EveEvalContext,
+  live: EveEvalLiveTurn,
+  expected: string | RegExp,
+  requestId: string,
+): Promise<EveEvalTurn> {
+  await live.waitForEvent("input.resolved");
+  const resumed = await live.waitForEvent("turn.started");
+  const turn = await expectReply(t, live, expected, resumed.data.turnId);
+  turn.eventsSatisfy("Resolves the saved request before answering", (events) =>
+    events.some(
+      (event) =>
+        event.type === "input.resolved" &&
+        event.data.resolutions.some((resolution) => resolution.requestId === requestId),
+    ),
+  );
   return turn;
 }
 
@@ -65,14 +78,19 @@ export async function submitPartialApproval(
     },
   );
   await t.require(response.status, equals(202));
-  await response.body?.cancel();
+  const accepted = await response.json();
+  t.log(`Partial approval accepted: ${JSON.stringify(accepted)}`);
 }
 
 export async function approveSavedChange(session: EveEvalSession, request: InputRequest) {
   const approved = (
     await session.respond([{ requestId: request.requestId, optionId: "approve" }])
   ).expectOk();
-  approved.calledTool(request.action.toolName, { status: "completed", count: 1 });
+  approved.calledTool(request.action.toolName, {
+    status: "completed",
+    output: { executions: 1 },
+    count: 1,
+  });
   session.event("action.result", {
     data: { result: { toolName: request.action.toolName } },
     count: 1,

@@ -4,7 +4,6 @@ import {
   expectChangeStillUnexecuted,
   expectReply,
   requestFrom,
-  expectToolResult,
 } from "./helpers.ts";
 
 export default defineEval({
@@ -18,9 +17,11 @@ export default defineEval({
     const live = await session.start(
       "Try a numeric draft ID, then correct it and read the status.",
     );
-    await expectToolResult(t, live, "read-draft");
-    const turn = await expectReply(t, live, "Draft status: ready.");
-    turn.calledTool("read-draft", { status: "failed", count: 1 });
+    const rejectedStep = await live.waitForEvent("step.completed", { data: { stepIndex: 0 } });
+    t.log(
+      `Initial tool-call step completed; awaiting correction: ${JSON.stringify(rejectedStep.data)}`,
+    );
+    const turn = await expectReply(t, live, /Draft status: ready\. Validation error: .*draftId/);
     turn.calledTool("read-draft", {
       status: "completed",
       input: { draftId: "draft-3494" },
