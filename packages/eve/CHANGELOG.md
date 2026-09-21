@@ -1,5 +1,16 @@
 # eve
 
+## 0.63.1
+
+### Patch Changes
+
+- de29d28: In the eve TUI, press `Ctrl+Y` to paste text you removed with `Ctrl+K`, `Ctrl+U`, or `Ctrl+W`. Press `Alt+Y` immediately afterward to cycle through earlier removals.
+- 7cfaa6f: Option+Delete on macOS and Alt+Backspace now delete to the previous word boundary in editable eve TUI fields.
+- e110eb2: Allow an active turn to finish its tool-result continuation when an earlier turn's HITL request remains unanswered, while preserving current-turn HITL parking. Partial approval responses remain saved until their batch can resolve; they do not cause an extra model call after an unrelated answer.
+- b333e7d: Fix saved-session resume in browsers without `Symbol.dispose`.
+- d88aede: Add eval setup and teardown callbacks with typed context shared by reference across evals and cleanup. Setup returns the context directly before the local agent starts, and teardown runs after shutdown even when setup or the run fails.
+- ffb1276: Fix background subagent calls failing the parent session when typed or wildcard hooks subscribe to subagent events. These hooks now receive the parent session context after workflow step boundaries.
+
 ## 0.63.0
 
 ### Minor Changes
