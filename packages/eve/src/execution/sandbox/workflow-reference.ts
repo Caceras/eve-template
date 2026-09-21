@@ -1,64 +1,22 @@
-import { getAdapterKind, type ChannelAdapter } from "#channel/adapter.js";
 import type { AlsContext } from "#context/container.js";
 import { SandboxKey } from "#context/keys.js";
+import { resolveSandboxAccessInput } from "#context/providers/sandbox.js";
+import type { EnsureSandboxAccessInput } from "#execution/sandbox/ensure.js";
 import type { HarnessSession } from "#harness/types.js";
-import { ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
-import {
-  BundleKey,
-  ChannelKey,
-  type CompiledBundle,
-} from "#runtime/sessions/runtime-context-keys.js";
-import type { SandboxState } from "#sandbox/state.js";
-import type { SandboxBackendTags } from "#shared/sandbox-backend.js";
 
-export interface WorkflowSandboxReferenceData {
-  readonly compiledArtifactsSource: CompiledBundle["compiledArtifactsSource"];
-  readonly nodeId: string;
-  readonly sessionId: string;
-  readonly state: SandboxState | null;
-  readonly tags?: SandboxBackendTags;
-}
-
-export function createWorkflowSandboxReference(input: {
-  readonly bundle: CompiledBundle;
-  readonly channel: ChannelAdapter | undefined;
-  readonly sandboxSessionId: string;
-  readonly session: Pick<HarnessSession, "sandboxState" | "sessionId">;
-  readonly state?: SandboxState;
-}): WorkflowSandboxReferenceData {
-  return {
-    compiledArtifactsSource: input.bundle.compiledArtifactsSource,
-    nodeId: input.bundle.nodeId ?? ROOT_RUNTIME_AGENT_NODE_ID,
-    sessionId: input.sandboxSessionId,
-    state: input.state ?? input.session.sandboxState ?? null,
-    tags: {
-      agent:
-        input.bundle.resolvedAgent.config?.name ??
-        input.bundle.nodeId ??
-        ROOT_RUNTIME_AGENT_NODE_ID,
-      channel: input.channel === undefined ? "unknown" : getAdapterKind(input.channel),
-      sessionId: input.session.sessionId,
-    },
-  };
-}
+export type WorkflowSandboxReferenceData = Pick<
+  EnsureSandboxAccessInput,
+  "compiledArtifactsSource" | "nodeId" | "sessionId" | "state" | "tags"
+>;
 
 export async function captureWorkflowSandboxReference(input: {
   readonly ctx: AlsContext;
   readonly session: HarnessSession;
 }): Promise<WorkflowSandboxReferenceData> {
-  const channel = input.ctx.get(ChannelKey);
-  const adapterState = channel?.state as Record<string, unknown> | undefined;
-  const sharedSessionId = adapterState?.sandboxSessionId;
+  const resolved = resolveSandboxAccessInput(input.ctx, input.session);
+  if (resolved === undefined) throw new Error("The session has no sandbox runtime bundle.");
   const access = input.ctx.require(SandboxKey);
   await access.get();
-  return createWorkflowSandboxReference({
-    bundle: input.ctx.require(BundleKey),
-    channel,
-    sandboxSessionId:
-      typeof sharedSessionId === "string" && sharedSessionId.length > 0
-        ? sharedSessionId
-        : input.session.sessionId,
-    session: input.session,
-    state: await access.captureState(),
-  });
+  const { compiledArtifactsSource, nodeId, sessionId, tags } = resolved;
+  return { compiledArtifactsSource, nodeId, sessionId, tags, state: await access.captureState() };
 }

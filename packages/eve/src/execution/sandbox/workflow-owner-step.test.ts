@@ -73,8 +73,11 @@ describe("workflow sandbox owner admission", () => {
     const sessionState = createTestSessionState();
     expect(
       await prepareWorkflowSandboxStep({
-        message,
-        taskId: "task-1",
+        message: {
+          ...message,
+          from: { ...message.from, execution: "background" },
+          request: { kind: "sandbox-request", taskId: "task-1" },
+        },
         sessionState,
         serializedContext: {},
       }),

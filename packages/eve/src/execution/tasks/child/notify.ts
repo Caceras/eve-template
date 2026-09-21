@@ -10,6 +10,7 @@ import type { ActivityEventV1 } from "#protocol/activity.js";
 import type {
   WorkflowToolAuthorizationRequest,
   WorkflowToolRunRequestMessage,
+  WorkflowToolRunMessage,
   WorkflowToolRunReport,
 } from "#execution/tools/workflow/messages.js";
 import { workflowToolRunInputRequests } from "#execution/tools/workflow/owner-inbox.js";
@@ -48,14 +49,14 @@ export async function notifyTaskParent(
   } catch (error) {
     if (!isTaskWorkflowTargetGone(error)) throw error;
     log.warn("task notification target is gone; the parent session already ended", {
-      taskDeliveryId: command.taskDeliveryId,
+      taskDeliveryId: "taskDeliveryId" in command ? command.taskDeliveryId : undefined,
     });
   }
 }
 
 function taskNotificationCommand(
   input: TaskParentNotification,
-): Extract<SessionCommand, { readonly kind: "send" }> {
+): Extract<SessionCommand, { readonly kind: "send" }> | WorkflowToolRunMessage {
   if ("view" in input) {
     const { view, update } = input;
     if (update !== undefined) {
@@ -82,9 +83,9 @@ function taskNotificationCommand(
   const { request } = message;
   if (request.kind === "sandbox-request") {
     return {
-      kind: "send",
-      payload: { task: { sandboxRequests: [{ taskId, message }] } },
-      taskDeliveryId: `${taskId}:sandbox:${message.from.runId}:${message.replyTo}`,
+      ...message,
+      kind: "request",
+      request: { kind: "sandbox-request", taskId },
     };
   }
   if (request.kind === "authorization-request") return taskAuthorizationCommand(request, taskId);

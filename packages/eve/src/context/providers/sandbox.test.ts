@@ -4,13 +4,14 @@ import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import type { HarnessSession } from "#harness/types.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
-import { SessionIdKey } from "#context/keys.js";
+import { SandboxKey, SessionIdKey } from "#context/keys.js";
 import {
   BundleKey,
   ChannelKey,
   type CompiledBundle,
 } from "#runtime/sessions/runtime-context-keys.js";
 import { ContextContainer } from "#context/container.js";
+import { captureWorkflowSandboxReference } from "#execution/sandbox/workflow-reference.js";
 import { sandboxProvider } from "#context/providers/sandbox.js";
 import { createStubSandboxRegistry } from "#internal/testing/stub-sandbox-registry.js";
 
@@ -84,6 +85,31 @@ describe("sandboxProvider", () => {
         sessionId: "root-sandbox-session",
         state: parentSandboxState,
       }),
+    );
+  });
+
+  it("uses the same reconnect identity and tags for workflow steps", async () => {
+    const ctx = new ContextContainer();
+    const registry = createStubSandboxRegistry();
+    const bundle = createBundle({ agentName: "child", registry });
+    Object.assign(bundle.graph.root, { nodeId: "child-node" });
+    ctx.set(BundleKey, bundle);
+    ctx.set(ChannelKey, { kind: "subagent", state: { sandboxSessionId: "parent-sandbox" } });
+    ctx.set(SessionIdKey, "child-session");
+    const session = createHarnessSession();
+    const provider = await sandboxProvider.create(ctx, session);
+    if (provider === undefined) throw new Error("Missing sandbox provider");
+    ctx.setVirtualContext(SandboxKey, provider.value);
+    const reference = await captureWorkflowSandboxReference({ ctx, session });
+    expect(reference).toEqual({
+      compiledArtifactsSource: bundle.compiledArtifactsSource,
+      nodeId: "child-node",
+      sessionId: "parent-sandbox",
+      state: { initialized: false, session: null },
+      tags: { agent: "child", channel: "subagent", sessionId: "child-session" },
+    });
+    expect(ensureSandboxAccess).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...reference, state: null }),
     );
   });
 

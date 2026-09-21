@@ -23,7 +23,6 @@ const log = createLogger("execution.workflow-sandbox");
 
 export async function prepareWorkflowSandboxStep(input: {
   readonly message: WorkflowToolRunRequestMessage;
-  readonly taskId?: string;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): Promise<{
@@ -40,11 +39,11 @@ export async function prepareWorkflowSandboxStep(input: {
     return { sessionState: input.sessionState };
   }
   const durable = readDurableSession(input.sessionState);
-  const { from } = input.message;
+  const { from, request } = input.message;
   const recorded =
-    input.taskId === undefined
+    request.taskId === undefined
       ? findBlockingWorkflowToolRun(durable.state, from.callId, from.turnId)
-      : findBackgroundWorkflowToolRun(durable.state, input.taskId);
+      : findBackgroundWorkflowToolRun(durable.state, request.taskId);
   const accepted =
     recorded?.address.runId === from.runId &&
     recorded.toolName === from.toolName &&

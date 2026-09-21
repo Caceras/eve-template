@@ -1,7 +1,7 @@
 ---
 issue: https://github.com/vercel/eve/issues/3201
 status: implemented
-last_updated: "2026-09-19"
+last_updated: "2026-09-21"
 ---
 
 # Sandbox access in workflow steps
@@ -17,7 +17,7 @@ Use `defineWorkflowTool({ execute })` and pass `ctx` directly to a `"use step"` 
 ## Boundaries
 
 - A workflow that never calls `getSandbox` does not open a sandbox.
-- On first access in each step, the step requests initialization through its owner inbox. The owning session checks the recorded run, opens or reconnects its sandbox, and persists the updated session checkpoint before returning a serializable reconnect record. Background tasks forward this request through their existing parent delivery path.
+- On first access in each step, the step requests initialization through its owner inbox. The owning session checks the recorded run, opens or reconnects its sandbox, and persists the updated session checkpoint before returning a serializable reconnect record. Blocking and background requests use the same internal session handler; background tasks forward through the stable parent inbox.
 - A durable response stream keyed by the requesting step lets retries reuse the response. Concurrent steps are initialized through the owning session so they share its initialization state. This adds an owner round trip on first access in each step.
 - Each workflow step binds a lazy `SandboxAccess` under `SandboxKey` and uses the existing tool getter and cancellation wrapper. Calls in one step share access; later steps reconstruct it from the session's saved state.
 - Steps cannot stop or delete the shared sandbox. They consume or kill spawned processes before returning and return serializable results, never live handles or streams.
