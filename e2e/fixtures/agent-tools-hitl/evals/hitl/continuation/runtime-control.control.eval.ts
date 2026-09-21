@@ -3,7 +3,7 @@ import { scriptedSession, expectReply } from "./helpers.ts";
 
 export default defineEval({
   description: "Control: runtime-control finishes without an older approval.",
-  tags: ["hitl", "continuation", "control", "user-message", "background-task"],
+  tags: ["hitl", "continuation", "control", "user-message", "runtime-control", "background-task"],
   timeoutMs: 60_000,
   async test(t) {
     // Given a background draft is running and its receipt has been acknowledged.

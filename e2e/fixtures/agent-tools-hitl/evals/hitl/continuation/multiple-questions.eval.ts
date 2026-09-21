@@ -48,5 +48,17 @@ export default defineEval({
           ),
       ),
     );
+    await expectResponseReply(
+      t,
+      await session.startRespond([{ requestId: colorRequest.requestId, optionId: "red" }]),
+      "Draft status: ready.",
+      colorRequest.requestId,
+    );
+    await expectResponseReply(
+      t,
+      await session.startRespond([{ requestId: sizeRequest.requestId, optionId: "small" }]),
+      "Size resolved.",
+      sizeRequest.requestId,
+    );
   },
 });

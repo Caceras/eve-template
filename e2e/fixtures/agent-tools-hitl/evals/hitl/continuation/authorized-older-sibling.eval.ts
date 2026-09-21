@@ -1,34 +1,47 @@
 import { defineEval } from "eve/evals";
-import { expectChangeStillUnexecuted, requestFrom, scriptedSession } from "./helpers.ts";
+import {
+  scriptedSession,
+  approveSavedChange,
+  expectChangeStillUnexecuted,
+  expectResponseReply,
+  expectToolResult,
+  requestFrom,
+} from "./helpers.ts";
 
 export default defineEval({
   description:
-    "authorized-older-sibling: resolving an older request must finish that request while a newer request remains open.",
+    "Approving the older response-authorized request completes its read and reply while newer approval A stays answerable.",
   tags: ["hitl", "continuation", "regression", "input-response", "authorization"],
   timeoutMs: 60_000,
   async test(t) {
-    // Given A awaits approval and a newer authorized change also awaits approval.
-    const first = await t.send("Prepare change A.", scriptedSession);
-    const approvalA = requestFrom(first, "change-a");
+    // Given a response-authorized change is pending before an ordinary approval A.
+    const first = await t.send(
+      "Prepare an authorized change, then read the draft status.",
+      scriptedSession,
+    );
+    const current = requestFrom(first, "authorized-change");
     const session = first.session;
-    const second = await session.send("Prepare an authorized change, then read the draft status.");
-    requestFrom(second, "authorized-change");
+    const second = await session.send("Prepare change A.");
+    const approvalA = requestFrom(second, "change-a");
 
-    // When the user resolves the older request first.
-    const resolved = (
-      await session.respond([{ requestId: approvalA.requestId, optionId: "approve" }])
-    ).expectOk();
+    // When the authorized responder approves the older change.
+    const live = await session.startRespond([
+      { requestId: current.requestId, optionId: "approve" },
+    ]);
 
-    // Then A executes once, and the newer request remains answerable.
-    resolved.calledTool("change-a", {
+    // Then authorization settles, the change executes once, and the read gets a reply; A stays answerable.
+    await expectToolResult(t, live, "read-draft");
+    const reply = await expectResponseReply(t, live, "Draft status: ready.", current.requestId);
+    reply.calledTool("authorized-change", {
       status: "completed",
       output: { executions: 1 },
       count: 1,
     });
-    resolved.event("input.resolved", {
-      data: { resolutions: [{ requestId: approvalA.requestId }] },
+    reply.event("approval.settled", {
+      data: { requestId: current.requestId, outcome: "approved" },
       count: 1,
     });
-    expectChangeStillUnexecuted(session, "authorized-change");
+    expectChangeStillUnexecuted(session);
+    await approveSavedChange(t, session, approvalA);
   },
 });

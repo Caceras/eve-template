@@ -9,7 +9,7 @@ import {
 export default defineEval({
   description:
     "Control: a workflow finishing beside an approval cannot bypass that turn's approval.",
-  tags: ["hitl", "continuation", "control", "input-response", "workflow"],
+  tags: ["hitl", "continuation", "control", "user-message", "input-response", "workflow"],
   timeoutMs: 60_000,
   async test(t) {
     // Given a fresh session with no pending input.
@@ -20,6 +20,7 @@ export default defineEval({
     );
     // Then A still requires approval and the workflow cannot produce a final reply alone.
     const approval = requestFrom(parked, "change-a");
+    parked.calledTool("workflow-draft", { status: "completed", count: 1 });
     parked.notEvent("message.completed");
     const session = parked.session;
     expectChangeStillUnexecuted(session);

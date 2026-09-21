@@ -39,6 +39,6 @@ export default defineEval({
     session.notEvent("action.result", {
       data: { status: "completed", result: { toolName: "change-b" } },
     });
-    await approveSavedChange(session, approvalA);
+    await approveSavedChange(t, session, approvalA);
   },
 });

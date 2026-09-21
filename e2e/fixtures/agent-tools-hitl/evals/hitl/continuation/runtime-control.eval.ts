@@ -9,7 +9,14 @@ import {
 
 export default defineEval({
   description: "A task-control result must be interpreted while an older approval waits.",
-  tags: ["hitl", "continuation", "regression", "user-message", "background-task"],
+  tags: [
+    "hitl",
+    "continuation",
+    "regression",
+    "user-message",
+    "runtime-control",
+    "background-task",
+  ],
   timeoutMs: 60_000,
   async test(t) {
     // Given a background draft is running and change A is waiting for approval.

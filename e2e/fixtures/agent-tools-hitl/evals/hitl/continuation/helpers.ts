@@ -49,6 +49,10 @@ export async function expectReply(
     completions.length,
     satisfies<number>((count) => count === 1, `Exactly one completion for ${turnId}`),
   );
+  turn.eventOrder([
+    { type: "message.completed", data: { turnId, message: expected }, count: 1 },
+    { type: "turn.completed", data: { turnId }, count: 1 },
+  ]);
   turn.notEvent("input.requested", { data: { turnId } });
   t.log(`Checking answer and completion for ${turnId}.`);
   return turn;
@@ -61,16 +65,44 @@ export async function expectResponseReply(
   requestId: string,
 ): Promise<EveEvalTurn> {
   t.log(`Accepted response for ${requestId}; awaiting resolution and its resumed turn.`);
-  await live.waitForEvent("input.resolved");
-  const resumed = await live.waitForEvent("turn.started");
-  const turn = await expectReply(t, live, expected, resumed.data.turnId);
-  turn.eventsSatisfy("Resolves the saved request before answering", (events) =>
-    events.some(
-      (event) =>
-        event.type === "input.resolved" &&
-        event.data.resolutions.some((resolution) => resolution.requestId === requestId),
-    ),
+  await live.waitForEvent("input.resolved", {
+    data: { resolutions: (items) => items.some((item) => item.requestId === requestId) },
+  });
+  const result = (await live.result()).expectOk();
+  const resolvedIndex = result.events.findIndex(
+    (event) =>
+      event.type === "input.resolved" &&
+      event.data.resolutions.some((item) => item.requestId === requestId),
   );
+  const resumed = result.events
+    .slice(resolvedIndex + 1)
+    .find((event) => event.type === "turn.started");
+  if (resumed?.type !== "turn.started") {
+    throw new Error(`No turn started after resolving ${requestId}.`);
+  }
+  const turn = await expectReply(t, live, expected, resumed.data.turnId);
+  turn.eventOrder([
+    {
+      type: "input.resolved",
+      data: {
+        resolutions: (items) =>
+          items.some(
+            (item) =>
+              item.requestId === requestId &&
+              item.outcome !== "ignored" &&
+              item.outcome !== "invalid",
+          ),
+      },
+      count: 1,
+    },
+    { type: "turn.started", data: { turnId: resumed.data.turnId }, count: 1 },
+    {
+      type: "message.completed",
+      data: { turnId: resumed.data.turnId, message: expected },
+      count: 1,
+    },
+    { type: "turn.completed", data: { turnId: resumed.data.turnId }, count: 1 },
+  ]);
   return turn;
 }
 
@@ -108,10 +140,13 @@ export async function submitPartialApproval(
   t.log(`Partial approval accepted: ${JSON.stringify(accepted)}`);
 }
 
-export async function approveSavedChange(session: EveEvalSession, request: InputRequest) {
-  const approved = (
-    await session.respond([{ requestId: request.requestId, optionId: "approve" }])
-  ).expectOk();
+export async function approveSavedChange(
+  t: EveEvalContext,
+  session: EveEvalSession,
+  request: InputRequest,
+) {
+  const live = await session.startRespond([{ requestId: request.requestId, optionId: "approve" }]);
+  const approved = await expectResponseReply(t, live, /\S/, request.requestId);
   approved.calledTool(request.action.toolName, {
     status: "completed",
     output: { executions: 1 },

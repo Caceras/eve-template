@@ -126,6 +126,7 @@ it("continues the second step past an older approval batch", async () => {
   const pendingDecision = resolvePendingInput({ session: first.session });
   expect(pendingDecision.outcome).toBe("unresolved");
   const continued = await run(first.session);
+  expect(continued.settledTurn?.output).toBe("Your draft is ready.");
   expect(continued.next).toBeNull();
   expect(modelCalls).toBe(3);
   expect(events.slice(before).some((event) => event.type === "turn.completed")).toBe(true);
@@ -150,15 +151,16 @@ it("continues the second step past an older approval batch", async () => {
     getHarnessEmissionState(first.session.state),
   );
   expect(resolvePendingInput({ session: control }).outcome).toBe("continue");
+  const beforeControl = events.length;
   await run(control);
   expect(modelCalls).toBe(4);
-  expect(events.slice(before).some((event) => event.type === "turn.completed")).toBe(true);
+  expect(events.slice(beforeControl).some((event) => event.type === "turn.completed")).toBe(true);
   expect(gate).not.toHaveBeenCalled();
   expect(getPendingInputBatches(first.session.state)).toEqual([approval]);
   const controlObservation = {
     phase: "clone-without-batch",
     modelCalls,
-    events: events.slice(before).map((event) => event.type),
+    events: events.slice(beforeControl).map((event) => event.type),
     originalStillPending: getPendingInputBatches(first.session.state).length,
     gateExecutions: gate.mock.calls.length,
   };

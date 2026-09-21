@@ -26,6 +26,6 @@ export default defineEval({
     const turn = await expectReply(t, live, 'Draft saved: {"writes":1}.');
     turn.calledTool("save-draft", { status: "completed", count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

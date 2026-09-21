@@ -30,6 +30,6 @@ export default defineEval({
     );
     turn.calledTool("unavailable-draft", { status: "failed", count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

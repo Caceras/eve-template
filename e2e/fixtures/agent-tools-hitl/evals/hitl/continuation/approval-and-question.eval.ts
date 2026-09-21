@@ -3,7 +3,7 @@ import {
   scriptedSession,
   approveSavedChange,
   expectChangeStillUnexecuted,
-  expectReply,
+  expectResponseReply,
   requestFrom,
 } from "./helpers.ts";
 
@@ -29,10 +29,8 @@ export default defineEval({
     ]);
 
     // Then A executes and the question's read receives its own completed reply.
-    const answer = await live.waitForEvent("message.completed", {
-      data: { message: "Draft status: ready." },
-    });
-    const reply = await expectReply(t, live, "Draft status: ready.", answer.data.turnId);
+    await expectResponseReply(t, live, "Change A resolved.", approvalA.requestId);
+    const reply = await expectResponseReply(t, live, "Draft status: ready.", question.requestId);
     reply.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
     reply.calledTool("read-draft", { status: "completed", count: 1 });
     reply.eventsSatisfy("Both saved requests resolve", (events) =>
@@ -45,6 +43,6 @@ export default defineEval({
       ),
     );
     expectChangeStillUnexecuted(session, "change-b");
-    await approveSavedChange(session, approvalB);
+    await approveSavedChange(t, session, approvalB);
   },
 });

@@ -16,6 +16,11 @@ export default defineEval({
     );
 
     // Then the reply reports provider-ready and completes its turn.
-    await expectReply(t, live, "Provider draft status: provider-ready.");
+    const reply = await expectReply(t, live, "Provider draft status: provider-ready.");
+    reply.calledTool("read-draft", {
+      status: "completed",
+      output: { status: "provider-ready" },
+      count: 1,
+    });
   },
 });

@@ -3,6 +3,7 @@ import {
   scriptedSession,
   expectChangeStillUnexecuted,
   expectReply,
+  expectResponseReply,
   expectToolResult,
   requestFrom,
   submitPartialApproval,
@@ -30,9 +31,21 @@ export default defineEval({
     expectChangeStillUnexecuted(session, "change-a");
     expectChangeStillUnexecuted(session, "change-b");
 
-    const approved = await session.respond([
-      { requestId: approvalB.requestId, optionId: "approve" },
-    ]);
+    const approved = await expectResponseReply(
+      t,
+      await session.startRespond([{ requestId: approvalB.requestId, optionId: "approve" }]),
+      "Both changes resolved.",
+      approvalB.requestId,
+    );
+    approved.event("input.resolved", {
+      data: {
+        resolutions: (items) =>
+          [approvalA.requestId, approvalB.requestId].every((id) =>
+            items.some((item) => item.requestId === id && item.outcome === "approved"),
+          ),
+      },
+      count: 1,
+    });
     approved.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
     approved.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
   },

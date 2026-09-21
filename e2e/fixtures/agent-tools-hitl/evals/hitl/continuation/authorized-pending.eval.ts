@@ -26,6 +26,6 @@ export default defineEval({
     await expectToolResult(t, live, "read-draft");
     await expectReply(t, live, "Draft status: ready.");
     expectChangeStillUnexecuted(session, "authorized-change");
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

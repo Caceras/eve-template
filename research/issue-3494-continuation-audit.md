@@ -4,7 +4,7 @@ status: implemented
 last_updated: "2026-09-21"
 ---
 
-Earlier pending input can block runnable work in a later turn: 33 deterministic harness probes reproduced 19 failing scenarios across three failure paths, with 14 passing controls.
+Earlier pending input can block runnable work in a later turn. This historical audit recorded 19 failing scenarios and 14 passing controls across 33 deterministic harness probes; it is not the current test inventory.
 
 The counts describe scenarios, not 19 independent defects. The red baseline was captured before the runtime fix at `52fe60f8af564a2c895bf4012f0f44df2beca915` on `ruiconti/issue-3494-eval`. These are local integration reproductions, not additional live-model or durable-world eval results.
 
@@ -37,7 +37,7 @@ Every case below fails its desired-outcome assertion. Earlier approval requests 
 
 ## Passing controls and fix constraints
 
-The 14 passing cases cover ordinary tools without pending input; text-only follow-up with a pending approval; resolving the sole approval; dismissing a sole question; workflow result without pending input; partial approvals delivered separately until the entire batch is answered; tool error and invalid-input recovery without pending input; settling multiple independent approvals plus deferred follow-up; a same-turn workflow/approval pair; budget renewal without the older approval; background admission and provider results without pending input; and `final_output` alongside an ordinary tool with an older approval.
+The 14 passing cases cover ordinary tools without pending input; text-only follow-up with a pending approval; resolving the sole approval; dismissing a sole question; workflow result without pending input; partial approvals delivered separately until the entire batch is answered; tool error and invalid-input rejection without pending input; settling multiple independent approvals plus deferred follow-up; a same-turn workflow/approval pair; budget renewal without the older approval; background admission and provider results without pending input; and `final_output` alongside an ordinary tool with an older approval.
 
 These controls establish important boundaries:
 
@@ -51,13 +51,13 @@ These controls establish important boundaries:
 
 The [probe file][probe] uses the real harness and AI SDK `MockLanguageModelV4`. It scripts provider outputs. Approval and question batches are produced through actual model calls and harness parking, not inserted into session state. Local tool effects are in-memory counters. Workflow/control completion payloads and background admission receipts are supplied at their runtime boundaries; no real workflow or external write runs.
 
-The runtime fix now carries the current turn owner into pending-input resolution, bypasses only historical HITL during an internal continuation, and preserves partial responses without scheduling another internal step. From this checkout, the regression matrix is green:
+The probes run with the integration-tier configuration:
 
 ```sh
 pnpm --filter eve exec vitest run --config vitest.integration.config.ts src/harness/issue-3494-adversarial.integration.test.ts
 ```
 
-Result after the fix: **33 passed, 33 total**. The focused unit resolver suite passes **38/38**, and the direct regression reproducer passes **1/1**. Package TypeScript checking, focused formatting, focused lint, and invariant guards pass. The original red artifacts remain available for comparison: [raw traces][traces], [test log][test-log], [typecheck log][typecheck-log].
+The original local audit recorded a subsequent 33/33 green run, but did not pin that result to a commit. Do not treat it as current-head validation. The suite has since grown. The [HITL coverage inventory](../e2e/fixtures/agent-tools-hitl/evals/hitl/continuation/README.md) distinguishes scripted E2E, selected-model E2E, and integration-only cases; [PR #3564](https://github.com/vercel/eve/pull/3564) records commit-specific validation. The original `/tmp` logs were local scratch artifacts, not durable reviewer evidence.
 
 During probe development, two test assumptions were corrected before counting results: invalid-input coverage now uses a real Zod validator, and structured-output coverage initializes the harness session's output schema, matching the execution boundary. The budget assertion also explicitly expects the next budget prompt. These prevent unrelated fixture mistakes from being reported as additional defects.
 
@@ -71,7 +71,7 @@ This pass covers all three immediate continuation conditions and both pending-in
 | Background completion wakes                                  | Admission receipt is covered; later task completion and wake policy are separate transitions.                                                                             | Start actual task, leave approval open, complete task, verify wake eligibility and answer.                                 |
 | OAuth authorization challenge completion                     | Response-authorized approvals are covered; external authorization challenge callbacks are separate machinery.                                                             | Park for auth alongside an earlier approval, deliver callback, verify retry and turn boundary.                             |
 | Restart, replay, cancellation, and concurrent delivery races | These probes serialize the harness state transitions; they do not restart a durable world or race inbox entries.                                                          | CI durable-world evals with restart/replay and controlled delivery order; assert no duplicate writes and exact settlement. |
-| Live providers and channels                                  | Provider streams are scripted; no Slack/browser/client timeout behavior is added by this pass.                                                                            | Fixture-owned CI evals for representative ordinary, partial-response, and coordination failures.                           |
+| Full live-provider and channel matrix                        | The original probes script provider streams. A later selected-model E2E pair covers the ordinary read; it does not cover every continuation or client.                    | Fixture-owned CI evals for representative ordinary, partial-response, and coordination failures.                           |
 
 [guard]: https://github.com/vercel/eve/blob/52fe60f8af564a2c895bf4012f0f44df2beca915/packages/eve/src/harness/input-requests.ts#L99-L107
 [silent-park]: https://github.com/vercel/eve/blob/52fe60f8af564a2c895bf4012f0f44df2beca915/packages/eve/src/harness/tool-loop.ts#L940
@@ -91,6 +91,3 @@ This pass covers all three immediate continuation conditions and both pending-in
 [partial-text-test]: ../packages/eve/src/harness/issue-3494-adversarial.integration.test.ts#L471
 [external-boundary-tests]: ../packages/eve/src/harness/issue-3494-adversarial.integration.test.ts#L497
 [authorized-test]: ../packages/eve/src/harness/issue-3494-adversarial.integration.test.ts#L537
-[traces]: /tmp/eve-3494-adversarial.json
-[test-log]: /tmp/eve-3494-adversarial.log
-[typecheck-log]: /tmp/eve-3494-adversarial-typecheck.log

@@ -35,6 +35,6 @@ export default defineEval({
       count: 1,
     });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

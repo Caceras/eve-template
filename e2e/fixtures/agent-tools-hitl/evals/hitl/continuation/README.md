@@ -2,56 +2,77 @@
 
 Every accepted user message must reach its own answer, required input request, or explicit failure/cancellation. An older unanswered request cannot silently stop that message's work.
 
-These evals exercise the real HTTP session, approval, tool, workflow, and event-stream paths. A deterministic model chooses the calls and constructs answers from the results it receives. There is no model judge and no manually seeded pending state. The sibling [`pending-approval-tool-followup.eval.ts`](../pending-approval-tool-followup.eval.ts) also exercises a live model.
+This directory contains **37 scripted evals: 23 regressions and 14 controls**. They exercise the HTTP session, approval, tool, workflow, and event-stream paths. A deterministic model chooses calls and constructs answers from the results it receives. There is no model judge and no manually seeded pending state.
 
-These sessions explicitly select the scripted model with a fixture-only header. Other HITL evals keep the CI-selected model. The fixture has a one-million-output-token session limit; only the budget scripts report that much synthetic usage in one call.
+These sessions select the scripted model through a fixture-only header in **every** CI world, including Local. The sibling [`pending-approval-tool-followup.eval.ts`](../pending-approval-tool-followup.eval.ts) adds two cases using the CI-selected model: real models in Local, the fixture mock in Postgres and Vercel. Passing scripted cases does not establish live-model coverage of the whole matrix.
 
-Start with [`read.eval.ts`](./read.eval.ts): prepare a change, leave its approval pending, ask for a draft status, require the answer, then approve the original change. Every other regression follows that same conversation shape.
+Start with [`read.eval.ts`](./read.eval.ts): leave a change's approval pending, ask for a draft status, require its answer, then approve the saved change. Other cases vary the pending requests, delivery order, or result type.
 
 ## Scenario syntax and classification
 
-Each test body uses **Given / When / Then**: the actual pending state, the accepted user input, and the observable outcome. `defineEval.description` names the scenario. Native `tags` classify it by role (`regression` or `control`), triggering input (`user-message` or `input-response`), and behavior (`tool-result`, `tool-error`, `validation`, `workflow`, `provider-result`, `background-task`, `approval`, `authorization`, `question`, `partial-approval`, `stale-response`, `budget`, or `text-reply`). Every case also carries `hitl` and `continuation`.
+Each body uses **Given / When / Then** comments to identify the initial state, accepted input, and observable outcome. `defineEval.description` names the scenario. Native `tags` classify role (`regression` or `control`), triggering input (`user-message` or `input-response`), and behavior (`tool-result`, `tool-error`, `validation`, `workflow`, `provider-result`, `background-task`, `runtime-control`, `approval`, `authorization`, `question`, `partial-approval`, `stale-response`, `budget`, or `text-reply`). Every case also carries `hitl` and `continuation`.
 
-The tags are filters, not expected verdicts: every case must pass after the runtime is fixed. In CI, `eve eval --tag regression`, `--tag control`, or `--tag partial-approval` selects the corresponding conversations. The body remains ordinary executable `defineEval` code; there is no separate scenario runner or generated assertion table.
+The tags are filters, not expected verdicts: every case must pass. `eve eval --tag regression`, `--tag control`, or `--tag partial-approval` selects the corresponding conversations. This is ordinary executable `defineEval` code with native assertions; Given / When / Then is not a separate executable spec language.
 
 ## What makes a passing answer
 
-[`expectReply`](./helpers.ts) requires both `message.completed` with the expected answer and `turn.completed`, attributed to the same turn. A tool result, an unrelated reply, or a completion event without an answer cannot pass. Approval-response cases verify resolution of the saved request and use the resumed `turn.started` ID; new messages use their own `message.received` ID. An input request may itself close a runtime turn, so `turn.completed` alone is never proof of an answer.
+[`expectReply`](./helpers.ts) requires exactly one matching `message.completed`, followed by exactly one `turn.completed`, both attributed to the same turn. A tool result, unrelated reply, or completion without an answer cannot pass. New messages use their own `message.received` turn ID. Approval and question responses require successful resolution of the saved request **before** the resumed `turn.started`, reply, and completion.
 
-The eval saves each approval ID when it is first emitted. It does not infer durable pending state from the driver's latest-turn request list. After an unrelated answer, it checks that the old change has not executed. Most cases then approve the saved request and verify exactly one execution. The task-cancellation case stops after its answer, keeping subsequent background notifications outside that assertion.
+Each approval ID is saved when emitted. The driver's latest-turn request list is not treated as durable pending state. Tests check that unrelated replies do not execute the old change, then generally approve the saved request and require its execution and completed reply. Runtime-control coverage stops after its answer to avoid mixing later background notifications into that assertion. Budget cases require the next budget request instead of an answer beyond the granted limit.
 
-## Conversations
+## Regressions
 
-Each link is one eval, with the user messages and expected outcome in the test body.
+Each row maps to exactly one eval. “Response authorization” here means the fixture checks the authenticated responder's principal; it does not exercise an OAuth callback.
 
-| While earlier input remains unanswered          | Expected current outcome                                 | Eval                                                                 |
-| ----------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
-| Read                                            | Report the returned status                               | [read](./read.eval.ts)                                               |
-| Write                                           | Confirm exactly one write                                | [write](./write.eval.ts)                                             |
-| Parallel read and write                         | Report both results                                      | [parallel tools](./parallel-tools.eval.ts)                           |
-| Tool throws                                     | Explain the actual error                                 | [tool error](./tool-error.eval.ts)                                   |
-| Invalid tool input                              | Correct the input and report the result                  | [invalid input](./invalid-input.eval.ts)                             |
-| Approval requires an authenticated responder    | Finish an unrelated read                                 | [authorized pending](./authorized-pending.eval.ts)                   |
-| Approve a separate change                       | Execute it, read, and reply                              | [approve sibling](./approve-sibling.eval.ts)                         |
-| Cancel a separate change                        | Keep it unexecuted, read, and reply                      | [cancel sibling](./cancel-sibling.eval.ts)                           |
-| Authenticated approval of a separate change     | Settle authorization, read, and reply                    | [authorized sibling](./authorized-sibling.eval.ts)                   |
-| Approve one change and answer a later question  | Process both responses while another approval stays open | [approval and question](./approval-and-question.eval.ts)             |
-| Answer a question                               | Continue that question's work and reply                  | [answer question](./answer-question.eval.ts)                         |
-| Workflow completes                              | Interpret its result                                     | [workflow result](./workflow-result.eval.ts)                         |
-| Runtime task control completes                  | Explain its result                                       | [runtime control](./runtime-control.eval.ts)                         |
-| Background task starts                          | Acknowledge its working receipt                          | [background receipt](./background-receipt.eval.ts)                   |
-| Provider executes a tool                        | Interpret the provider's result                          | [provider result](./provider-result.eval.ts)                         |
-| Only multiple questions remain                  | Finish a new read without silently answering them        | [multiple questions](./multiple-questions.eval.ts)                   |
-| One of two approvals is submitted               | Finish a new tool request                                | [partial approval, tool](./partial-approval-tool.eval.ts)            |
-| One of two approvals is submitted               | Finish a new text-only request                           | [partial approval, text](./partial-approval-text.eval.ts)            |
-| User repeats a resolved approval response       | Process the new input without authorizing old work       | [stale response](./stale-response.eval.ts)                           |
-| User grants another budget window               | Run the tool and ask for the next needed grant           | [budget grant](./budget-grant.eval.ts)                               |
-| Two approvals are answered in separate requests | Resolve both and reply                                   | [separate approval responses](./separate-approval-responses.eval.ts) |
+| Conversation                                                             | Required outcome                                                                         | Eval                                                                 |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Read while A waits                                                       | Report returned status; A remains answerable                                             | [read](./read.eval.ts)                                               |
+| Write while A waits                                                      | Confirm exactly one write; A remains answerable                                          | [write](./write.eval.ts)                                             |
+| Parallel read and write while A waits                                    | Report both results                                                                      | [parallel tools](./parallel-tools.eval.ts)                           |
+| Tool throws while A waits                                                | Explain the actual error                                                                 | [tool error](./tool-error.eval.ts)                                   |
+| Invalid tool input while A waits                                         | Correct input and report the result                                                      | [invalid input](./invalid-input.eval.ts)                             |
+| Response-authorized approval waits                                       | Finish an unrelated read                                                                 | [authorized pending](./authorized-pending.eval.ts)                   |
+| Approve newer B while A waits                                            | Execute B, read, and reply                                                               | [approve sibling](./approve-sibling.eval.ts)                         |
+| Cancel newer B while A waits                                             | Leave B unexecuted, read, and reply                                                      | [cancel sibling](./cancel-sibling.eval.ts)                           |
+| Approve newer response-authorized request while A waits                  | Settle authorization, read, and reply                                                    | [authorized sibling](./authorized-sibling.eval.ts)                   |
+| Approve older response-authorized request while newer A waits            | Read and reply; A remains answerable                                                     | [authorized older sibling](./authorized-older-sibling.eval.ts)       |
+| Approve older ordinary A while a newer response-authorized request waits | Reply for A; newer request remains answerable                                            | [ordinary older sibling](./ordinary-older-sibling.eval.ts)           |
+| Approve A and answer a later question in one delivery while B waits      | Resolve both responses and complete both replies                                         | [approval and question](./approval-and-question.eval.ts)             |
+| Answer a question while A waits                                          | Read and reply for the answered question                                                 | [answer question](./answer-question.eval.ts)                         |
+| Workflow completes while A waits                                         | Interpret its result                                                                     | [workflow result](./workflow-result.eval.ts)                         |
+| Cancel a background task while A waits                                   | Interpret the runtime control result                                                     | [runtime control](./runtime-control.eval.ts)                         |
+| Start a background task while A waits                                    | Acknowledge its working receipt                                                          | [background receipt](./background-receipt.eval.ts)                   |
+| Provider supplies a tool result while A waits                            | Report the distinct provider result                                                      | [provider result](./provider-result.eval.ts)                         |
+| Only two questions remain unanswered                                     | Finish a new read; both questions remain answerable                                      | [multiple questions](./multiple-questions.eval.ts)                   |
+| Submit A from a same-batch A+B pair, then request a read                 | Complete the read; later B executes both changes once and completes a reply              | [partial approval, tool](./partial-approval-tool.eval.ts)            |
+| Submit A from a same-batch A+B pair, then request text only              | Complete a reply without tools; later B executes both changes once and completes a reply | [partial approval, text](./partial-approval-text.eval.ts)            |
+| Repeat a resolved response while A waits                                 | Process the new input without authorizing A                                              | [stale response](./stale-response.eval.ts)                           |
+| Grant another budget window while A waits                                | Run one tool, then request the next required grant                                       | [budget grant](./budget-grant.eval.ts)                               |
+| Submit A and B from one batch in separate deliveries                     | Accumulate both responses, execute both once, and reply                                  | [separate approval responses](./separate-approval-responses.eval.ts) |
 
-Fourteen `*.control.eval.ts` conversations cover the same tool paths without an older approval, text-only replies, resolving the only approval, approving both calls together, and preserving a same-turn approval beside a workflow.
+## Controls
 
-## Boundaries
+| Conversation                                            | Required outcome                                                                 | Eval                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Read without older input                                | Report returned status                                                           | [read](./read.control.eval.ts)                                   |
+| Write without older input                               | Confirm exactly one write                                                        | [write](./write.control.eval.ts)                                 |
+| Parallel tools without older input                      | Report both results                                                              | [parallel tools](./parallel-tools.control.eval.ts)               |
+| Tool throws without older input                         | Explain the error                                                                | [tool error](./tool-error.control.eval.ts)                       |
+| Invalid input without older input                       | Correct input and report result                                                  | [invalid input](./invalid-input.control.eval.ts)                 |
+| Workflow without older input                            | Interpret its result                                                             | [workflow result](./workflow-result.control.eval.ts)             |
+| Runtime control without older input                     | Interpret cancellation result                                                    | [runtime control](./runtime-control.control.eval.ts)             |
+| Background admission without older input                | Acknowledge working receipt                                                      | [background receipt](./background-receipt.control.eval.ts)       |
+| Provider result without older input                     | Report distinct provider result                                                  | [provider result](./provider-result.control.eval.ts)             |
+| Budget renewal without older approval                   | Run one tool, then request next grant                                            | [budget grant](./budget-grant.control.eval.ts)                   |
+| Text-only message while A waits                         | Reply without tools; A remains answerable                                        | [text only](./text-only.control.eval.ts)                         |
+| Resolve the only approval                               | Execute, read, and reply                                                         | [resolve only approval](./resolve-only-approval.control.eval.ts) |
+| Approve both calls together                             | Execute each once and reply                                                      | [approve both](./approve-both.control.eval.ts)                   |
+| Workflow finishes beside an approval from the same turn | Observe workflow completion before approval; require approval before final reply | [same-turn workflow](./same-turn-workflow.control.eval.ts)       |
 
-Partial approvals travel as a real accepted HTTP response followed by a separate user message; the API rejects combined message/response payloads. The provider case adds a provider-executed result at the model stream boundary, rather than faking a local tool return. Background coverage stops at admission and acknowledgement; it does not establish background completion or wake correctness. Runtime control cancels an actual background task using its returned task ID. The budget case expects another input request, because its granted window cannot pay for the final answer.
+## Evidence boundaries
 
-Run these evals in the repository's CI E2E suites. Keep the runtime unchanged until the failing cases and passing controls have been inspected. A timeout proves a missing boundary only when the captured trace also proves the intended setup and tool path ran. A fixture error is not a runtime regression.
+The [adversarial integration probes](../../../../../../packages/eve/src/harness/issue-3494-adversarial.integration.test.ts) also cover sole-question dismissal, `final_output` with an older approval, multiple independent approvals plus an internally deferred message, a new question beside a partial approval, and a complete independent batch beside a partially answered batch. Those exact scenarios are **integration-only**, not extra E2E cases. Integration workflow/control results and background receipts are injected at runtime boundaries; the E2E cases execute fixture tools through the durable runtime.
+
+Partial approvals in E2E use an accepted HTTP response followed by a separate user message; the API rejects combined message/response payloads. The provider cases supply a provider-executed result at the scripted model stream boundary; they do not contact a provider that performs the tool. Background coverage establishes admission and acknowledgement, not completion or wake correctness. Runtime control cancels an actual task using its returned ID. Budget scripts report synthetic token usage against the fixture's one-million-output-token limit.
+
+These tests serialize inputs. They do not establish restart/replay safety, concurrent-delivery correctness, child-agent settlement, OAuth recovery, or every provider/channel combination. Run E2E only in CI. A timeout identifies a runtime regression only when the captured events establish that the intended setup and tool path ran; a fixture error is not such evidence.

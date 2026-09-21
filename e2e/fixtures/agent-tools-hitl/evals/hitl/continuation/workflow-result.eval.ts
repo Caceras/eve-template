@@ -26,6 +26,6 @@ export default defineEval({
     const turn = await expectReply(t, live, "Workflow draft status: ready.");
     turn.calledTool("workflow-draft", { status: "completed", count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

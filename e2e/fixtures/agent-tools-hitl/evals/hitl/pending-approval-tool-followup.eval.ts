@@ -1,5 +1,6 @@
 import { defineEval } from "eve/evals";
 import { equals } from "eve/evals/expect";
+import { requestFrom } from "./continuation/helpers.ts";
 
 const MARKER = "draft-status-3494";
 const READ_STATUS =
@@ -15,7 +16,10 @@ export default [
     async test(t) {
       // Given a fresh session with no pending approval.
       // When the user asks to read the draft status.
-      const turn = await t.send(READ_STATUS);
+      const session = await t.session();
+      const live = await session.start(READ_STATUS);
+      const received = await live.waitForEvent("message.received");
+      const turn = await live.result();
 
       // Then the tool executes once and the completed reply includes its status and marker.
       turn.expectOk();
@@ -23,6 +27,28 @@ export default [
       turn.event("turn.completed", { count: 1 });
       turn.messageIncludes(MARKER);
       turn.messageIncludes("ready");
+      turn.eventOrder([
+        { type: "message.received", data: { turnId: received.data.turnId }, count: 1 },
+        {
+          type: "action.result",
+          data: {
+            turnId: received.data.turnId,
+            status: "completed",
+            result: { toolName: "read-status" },
+          },
+          count: 1,
+        },
+        {
+          type: "message.completed",
+          data: {
+            turnId: received.data.turnId,
+            message: (text) =>
+              typeof text === "string" && text.includes(MARKER) && text.includes("ready"),
+          },
+          count: 1,
+        },
+        { type: "turn.completed", data: { turnId: received.data.turnId }, count: 1 },
+      ]);
     },
   }),
   defineEval({
@@ -38,7 +64,7 @@ export default [
       const session = parked.session;
       parked.calledTool("gate", { status: "pending", count: 1 });
       parked.notEvent("action.result", { data: { result: { toolName: "gate" } } });
-      const approval = session.requireInputRequest({ toolName: "gate" });
+      const approval = requestFrom(parked, "gate");
       t.log(`Original gate approval is pending: ${approval.requestId}`);
 
       // When the user leaves that approval pending and asks to read the draft status.
@@ -50,12 +76,35 @@ export default [
         data: { status: "completed", result: { toolName: "read-status" } },
       });
       t.log(`Follow-up tool completed before waiting for its reply: ${JSON.stringify(result)}`);
-      await live.waitForEvent("turn.completed");
+      const received = await live.waitForEvent("message.received");
+      await live.waitForEvent("turn.completed", { data: { turnId: received.data.turnId } });
       const followup = await live.result();
       followup.expectOk();
       followup.calledTool("read-status", { status: "completed", count: 1 });
       followup.messageIncludes(MARKER);
       followup.messageIncludes("ready");
+      followup.eventOrder([
+        { type: "message.received", data: { turnId: received.data.turnId }, count: 1 },
+        {
+          type: "action.result",
+          data: {
+            turnId: received.data.turnId,
+            status: "completed",
+            result: { toolName: "read-status" },
+          },
+          count: 1,
+        },
+        {
+          type: "message.completed",
+          data: {
+            turnId: received.data.turnId,
+            message: (text) =>
+              typeof text === "string" && text.includes(MARKER) && text.includes("ready"),
+          },
+          count: 1,
+        },
+        { type: "turn.completed", data: { turnId: received.data.turnId }, count: 1 },
+      ]);
       followup.notEvent("action.result", { data: { result: { toolName: "gate" } } });
       followup.notEvent("input.requested");
 

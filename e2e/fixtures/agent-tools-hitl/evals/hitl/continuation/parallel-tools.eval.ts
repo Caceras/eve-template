@@ -27,6 +27,6 @@ export default defineEval({
     turn.calledTool("read-draft", { status: "completed", count: 1 });
     turn.calledTool("save-draft", { status: "completed", count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

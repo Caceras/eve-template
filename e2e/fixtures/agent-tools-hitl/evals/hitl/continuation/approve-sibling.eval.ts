@@ -31,6 +31,6 @@ export default defineEval({
     const reply = await expectResponseReply(t, live, "Draft status: ready.", current.requestId);
     reply.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approvalA);
+    await approveSavedChange(t, session, approvalA);
   },
 });

@@ -277,7 +277,15 @@ for (const variant of [
     const result = await f.drive({ message: "Do the unrelated work." });
     expect(f.pending()).toHaveLength(1);
     expect(f.executions).not.toContain("gateA");
-    if (variant === "invalid") expect(f.executions).toHaveLength(0);
+    const expectedExecutions = {
+      read: ["read"],
+      write: ["write"],
+      fail: ["fail"],
+      parallel: ["read", "write"],
+      invalid: [],
+      "response-authorized": ["read"],
+    }[variant];
+    expect([...f.executions].sort()).toEqual(expectedExecutions.sort());
     expect(result.settledTurn?.output).toBe("FINAL");
   });
 }

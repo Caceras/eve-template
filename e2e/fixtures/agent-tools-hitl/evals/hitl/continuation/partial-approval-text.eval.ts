@@ -3,6 +3,7 @@ import {
   scriptedSession,
   expectChangeStillUnexecuted,
   expectReply,
+  expectResponseReply,
   requestFrom,
   submitPartialApproval,
 } from "./helpers.ts";
@@ -24,13 +25,26 @@ export default defineEval({
     const live = await session.start("Explain what is waiting, without calling any tools.");
 
     // Then the text reply completes; the batch stays unexecuted until B is approved.
-    await expectReply(t, live, "Your changes are waiting for approval.");
+    const reply = await expectReply(t, live, "Your changes are waiting for approval.");
+    reply.usedNoTools();
     expectChangeStillUnexecuted(session, "change-a");
     expectChangeStillUnexecuted(session, "change-b");
 
-    const approved = await session.respond([
-      { requestId: approvalB.requestId, optionId: "approve" },
-    ]);
+    const approved = await expectResponseReply(
+      t,
+      await session.startRespond([{ requestId: approvalB.requestId, optionId: "approve" }]),
+      "Both changes resolved.",
+      approvalB.requestId,
+    );
+    approved.event("input.resolved", {
+      data: {
+        resolutions: (items) =>
+          [approvalA.requestId, approvalB.requestId].every((id) =>
+            items.some((item) => item.requestId === id && item.outcome === "approved"),
+          ),
+      },
+      count: 1,
+    });
     approved.calledTool("change-a", { status: "completed", output: { executions: 1 }, count: 1 });
     approved.calledTool("change-b", { status: "completed", output: { executions: 1 }, count: 1 });
   },

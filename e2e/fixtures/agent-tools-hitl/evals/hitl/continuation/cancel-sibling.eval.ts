@@ -31,6 +31,6 @@ export default defineEval({
       data: { status: "completed", result: { toolName: "change-b" } },
     });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approvalA);
+    await approveSavedChange(t, session, approvalA);
   },
 });

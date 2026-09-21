@@ -22,8 +22,9 @@ export default defineEval({
     const live = await session.start("Explain what is waiting, without calling any tools.");
 
     // Then the text reply completes; A stays unexecuted and answerable.
-    await expectReply(t, live, "Your changes are waiting for approval.");
+    const reply = await expectReply(t, live, "Your changes are waiting for approval.");
+    reply.usedNoTools();
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
   },
 });

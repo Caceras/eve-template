@@ -27,7 +27,7 @@ export default defineEval({
     const turn = await expectReply(t, live, /^Background receipt: .*"status":"working"/);
     turn.calledTool("background-draft", { count: 1 });
     expectChangeStillUnexecuted(session);
-    await approveSavedChange(session, approval);
+    await approveSavedChange(t, session, approval);
     await expectReply(
       t,
       await session.start("Cancel the background draft task and confirm cancellation."),
