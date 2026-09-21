@@ -64,7 +64,7 @@ export function ChatComposer({
   }, [value]);
 
   useEffect(() => {
-    if (!autoFocus || textareaDisabled) {
+    if (!autoFocus || textareaDisabled || !window.matchMedia("(pointer: fine)").matches) {
       return;
     }
 
@@ -119,10 +119,12 @@ export function ChatComposer({
         Message Ægentica
       </label>
       <textarea
-        autoFocus={autoFocus}
         className="min-h-[62px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[60px] sm:px-5 sm:pt-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
         data-chat-composer-input
+        autoCapitalize="sentences"
+        autoComplete="off"
         disabled={textareaDisabled}
+        enterKeyHint="send"
         id={composerId}
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
