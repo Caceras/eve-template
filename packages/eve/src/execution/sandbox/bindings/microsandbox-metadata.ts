@@ -26,6 +26,28 @@ export interface MicrosandboxSessionMetadata {
   readonly version: typeof MICROSANDBOX_METADATA_VERSION;
 }
 
+export function createMicrosandboxSessionMetadata(input: {
+  readonly networkPolicy: SandboxNetworkPolicy | undefined;
+  readonly optionsHash: string;
+  readonly sandboxName: string;
+  readonly stateSnapshotName: string | undefined;
+}): MicrosandboxSessionMetadata {
+  const metadata: {
+    networkPolicy?: SandboxNetworkPolicy;
+    optionsHash: string;
+    sandboxName: string;
+    stateSnapshotName?: string;
+    version: typeof MICROSANDBOX_METADATA_VERSION;
+  } = {
+    optionsHash: input.optionsHash,
+    sandboxName: input.sandboxName,
+    version: MICROSANDBOX_METADATA_VERSION,
+  };
+  if (input.networkPolicy !== undefined) metadata.networkPolicy = input.networkPolicy;
+  if (input.stateSnapshotName !== undefined) metadata.stateSnapshotName = input.stateSnapshotName;
+  return metadata;
+}
+
 export function resolveMicrosandboxMetadataPath(rootPath: string): string {
   return join(rootPath, MICROSANDBOX_METADATA_FILE_NAME);
 }

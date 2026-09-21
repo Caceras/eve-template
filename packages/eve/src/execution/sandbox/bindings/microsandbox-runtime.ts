@@ -14,6 +14,7 @@ import {
   type ResolvedMicrosandboxOptions,
 } from "#execution/sandbox/bindings/microsandbox-options.js";
 import {
+  createMicrosandboxSessionMetadata,
   MICROSANDBOX_METADATA_VERSION,
   type MicrosandboxSessionMetadata,
   writeSessionMetadata,
@@ -57,28 +58,6 @@ export type MicrosandboxModule = typeof import("microsandbox");
 const MICROSANDBOX_PACKAGE_NAME = "microsandbox";
 const MICROSANDBOX_CONNECT_TIMEOUT_MS = 10_000;
 const MICROSANDBOX_STOP_TIMEOUT_MS = 10_000;
-
-function createSessionMetadata(input: {
-  readonly networkPolicy: SandboxNetworkPolicy | undefined;
-  readonly optionsHash: string;
-  readonly sandboxName: string;
-  readonly stateSnapshotName: string | undefined;
-}): MicrosandboxSessionMetadata {
-  const metadata: {
-    networkPolicy?: SandboxNetworkPolicy;
-    optionsHash: string;
-    sandboxName: string;
-    stateSnapshotName?: string;
-    version: typeof MICROSANDBOX_METADATA_VERSION;
-  } = {
-    optionsHash: input.optionsHash,
-    sandboxName: input.sandboxName,
-    version: MICROSANDBOX_METADATA_VERSION,
-  };
-  if (input.networkPolicy !== undefined) metadata.networkPolicy = input.networkPolicy;
-  if (input.stateSnapshotName !== undefined) metadata.stateSnapshotName = input.stateSnapshotName;
-  return metadata;
-}
 
 export class MicrosandboxVm {
   readonly #input: {
@@ -131,7 +110,7 @@ export class MicrosandboxVm {
       if (this.#metadataPath !== undefined) {
         await this.writeMetadata(this.#metadataPath, optionsHash);
       }
-      return createSessionMetadata({
+      return createMicrosandboxSessionMetadata({
         networkPolicy: this.#networkPolicy,
         optionsHash,
         sandboxName: this.#sandboxName,
@@ -153,7 +132,7 @@ export class MicrosandboxVm {
     if (previousStateSnapshotName !== undefined) {
       await removeSnapshotIfExists(this.#input.module, previousStateSnapshotName);
     }
-    return createSessionMetadata({
+    return createMicrosandboxSessionMetadata({
       networkPolicy: this.#networkPolicy,
       optionsHash,
       sandboxName: this.#sandboxName,
