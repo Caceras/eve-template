@@ -4,7 +4,7 @@ import {
   type AgentModuleBacking,
   type ProgrammaticModuleNamespace,
 } from "#compiler/source-graph.js";
-import { developmentExtensionSourceRegistry } from "#compiler/development-extensions.js";
+import { getDevelopmentExtensionSourceRegistry } from "#compiler/development-extensions.js";
 import { frameworkAgentSourceRegistry } from "#framework/sources/registry.js";
 
 /** Loads framework and development-extension programmatic modules for local dev maps. */
@@ -16,7 +16,7 @@ export async function loadFrameworkProgrammaticModule(
     await loadProgrammaticModuleNamespace({
       backing,
       dependencyNamespaces,
-      registries: [frameworkAgentSourceRegistry, developmentExtensionSourceRegistry],
+      registries: [frameworkAgentSourceRegistry, getDevelopmentExtensionSourceRegistry()],
     }),
   );
 }

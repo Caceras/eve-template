@@ -21,15 +21,14 @@ export interface BundledExtensionMount {
   readonly specifier: string;
 }
 
-const packageInfo = resolveInstalledPackageInfo();
-const packageName = packageInfo.name;
-const packageRoot = resolvePackageRoot();
-const revision = `eve@${packageInfo.version}:development-extensions-v1`;
-
 /** Adapts one bundled descriptor to the virtual extension mount consumed by discovery. */
 export function createBundledExtensionMount(
   descriptor: BundledExtensionDescriptor,
 ): BundledExtensionMount {
+  const packageInfo = resolveInstalledPackageInfo();
+  const packageName = packageInfo.name;
+  const packageRoot = resolvePackageRoot();
+  const revision = `eve@${packageInfo.version}:development-extensions-v1`;
   const logicalPath = `extensions/${descriptor.namespace}.ts`;
   const declaration = defineProgrammaticExtensionMountDeclaration({
     id: `eve:development-extension:${descriptor.namespace}`,

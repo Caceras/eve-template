@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultDevelopmentExtensions,
-  developmentExtensionSourceRegistry,
+  getDevelopmentExtensionSourceRegistry,
   prepareDevelopmentExtensions,
 } from "#compiler/development-extensions.js";
 import { createProgrammaticCompiledModuleMap } from "#compiler/module-map.js";
@@ -49,7 +49,7 @@ describe("development extensions", () => {
 
     const moduleMap = await createProgrammaticCompiledModuleMap(compiled, [
       frameworkAgentSourceRegistry,
-      developmentExtensionSourceRegistry,
+      getDevelopmentExtensionSourceRegistry(),
     ]);
     expect(() => validateCompiledModuleMap(compiled, moduleMap)).not.toThrow();
   });

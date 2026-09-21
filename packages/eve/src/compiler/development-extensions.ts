@@ -19,42 +19,53 @@ import { resolvePackageSourceDirectoryPath } from "#internal/application/package
 // Keep this indirect so extension-contract declaration generation does not follow the dev-only mount.
 const SELF_MODIFICATION_EXTENSION_MODULE = "#self-modification/extension/extension.js";
 
-const BUNDLED_EXTENSION_DESCRIPTORS = [
-  {
-    namespace: "self-modification",
-    sourceDirectory: resolvePackageSourceDirectoryPath("src/self-modification/extension"),
-    loadMount: async () => {
-      const { default: extension } = await import(SELF_MODIFICATION_EXTENSION_MODULE);
-      return extension({ local: { enabled: true } });
-    },
-  },
-] as const satisfies readonly BundledExtensionDescriptor[];
+const DEVELOPMENT_EXTENSION_IDS = ["self-modification"] as const;
 
-export type DevelopmentExtensionId = (typeof BUNDLED_EXTENSION_DESCRIPTORS)[number]["namespace"];
+export type DevelopmentExtensionId = (typeof DEVELOPMENT_EXTENSION_IDS)[number];
 
 export interface DevelopmentExtensionSelection {
   readonly enabled: readonly DevelopmentExtensionId[];
 }
 
-const BUNDLED_EXTENSION_MOUNTS: readonly BundledExtensionMount[] =
-  BUNDLED_EXTENSION_DESCRIPTORS.map(createBundledExtensionMount);
-const BUNDLED_EXTENSION_BY_ID = new Map(
-  BUNDLED_EXTENSION_MOUNTS.map((extension) => [extension.namespace, extension]),
-);
+// Hosted bundles can retain compiler modules, so package-owned paths must stay unresolved
+// until a development extension is actually selected.
+let bundledExtensionById: ReadonlyMap<string, BundledExtensionMount> | undefined;
+let developmentSourceRegistry: AgentSourceRegistry | undefined;
 
-/** Declarations available to the runtime programmatic-module registry. */
-export const developmentExtensionDeclarations: readonly ProgrammaticAgentSource[] =
-  BUNDLED_EXTENSION_MOUNTS.map((extension) => extension.declaration);
+function getBundledExtensionById(): ReadonlyMap<string, BundledExtensionMount> {
+  if (bundledExtensionById === undefined) {
+    bundledExtensionById = new Map(
+      (
+        [
+          {
+            namespace: "self-modification",
+            sourceDirectory: resolvePackageSourceDirectoryPath("src/self-modification/extension"),
+            loadMount: async () => {
+              const { default: extension } = await import(SELF_MODIFICATION_EXTENSION_MODULE);
+              return extension({ local: { enabled: true } });
+            },
+          },
+        ] as const satisfies readonly BundledExtensionDescriptor[]
+      )
+        .map(createBundledExtensionMount)
+        .map((extension) => [extension.namespace, extension]),
+    );
+  }
+  return bundledExtensionById;
+}
 
-/** Registry used only by generated local-development module maps. */
-export const developmentExtensionSourceRegistry: AgentSourceRegistry = createAgentSourceRegistry(
-  [],
-  {
-    extensionDeclarations: developmentExtensionDeclarations,
-  },
-);
+/** Returns the registry used only by generated local-development module maps. */
+export function getDevelopmentExtensionSourceRegistry(): AgentSourceRegistry {
+  developmentSourceRegistry ??= createAgentSourceRegistry([], {
+    extensionDeclarations: [...getBundledExtensionById().values()].map(
+      (extension): ProgrammaticAgentSource => extension.declaration,
+    ),
+  });
+  return developmentSourceRegistry;
+}
 
-const DEFAULT_DEVELOPMENT_EXTENSION_IDS: readonly DevelopmentExtensionId[] = ["self-modification"];
+const DEFAULT_DEVELOPMENT_EXTENSION_IDS: readonly DevelopmentExtensionId[] =
+  DEVELOPMENT_EXTENSION_IDS;
 const NO_DEVELOPMENT_EXTENSION_IDS: readonly DevelopmentExtensionId[] = [];
 
 export function defaultDevelopmentExtensions(): DevelopmentExtensionSelection {
@@ -80,9 +91,11 @@ export async function prepareDevelopmentExtensions(input: {
     ...input.manifest.resolvedExtensions.map((extension) => extension.namespace),
   ]);
   const selected = new Map<string, BundledExtensionMount>();
+  const extensionsById =
+    input.selection.enabled.length === 0 ? undefined : getBundledExtensionById();
 
   for (const id of new Set(input.selection.enabled)) {
-    const extension = BUNDLED_EXTENSION_BY_ID.get(id);
+    const extension = extensionsById?.get(id);
     if (extension === undefined) throw new Error(`Unknown development extension "${id}".`);
     const existing = selected.get(extension.namespace);
     if (existing !== undefined && existing !== extension) {
