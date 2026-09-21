@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentMessage } from "./native-agent-message";
 
-const AGENT_NAME = "eve-agent";
+const AGENT_NAME = "Web channel";
 
 export function NativeAgentChat({
   sessionId,
