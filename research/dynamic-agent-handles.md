@@ -11,106 +11,132 @@ Generalize the existing agent handles into one session registry of advertised de
 The examples use proposed APIs. Each handle continues one conversation; registration
 does not require that conversation to exist yet.
 
-## Example: load an agent from a tool
+## Example: a new conversation knows about earlier user sessions
 
-`agent/tools/load-agent.ts` reads an external directory at tool execution time.
-The [shared loader](#external-directory-loader) below returns destination descriptors;
-it could instead read a database or call a directory service. The tool can stop
-after registration, allowing the model to choose later, or call the handle in
-the same execution.
+A user opens a new chat and says, “Let's change the dates for the Japan trip.”
+They planned that trip in another session last week. The current agent should be
+able to identify that conversation without asking the user to find and paste its
+session ID.
 
-```ts
-import { defineTool } from "eve/tools";
-import { z } from "zod";
-import { readAgentDirectory } from "../../lib/agent-directory";
+For an authenticated user, the application loads a small set of recent sessions
+at `session.started` from its session catalog and registers them. The first model
+request might advertise **Japan trip — November** and **Kitchen renovation budget**, each
+with a short summary and a handle. This reveals which conversations exist; it does
+not load their full histories or send messages to them.
 
-export default defineTool({
-  description: "Load an agent from the directory and optionally send it a message.",
-  inputSchema: z.object({
-    key: z.string().min(1).max(128),
-    message: z.string().min(1).optional(),
-  }),
-  async execute({ key, message }, ctx) {
-    const destination = (await readAgentDirectory()).find((entry) => entry.key === key);
-    if (!destination) throw new Error(`No agent destination named "${key}" in the directory.`);
-    const handle = ctx.registerAgent(destination);
-    if (message !== undefined) return ctx.agent(handle, { message });
-    return { agentId: handle.id };
-  },
-});
-```
-
-For example, `{ key: "reviewer" }` discovers the destination;
-`{ key: "reviewer", message: "Review this change." }` also invokes it. The returned
-tool value is not what makes the registration visible: registry publication does.
-
-Further authored tool code can deliver to the returned `agentId`:
+`sessionCatalog` and `toAgentDestination` below are application-owned helpers, not
+existing eve APIs. Their [required contract](#application-session-catalog) is part
+of the example. In particular, catalog queries must scope results to the verified
+caller and exclude the current session.
 
 ```ts
-const handle = { id: agentId };
-await ctx.agent(handle, { message: "Review this change." });
-await ctx.agent(handle, { message: "Correction: the date should be Friday." });
-```
-
-Both calls address the same conversation, like successive deliveries to one
-session. The second call does not create another reviewer. Registration alone
-does not contact the reviewer; the destination can be offline when discovered.
-
-## Example: populate the registry at session startup
-
-`agent/hooks/agents.ts` registers the directory before the first model request.
-It uses the same operation as the tool, without making an invocation.
-
-```ts
+// agent/hooks/past-sessions.ts
 import { defineHook } from "eve/hooks";
-import { readAgentDirectory } from "../../lib/agent-directory";
+import { sessionCatalog, toAgentDestination } from "../../lib/session-catalog";
 
 export default defineHook({
   events: {
     async "session.started"(_event, ctx) {
-      for (const destination of await readAgentDirectory()) {
-        ctx.registerAgent(destination);
+      const sessions = await sessionCatalog.recent({
+        principal: ctx.session.auth.current,
+        excludeSessionId: ctx.session.id,
+        limit: 5,
+      });
+      for (const session of sessions) {
+        ctx.registerAgent(toAgentDestination(session));
       }
     },
   },
 });
 ```
 
-Using both examples in one session raises a useful identity question: should
-loading the same directory key again return the same handle? The current branch
-does that for identical descriptors. This is a candidate rule, not a consequence
-of choosing a registry.
+**Why dynamic registration:** the destinations are this user's actual conversations,
+created over time. Static agent declarations cannot enumerate those session IDs.
+The limit of five is this application's context budget, not a framework rule.
 
-## Example: declared agents and existing conversations
+## Example: find an older conversation when the user refers to it
 
-The same proposed registration surface can refer to authored configuration or to
-an externally supplied conversation:
+The user says, “Pick up the kitchen renovation budget from February.” It is no
+longer among the recent sessions loaded at startup. A tool queries the same catalog
+on demand and registers the matching sessions. Search implementation and ranking
+remain application concerns.
 
 ```ts
-const specialist = ctx.registerAgent({
-  key: "review-specialist",
-  description: "Use the declared research agent for reviews.",
-  target: { kind: "agent", name: "researcher" },
-});
+// agent/tools/find-past-session.ts
+import { defineTool } from "eve/tools";
+import { z } from "zod";
+import { sessionCatalog, toAgentDestination } from "../../lib/session-catalog";
 
-const existingReview = ctx.registerAgent({
-  key: "existing-review",
-  description: "Continue an existing review conversation.",
-  target: {
-    kind: "remote",
-    url: "https://reviewer.example.com",
-    sessionId: "review-session-id",
+export default defineTool({
+  description: "Find earlier conversations the current user can access.",
+  inputSchema: z.object({ query: z.string().min(1) }),
+  async execute({ query }, ctx) {
+    const sessions = await sessionCatalog.search({
+      principal: ctx.session.auth.current,
+      excludeSessionId: ctx.session.id,
+      query,
+      limit: 5,
+    });
+    const matches = sessions.map((session) => {
+      const handle = ctx.registerAgent(toAgentDestination(session));
+      return { title: session.title, agentId: handle.id };
+    });
+    return { matches };
   },
 });
-
-await ctx.agent(specialist, { message: "Review this change." });
-await ctx.agent(existingReview, { message: "The date should be Friday." });
 ```
 
-`researcher` is already registered by its static declaration. The first example
-proposes an additional alias, not a requirement to register static agents again.
-The second makes the conversation choice explicit. Neither registration grants
-ownership of the destination or its work.
+On the next eligible model request, the registry advertises the matches with their
+summaries. The tool also returns titles and handles to make its lookup result
+explicit; those returned values are not what controls registry publication.
+
+If the user asks to revise the earlier budget, authored tool code can deliver to
+the selected handle:
+
+```ts
+const budget = { id: selectedAgentId };
+await ctx.agent(budget, { message: "Revise the renovation budget to include new windows." });
+await ctx.agent(budget, { message: "Correction: use the existing window measurements." });
+```
+
+Both deliveries go to the February budget session, with that session's existing
+conversation context. They do not create a new budget agent. The caller's current
+chat does not automatically acquire that context. A delivery may run the receiving
+agent and its tools; it is not a read-only way to inspect history.
+
+**Why a tool:** load additional destinations when they become relevant, rather
+than advertise every past conversation at the start of every session.
+
+## Awareness, reading, and continuation are different actions
+
+| User intent                                 | What the application needs                                                                                                              |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| “What were we working on?”                  | Advertise authorized session titles and summaries; no prior agent needs to run.                                                         |
+| “What budget did we agree on in February?”  | Read authorized history or an artifact. Registration alone does not retrieve either. Asking the earlier agent is a separate invocation. |
+| “Continue that budget and add the windows.” | Deliver to the handle bound to the earlier session; further deliveries continue it.                                                     |
+
+Which of these experiences should the first use case cover is still a research
+question. Do not treat registering a session as permission to read its transcript,
+execute its tools, or cancel work inside it.
+
+A past session may be unavailable or no longer accept deliveries. Discovery must
+not imply it can be resumed, and a failed continuation must not silently replace
+it with an empty conversation. We still need to decide how read-only archived
+sessions fit: as registry destinations with explicit capabilities, or through a
+separate history-reading surface.
+
+## Another use case: join an existing project investigation
+
+A new conversation about checkout latency should be able to find the investigation
+session already used by the project team. A project directory can advertise that
+session, even though the current agent did not create it and has no parent/child
+relationship with it. A follow-up such as “The reproduction now also fails on
+mobile” belongs in that existing investigation.
+
+This needs project-scoped discovery and delivery authorization. It does not grant
+the discovering agent ownership of the investigator's work. The [external file
+adapter](#external-directory-loader) below illustrates one operator-managed source;
+the registry mechanism is the same as for user sessions.
 
 ## What we have aligned on
 
@@ -211,10 +237,10 @@ which identifiers authors need or which calls should be accepted.
 
 ## What this enables and how to judge it
 
-An application can seed destinations from a directory, reveal new ones through an
-ordinary tool, call a discovered destination immediately, or let the model choose
-on its next turn. These all use the same registration mechanism. Search ranking
-and source integrations remain application concerns.
+An application can make a new chat aware of recent user sessions, discover older
+conversations on demand, or connect a new agent to an existing project investigation.
+These all use the same registration mechanism. Search ranking and source
+integrations remain application concerns.
 
 The proposal should be explainable through these observable checks:
 
@@ -245,6 +271,7 @@ The [authoring docs][authoring-docs] should follow the resulting research decisi
    who can deliver, steer, or cancel work in that session? Should ordinary tools
    and workflows expose different completion behavior? Concurrent initial calls
    must preserve one conversation per handle; how is that established durably?
+   Distinguish permission to discover metadata, read history, and deliver work.
 3. **Commit and publication.** Which callback/checkpoint commits registration?
    What happens if a tool registers and then fails, or invokes before the step is
    persisted? Does an update ever wake an idle agent?
@@ -254,17 +281,64 @@ and the amount of state authors must understand. Exact capacities, transport
 adapters, serialized keys, provider classes, and task-claim machinery follow those
 decisions; they should not define them.
 
+## Application session catalog
+
+The examples assume the application maintains an index of retained sessions.
+They do not assume that eve already provides a per-user session search API.
+The index supplies metadata and routing; it does not copy another session's
+transcript into the current agent.
+
+An illustrative record is:
+
+```ts
+interface CatalogSession {
+  key: string; // Stable catalog key, unique across the indexed destinations.
+  sessionId: string;
+  url: string;
+  title: string;
+  summary: string;
+}
+
+export function toAgentDestination(session: CatalogSession) {
+  return {
+    key: session.key,
+    description: `${session.title}: ${session.summary}`,
+    target: { kind: "remote" as const, url: session.url, sessionId: session.sessionId },
+  };
+}
+```
+
+`recent` and `search` query that index using the verified caller supplied by the
+hook/tool context. They reject an absent or unauthorized principal, enforce
+session-specific access before returning even titles and summaries, exclude the
+current session, and bound the result set. A model-supplied query must not supply
+or override the user identity. Continuation must independently authorize delivery
+to the selected session; an earlier lookup is not a durable access grant.
+
+These are required application behaviors, not claims about the prototype. The
+[current auth documentation][session-auth] explicitly leaves session ownership to
+the application. The research must account for same-application session addressing
+and authenticated delivery; the remote URL shape here is illustrative, not a
+requirement to make user sessions publicly callable.
+
+Re-discovering the same catalog record at startup and through a tool also exercises
+the open duplicate-registration rule: should it return the existing handle and
+conversation? The current branch does so for identical descriptors; the catalog
+example gives us a concrete case against which to assess that rule.
+
 ## External directory loader
 
-The tool and startup hook above share this application-owned loader. Set
-`AGENT_DIRECTORY_PATH` to an operator-managed JSON file outside the agent directory:
+A project-scoped application can also load destinations from an operator-managed
+file. This is an alternative to the user-session catalog, not its implementation.
+Set `AGENT_DIRECTORY_PATH` to a JSON file outside the agent directory:
 
 ```json
 [
   {
-    "key": "reviewer",
-    "description": "Review proposed changes.",
-    "url": "https://reviewer.example.com"
+    "key": "checkout-investigation",
+    "description": "Ongoing checkout latency investigation; includes the mobile reproduction.",
+    "url": "https://investigator.example.com",
+    "sessionId": "checkout-investigation-session"
   }
 ]
 ```
@@ -314,3 +388,4 @@ open even where the branch already chose a behavior.
 [context-tests]: ../packages/eve/src/context/agent-registry.integration.test.ts
 [publication-tests]: ../packages/eve/src/harness/tool-loop.test.ts
 [authoring-docs]: ../docs/subagents/index.mdx#register-destinations-at-runtime
+[session-auth]: ../docs/guides/auth-and-route-protection.md#what-reaches-ctxsessionauth
