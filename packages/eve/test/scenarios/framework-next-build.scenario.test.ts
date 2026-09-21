@@ -133,6 +133,7 @@ async function runVercelBuild(appRoot: string): Promise<void> {
     cwd: appRoot,
     env: {
       ...process.env,
+      EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM: "1",
       NPM_CONFIG_AUDIT: "false",
       NPM_CONFIG_REGISTRY: "https://registry.npmjs.org/",
     },

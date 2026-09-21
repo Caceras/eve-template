@@ -81,7 +81,9 @@ export function registerBuildCommand(input: {
         readonly workspaceMember: boolean;
       } = {
         publicRoutePrefix: normalizePublicRoutePrefix(process.env[EVE_PUBLIC_ROUTE_PREFIX_ENV]),
-        skipVercelSandboxPrewarm: options.skipSandboxPrewarm === true,
+        skipVercelSandboxPrewarm:
+          options.skipSandboxPrewarm === true ||
+          process.env.EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM === "1",
         vercelServiceOutput: resolveInternalVercelServiceOutput(input.applicationContext.root),
         workspaceMember:
           projectContext.kind === "workspace-member" ||
