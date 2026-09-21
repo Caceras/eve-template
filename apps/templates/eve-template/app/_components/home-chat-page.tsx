@@ -131,10 +131,10 @@ export function HomeChatPage() {
           <div className="w-full max-w-2xl space-y-6 sm:space-y-7">
             <h1 className="flex justify-center">
               <img
-                alt="eve"
+                alt="Ægentica"
                 className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
                 draggable={false}
-                src="/eve.svg"
+                src="/aegentica.svg"
               />
             </h1>
             <ChatComposer
@@ -147,7 +147,7 @@ export function HomeChatPage() {
               onChange={setDraft}
               onStop={() => {}}
               onSubmit={handleSubmit}
-              placeholder="Message eve"
+              placeholder="Message Ægentica"
               value={draft}
             />
           </div>
