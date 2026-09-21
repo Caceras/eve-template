@@ -48,7 +48,10 @@ import {
   isVercelSandboxMissingError,
   isVercelSnapshotUnavailableError,
 } from "#execution/sandbox/bindings/vercel-errors.js";
-import { getNamedVercelSandbox } from "#execution/sandbox/bindings/vercel-lookup.js";
+import {
+  getNamedVercelSandbox,
+  isVercelSnapshotAvailable,
+} from "#execution/sandbox/bindings/vercel-lookup.js";
 import {
   deleteUnusableVercelSandbox,
   deleteVercelSandbox,
@@ -373,8 +376,13 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
       : null;
 
   if (frameworkSnapshotId !== null) {
-    try {
-      await ensureVercelSandboxBaseRuntime(sandbox);
+    if (
+      await isVercelSnapshotAvailable({
+        createOptions: input.createOptions,
+        sandboxModule,
+        snapshotId: frameworkSnapshotId,
+      })
+    ) {
       return {
         template: {
           sandboxName: sandbox.name,
@@ -382,22 +390,18 @@ async function ensureTemplate(input: EnsureTemplateInput): Promise<EnsureTemplat
           templateKey: input.templateKey,
         },
       };
-    } catch (error) {
-      if (!isVercelSnapshotUnavailableError(error) && !isVercelSandboxMissingError(error)) {
-        throw error;
-      }
-      input.log?.("cached template snapshot disappeared; rebuilding sandbox template");
-      await sandbox.delete();
-      sandbox = await input.createSandbox({
-        sandboxModule,
-        createOptions: withBaseSetupNetworkPolicy({
-          ...input.createOptions,
-          name: input.templateKey,
-          persistent: true,
-          tags,
-        }),
-      });
     }
+    input.log?.("cached template snapshot disappeared; rebuilding sandbox template");
+    await sandbox.delete();
+    sandbox = await input.createSandbox({
+      sandboxModule,
+      createOptions: withBaseSetupNetworkPolicy({
+        ...input.createOptions,
+        name: input.templateKey,
+        persistent: true,
+        tags,
+      }),
+    });
   }
 
   input.log?.("preparing base runtime inside sandbox");

@@ -516,13 +516,13 @@ describe("createVercelSandbox", () => {
       response: { status: 410 },
     });
     const staleTemplate = createMockSandbox({ name: "template", snapshotId: "expired-snapshot" });
-    staleTemplate.runCommand.mockRejectedValue(snapshotExpiredError);
     const rebuiltTemplate = createMockSandbox({ name: "template" });
     const sandboxModule = {
       Sandbox: {
         create: vi.fn().mockResolvedValue(rebuiltTemplate),
         get: vi.fn().mockResolvedValue(staleTemplate),
       },
+      Snapshot: { get: vi.fn().mockRejectedValue(snapshotExpiredError) },
     };
     const provider = createTestVercelSandbox({
       loadSandboxModule: async () => sandboxModule as never,
