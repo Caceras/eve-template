@@ -556,3 +556,30 @@ it("continues after responder-authorized approval with an older approval still o
   expect(f.pending().map((r) => r.action.toolName)).toEqual(["gateA"]);
   expect(result.settledTurn?.output).toBe("FINAL");
 });
+
+it("continues after responder-authorized approval of the older batch", async () => {
+  const f = fixture("authorized-older-sibling", true);
+  await f.gate("gateA");
+  f.script.push(calls("gateB"));
+  await f.drive({ message: "Also prepare B." });
+  expect(f.pending().map((request) => request.action.toolName)).toEqual(["gateA", "gateB"]);
+  f.script.push(calls("read"), "FINAL");
+  const response = f.respond("gateA").inputResponses![0]!;
+  const result = await f.drive({
+    attributedInputResponses: [
+      {
+        response,
+        auth: {
+          attributes: {},
+          authenticator: "test",
+          issuer: "test",
+          principalId: "user-1",
+          principalType: "user",
+        },
+      },
+    ],
+  });
+  expect(f.executions).toEqual(["gateA", "read"]);
+  expect(f.pending().map((request) => request.action.toolName)).toEqual(["gateB"]);
+  expect(result.settledTurn?.output).toBe("FINAL");
+});
