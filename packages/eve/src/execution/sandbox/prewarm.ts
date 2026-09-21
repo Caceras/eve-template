@@ -128,6 +128,9 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
               provider,
             }),
         );
+        input.log?.(
+          `[eve:sandbox-debug] prepared provider=${provider.providerName} template=${templateName} artifact=${summarizePreparedArtifact(result)}`,
+        );
         return { provider, result, templateName };
       } catch (error) {
         const prewarmError = formatPrewarmFailureForEnvironment({
@@ -141,14 +144,15 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
       }
     }),
   );
-  await preparedArtifactStore.write({
-    compileDirectoryPath: input.compileDirectoryPath,
-    entries: results.map(({ provider, result, templateName }) => ({
-      artifact: result,
-      providerName: provider.providerName,
-      templateName,
-    })),
-  });
+  const entries = results.map(({ provider, result, templateName }) => ({
+    artifact: result,
+    providerName: provider.providerName,
+    templateName,
+  }));
+  input.log?.(
+    `[eve:sandbox-debug] writing ${entries.length} prepared artifact(s) compileDirectory=${input.compileDirectoryPath}`,
+  );
+  await preparedArtifactStore.write({ compileDirectoryPath: input.compileDirectoryPath, entries });
   input.log?.(`eve: initialized ${formatSandboxTemplateCount(targets.length)}.`);
 }
 
@@ -161,6 +165,13 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
  * Shared entrypoint for `eve dev` startup, the dev watcher, and the
  * Vercel build hook.
  */
+function summarizePreparedArtifact(artifact: SandboxPreparedArtifact): string {
+  if (artifact === null) return "null";
+  const keys = Object.keys(artifact).sort().join(",") || "empty";
+  const snapshot = typeof artifact.snapshotId === "string" ? "present" : "absent";
+  return `keys=${keys};snapshot=${snapshot}`;
+}
+
 export async function prewarmAppSandboxes(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource?: RuntimeCompiledArtifactsSource;

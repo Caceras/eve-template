@@ -43,10 +43,15 @@ export async function loadSandboxPreparedArtifact(input: {
   readonly templateName: string;
 }): Promise<SandboxPreparedArtifact | undefined> {
   const manifest = await loadSandboxPreparedArtifactsManifest(input.compiledArtifactsSource);
-  return manifest?.entries.find(
-    (entry) =>
-      entry.providerName === input.providerName && entry.templateName === input.templateName,
-  )?.artifact;
+  const entry = manifest?.entries.find(
+    (candidate) =>
+      candidate.providerName === input.providerName &&
+      candidate.templateName === input.templateName,
+  );
+  console.info(
+    `[eve:sandbox-debug] load source=${input.compiledArtifactsSource.kind} provider=${input.providerName} template=${input.templateName} entries=${manifest?.entries.length ?? 0} match=${entry === undefined ? "absent" : summarizeArtifact(entry.artifact)}`,
+  );
+  return entry?.artifact;
 }
 
 export async function loadSandboxPreparedArtifactsManifest(
@@ -62,6 +67,12 @@ export async function loadSandboxPreparedArtifactsManifest(
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
+}
+
+function summarizeArtifact(artifact: SandboxPreparedArtifact): string {
+  if (artifact === null) return "null";
+  const keys = Object.keys(artifact).sort().join(",") || "empty";
+  return `keys:${keys};snapshot:${typeof artifact.snapshotId === "string" ? "present" : "absent"}`;
 }
 
 function artifactKey(providerName: string, templateName: string): string {

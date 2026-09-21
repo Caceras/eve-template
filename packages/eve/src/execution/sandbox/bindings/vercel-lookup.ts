@@ -29,10 +29,18 @@ export async function isVercelSnapshotAvailable(input: {
     try {
       credentials = await getVercelSandboxCredentials(input.createOptions);
     } catch {}
-    await input.sandboxModule.Snapshot.get({ ...baseOptions, ...credentials });
+    const snapshot = await input.sandboxModule.Snapshot.get({ ...baseOptions, ...credentials });
+    console.info(
+      `[eve:sandbox-debug] snapshot lookup result=available regions=${snapshot.regions.join(",") || "none"}`,
+    );
     return true;
   } catch (error) {
-    if (isVercelSandboxMissingError(error) || isVercelSnapshotUnavailableError(error)) return false;
+    if (isVercelSandboxMissingError(error) || isVercelSnapshotUnavailableError(error)) {
+      console.info(
+        `[eve:sandbox-debug] snapshot lookup result=${isVercelSnapshotUnavailableError(error) ? "unavailable" : "missing"}`,
+      );
+      return false;
+    }
     throw error;
   }
 }

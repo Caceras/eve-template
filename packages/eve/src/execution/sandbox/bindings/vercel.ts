@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import type { MutableNetworkSandboxSession } from "#shared/sandbox-session.js";
 import {
   applyInitialVercelNetworkPolicy,
@@ -36,6 +35,7 @@ import { adaptMultiplexedCommandToSandboxProcess } from "#execution/sandbox/mult
 import { buildSandboxSession } from "#execution/sandbox/session.js";
 import { createSandboxProviderIdentity } from "#execution/sandbox/provider-identity.js";
 import { streamToBuffer } from "#execution/sandbox/stream-utils.js";
+import { describeVercelSandboxCredentialSources } from "#execution/sandbox/bindings/vercel-credentials.js";
 import {
   createVercelEveImageSandbox,
   type CreateVercelSandbox,
@@ -143,6 +143,9 @@ export function createVercelSandbox(
       snapshotId: artifact.snapshotId,
       tags,
     };
+    console.info(
+      `[eve:sandbox-debug] vercel start snapshot=${artifact.snapshotId === undefined ? "absent" : "present"} credentials=${describeVercelSandboxCredentialSources(sessionCreateOptions)}`,
+    );
     let session: VercelSandboxSessionCreateResult;
     try {
       session = await ensureSession(ensureSessionInput);
@@ -178,8 +181,10 @@ export function createVercelSandbox(
         input.skipEmptyPreparation === true &&
         input.prepare === undefined &&
         seedFiles.length === 0
-      )
+      ) {
+        context.log?.("[eve:sandbox-debug] vercel prepare path=empty artifact=empty");
         return {};
+      }
       const templateKey = `eve-sbx-tpl-vercel-${createSandboxProviderIdentity({
         createOptions: vercelIdentityOptions(createOptions),
         prepare: input.prepare,
@@ -196,6 +201,7 @@ export function createVercelSandbox(
           seedFiles,
           templateKey,
         });
+        context.log?.("[eve:sandbox-debug] vercel prepare path=snapshot artifact=snapshot");
         return { snapshotId: outcome.template.snapshotId };
       } catch (error) {
         throw new Error(`Failed to prepare Vercel sandbox snapshot: ${errorMessage(error)}`, {
