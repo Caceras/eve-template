@@ -6,7 +6,13 @@ export {
   toolOutput,
   toolOutputPart,
   toolResultFrom,
+  type WorkflowStepToolContext,
 } from "../../src/public/tools/index.ts";
+export {
+  agentRouter,
+  type AgentRouterInput,
+  type AgentRouterTool,
+} from "../../src/public/tools/agent-router.ts";
 export {
   defaultWebSearch,
   isWebSearchToolDefinition,
@@ -18,4 +24,4 @@ export {
   type WorkflowToolInput,
   type WorkflowToolOptions,
 } from "../../src/public/tools/workflow.ts";
-export { evaluate } from "../../src/public/experimental/evaluate/index.ts";
+export { evaluate } from "../../src/public/ai/index.ts";

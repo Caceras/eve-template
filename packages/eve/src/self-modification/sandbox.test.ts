@@ -1,52 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { SelfModificationConfig } from "./config.js";
-import {
-  defineSelfModificationSandbox,
-  selectDeployedSelfModificationEnvironment,
-} from "./sandbox.js";
+import { defineSelfModificationSandbox, selectDeployedSelfModificationBackend } from "./sandbox.js";
 
-const connectConfig: SelfModificationConfig = {
-  deployed: {
-    authorize: () => true,
-    credentials: { pat: true },
-    source: { git: { directory: ".", repository: "github.com/acme/agent" } },
-    target: { branch: "main" },
-  },
-};
-
-afterEach(() => vi.unstubAllEnvs());
-
-describe("self-modification sandbox", () => {
-  it("selects Vercel Sandbox on Vercel", () => {
-    expect(
-      selectDeployedSelfModificationEnvironment({
-        isDeployedOnVercel: () => true,
-        isMicrosandboxSupported: () => true,
-      }).provider,
-    ).toBe("vercel");
+describe("retired self-modification sandbox scaffold", () => {
+  it("returns an inert sandbox definition", () => {
+    const definition = defineSelfModificationSandbox({
+      config: { deployed: { authorize: vi.fn() } },
+    });
+    expect(definition.backend).toBeUndefined();
+    expect(definition.onSession).toBeUndefined();
   });
 
-  it("selects microsandbox on a supported self-hosted system", () => {
-    expect(
-      selectDeployedSelfModificationEnvironment({
-        isDeployedOnVercel: () => false,
-        isMicrosandboxSupported: () => true,
-      }).provider,
-    ).toBe("microsandbox");
+  it("does not select or provision a backend", () => {
+    expect(() => selectDeployedSelfModificationBackend(undefined, {})).toThrow(
+      "Deployed self-modification is disabled in the retired scaffold.",
+    );
   });
 
-  it("fails when no deployed provider is available", () => {
+  it("preserves explicitly typed options for compatibility", () => {
     expect(() =>
-      selectDeployedSelfModificationEnvironment({
-        isDeployedOnVercel: () => false,
-        isMicrosandboxSupported: () => false,
+      defineSelfModificationSandbox({
+        backend: { name: "just-bash" } as never,
+        config: {},
       }),
-    ).toThrow("No supported provider is available");
-  });
-
-  it("returns a callback definition", () => {
-    vi.stubEnv("VERCEL", "1");
-    expect(defineSelfModificationSandbox({ config: connectConfig })).toBeTypeOf("function");
+    ).not.toThrow();
   });
 });

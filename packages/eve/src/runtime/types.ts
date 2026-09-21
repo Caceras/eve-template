@@ -274,6 +274,7 @@ export type ResolvedRuntimeSubagentNode = Readonly<
     Node & {
       kind: "subagent";
       name: string;
+      tool?: boolean;
     } & (
       | {
           description: string;
@@ -301,6 +302,7 @@ export type ResolvedRuntimeRemoteAgentNode = Readonly<
       name: string;
       outputSchema?: JsonObject;
       path: string;
+      tool?: boolean;
       url: string;
     }
 >;

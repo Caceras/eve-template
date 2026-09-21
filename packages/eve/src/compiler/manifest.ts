@@ -55,7 +55,7 @@ export const ROOT_COMPILED_AGENT_NODE_ID = "__root__";
 /**
  * Current compiled manifest schema version.
  */
-export const COMPILED_AGENT_MANIFEST_VERSION = 49;
+export const COMPILED_AGENT_MANIFEST_VERSION = 50;
 
 /**
  * Compiled channel entry preserved in the compiled manifest.
@@ -599,7 +599,6 @@ const compiledAgentConfigBaseFields = {
   description: z.string().optional(),
   experimental: z
     .object({
-      instrumentationProviders: z.boolean().optional(),
       workflow: compiledAgentWorkflowDefinitionSchema.optional(),
     })
     .strict()
@@ -610,6 +609,7 @@ const compiledAgentConfigBaseFields = {
     .enum(["provider-default", "none", "minimal", "low", "medium", "high", "xhigh"])
     .optional(),
   source: moduleSourceRefSchema,
+  tool: z.boolean().optional(),
   limits: compiledAgentLimitsDefinitionSchema.optional(),
 };
 
@@ -726,15 +726,20 @@ const compiledScheduleDefinitionSchema = z.discriminatedUnion("sourceKind", [
 const compiledSandboxDefinitionSchema = z
   .object({
     /**
-     * Stable provider name from the exported environment, captured at compile
-     * time so build pipelines can make provider-aware decisions.
+     * Stable name of the authored backend (`"local"`, `"vercel"`,
+     * `"local-just-bash"`, or a custom backend's name), captured at
+     * compile time so build pipelines can make backend-aware decisions
+     * (for example including the optional just-bash engine package in
+     * hosted output). Absent when the definition omits `backend` or the
+     * backend's name could not be resolved at compile time.
      */
-    providerName: z.string().optional(),
-    environmentExportName: z.string().optional(),
+    backendName: z.string().optional(),
+    description: z.string().optional(),
     inheritsParent: z.boolean().optional(),
     exportName: z.string().optional(),
     logicalPath: z.string(),
-    revisionHash: z.string(),
+    revalidationKey: z.string().optional(),
+    sourceHash: z.string(),
     sourceId: z.string(),
     sourceKind: z.literal("module"),
   })
@@ -851,6 +856,7 @@ const compiledToolBehaviorSchema: z.ZodType<CompiledToolBehavior> = z
 
 const compiledToolDefinitionSchema = z
   .object({
+    availableInSubagents: z.boolean().optional(),
     behavior: compiledToolBehaviorSchema.optional(),
     description: z.string(),
     execution: z.literal("background").optional(),
@@ -969,7 +975,6 @@ const compiledAgentResourceFields = {
   remoteAgents: z.array(compiledRemoteAgentNodeSchema),
   skills: z.array(compiledSkillSourceSchema).readonly(),
   instructions: z.array(compiledInstructionsSchema).readonly().default([]),
-  instrumentation: moduleSourceRefSchema.optional(),
   tools: z.array(compiledToolDefinitionSchema),
   workspaceResourceRoot: compiledWorkspaceResourceRootSchema,
 };
@@ -1078,7 +1083,6 @@ export const compiledAgentManifestSchema = z
     skills: z.array(compiledSkillSourceSchema).readonly(),
     subagents: z.array(compiledSubagentNodeSchema),
     instructions: z.array(compiledInstructionsSchema).readonly().default([]),
-    instrumentation: moduleSourceRefSchema.optional(),
     tools: z.array(compiledToolDefinitionSchema),
     version: z.literal(COMPILED_AGENT_MANIFEST_VERSION),
     workspaceResourceRoot: compiledWorkspaceResourceRootSchema,
@@ -1106,7 +1110,6 @@ export interface CreateCompiledAgentResourcesInput {
   readonly schedules?: readonly CompiledScheduleDefinition[];
   readonly skills?: readonly CompiledSkillDefinition[];
   readonly instructions?: readonly CompiledInstructionsDefinition[];
-  readonly instrumentation?: ModuleSourceRef;
   readonly tools?: readonly CompiledToolDefinition[];
   readonly workspaceResourceRoot?: CompiledWorkspaceResourceRoot;
 }
@@ -1140,7 +1143,6 @@ export function createCompiledAgentResources(
     hooks: [...(input.hooks ?? [])],
     memories: [...(input.memories ?? [])],
     instructions: [...(input.instructions ?? [])],
-    instrumentation: input.instrumentation === undefined ? undefined : { ...input.instrumentation },
     remoteAgents: [...(input.remoteAgents ?? [])],
     sandbox: input.sandbox,
     sandboxWorkspaces: [...(input.sandboxWorkspaces ?? [])],
@@ -1195,7 +1197,6 @@ function cloneCompiledAgentDefinition(config: CompiledAgentDefinition): Compiled
       config.experimental === undefined
         ? undefined
         : {
-            instrumentationProviders: config.experimental.instrumentationProviders,
             workflow:
               config.experimental.workflow === undefined
                 ? undefined
@@ -1218,6 +1219,7 @@ function cloneCompiledAgentDefinition(config: CompiledAgentDefinition): Compiled
             sessionTimeoutMs: config.limits.sessionTimeoutMs,
           },
     source: { ...config.source },
+    tool: config.tool,
   };
 
   if (config.dynamicModel !== undefined) {
@@ -1292,7 +1294,6 @@ export function createCompiledAgentManifest(input: {
   readonly skills?: readonly CompiledSkillDefinition[];
   readonly subagents?: readonly CompiledSubagentNode[];
   readonly instructions?: readonly CompiledInstructionsDefinition[];
-  readonly instrumentation?: ModuleSourceRef;
   readonly tools?: readonly CompiledToolDefinition[];
   readonly extensionMounts?: readonly CompiledExtensionMount[];
   readonly workspaceResourceRoot?: CompiledWorkspaceResourceRoot;
