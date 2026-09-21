@@ -19,10 +19,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-
       - name: Reassemble implementation overlay
         shell: bash
         run: |
