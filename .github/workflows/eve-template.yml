@@ -1,0 +1,44 @@
+name: Eve Template
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/eve/**"
+      - "docs/**"
+      - "apps/docs/registry/**"
+      - "apps/docs/registry.json"
+      - "apps/templates/eve-chat-template/**"
+      - "apps/templates/eve-template/**"
+      - ".github/workflows/eve-template.yml"
+  pull_request:
+    paths:
+      - "packages/eve/**"
+      - "docs/**"
+      - "apps/docs/registry/**"
+      - "apps/docs/registry.json"
+      - "apps/templates/eve-chat-template/**"
+      - "apps/templates/eve-template/**"
+      - ".github/workflows/eve-template.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/templates/eve-template
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/templates/eve-template/pnpm-lock.yaml
+      - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
+      - run: pnpm eve:surface:check
+      - run: pnpm typecheck
+      - run: pnpm build:eve
+      - run: pnpm build
