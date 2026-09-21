@@ -20,7 +20,7 @@ import { loadCompiledManifest } from "#runtime/loaders/manifest.js";
 import { resolveRuntimeCompilerArtifactPaths } from "#runtime/loaders/artifact-paths.js";
 import { resolveRuntimeAgentGraph } from "#runtime/resolve-agent-graph.js";
 import { createSandboxProviderFiles } from "#execution/sandbox/provider-files.js";
-import { createSandboxProviderHost } from "#execution/sandbox/provider-host.js";
+import { createDevelopmentSandboxProviderHost } from "#execution/sandbox/provider-host-development.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import type { RuntimeRegisteredSandbox } from "#runtime/sandbox/registry.js";
@@ -228,7 +228,7 @@ async function collectPrewarmTargets(input: {
       targets.push({
         context: {
           files: createSandboxProviderFiles(sandboxRoot),
-          host: createSandboxProviderHost(input.appRoot),
+          host: createDevelopmentSandboxProviderHost(input.appRoot),
           resources: createSandboxProviderResources({
             resourcesKey: workspaceResourceRoot.contentHash,
             resourcesPath:
