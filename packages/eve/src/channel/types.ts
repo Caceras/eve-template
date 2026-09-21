@@ -11,6 +11,7 @@ import type {
 } from "#shared/action-types.js";
 import type { InputRequest, InputResponse } from "#shared/input.js";
 import type { ChannelAdapter } from "#channel/adapter.js";
+import type { LocalDevRequestProvenance } from "#context/keys.js";
 import type { AgentLimitsDefinition } from "#shared/agent-definition.js";
 import type { JsonObject } from "#shared/json.js";
 import type { InstrumentationDecision } from "#shared/instrumentation-decision.js";
@@ -205,6 +206,8 @@ export const DEFAULT_TURN_POLICY: TurnPolicy = "steer";
 export type SessionCommand =
   | {
       readonly auth?: SessionAuthContext | null;
+      /** Framework-owned source-access provenance for this external delivery. */
+      readonly localDevRequest?: LocalDevRequestProvenance | null;
       readonly caller?: TurnCaller;
       /** Initial workflow title when delivering to a prewarmed session. */
       readonly title?: string;
@@ -278,6 +281,8 @@ export interface DeliverHookPayload {
   /** Initial workflow title; ignored once session initialization has run. */
   readonly title?: string;
   readonly auth?: SessionAuthContext | null;
+  /** Framework-owned source-access provenance for this external delivery. */
+  readonly localDevRequest?: LocalDevRequestProvenance | null;
   /** Delegated caller waiting for this turn's settled result. */
   readonly caller?: TurnCaller;
   /** Additive durable metadata. Absent on envelopes written by older deployments. */

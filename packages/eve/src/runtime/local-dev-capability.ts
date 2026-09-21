@@ -90,7 +90,7 @@ export async function withLocalDevRequestScope<T>(
   const address = readTrustedDevelopmentClientAddress(request.headers, secret);
   const signature = request.headers.get(DEVELOPMENT_CLIENT_ADDRESS_SIGNATURE_HEADER);
   if (address === undefined || signature === null || !isLoopbackHostname(address)) {
-    return await callback();
+    return await contextStorage.run(new ContextContainer({ localDevRequest: undefined }), callback);
   }
 
   return await contextStorage.run(

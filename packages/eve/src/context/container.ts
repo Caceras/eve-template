@@ -37,7 +37,10 @@ export class ContextContainer implements AlsContext {
   private readonly _virtualValues = new Map<string, unknown>();
 
   constructor(input?: { readonly localDevRequest?: LocalDevRequestProvenance }) {
-    const localDevRequest = input?.localDevRequest ?? contextStorage.getStore()?.localDevRequest;
+    const localDevRequest =
+      input !== undefined && Object.hasOwn(input, "localDevRequest")
+        ? input.localDevRequest
+        : contextStorage.getStore()?.localDevRequest;
     if (localDevRequest !== undefined) {
       this._durableValues.set(LocalDevRequestKey.name, localDevRequest);
     }

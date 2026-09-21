@@ -21,11 +21,13 @@ import type {
 import { DEFAULT_TURN_POLICY } from "#channel/types.js";
 import { serializeUrlFilePartsInMessage } from "#channel/send-input.js";
 import type { SessionAuth } from "#context/keys.js";
+import { contextStorage } from "#context/container.js";
 import {
   AuthKey,
   ContinuationHookTokensKey,
   ContinuationTokenKey,
   InitiatorAuthKey,
+  LocalDevRequestKey,
   SessionIdKey,
 } from "#context/keys.js";
 import {
@@ -121,6 +123,7 @@ export function createSession(
       if (options.outputSchema !== undefined) payload.outputSchema = options.outputSchema;
       const commandWithoutCaller = {
         auth: options.auth,
+        localDevRequest: contextStorage.getStore()?.get(LocalDevRequestKey) ?? null,
         delivery,
         kind: "send" as const,
         payload,
@@ -149,6 +152,7 @@ export function createSession(
       if (options.outputSchema !== undefined) payload.outputSchema = options.outputSchema;
       const commandWithoutCaller = {
         auth: options.auth,
+        localDevRequest: contextStorage.getStore()?.get(LocalDevRequestKey) ?? null,
         delivery,
         kind: "send" as const,
         payload,

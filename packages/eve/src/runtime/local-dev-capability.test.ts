@@ -97,6 +97,16 @@ describe("getLocalDevCapability", () => {
     });
   });
 
+  it("does not inherit loopback provenance into a nested direct remote request", async () => {
+    await withClient("127.0.0.1", async () => {
+      expect(getLocalDevCapability(environment())?.appRoot).toBe(APP_ROOT);
+      await withClient("203.0.113.7", () => {
+        expect(getLocalDevCapability(environment())).toBeUndefined();
+      });
+      expect(getLocalDevCapability(environment())?.appRoot).toBe(APP_ROOT);
+    });
+  });
+
   it("survives durable workflow context serialization", async () => {
     await withClient(
       "127.0.0.1",

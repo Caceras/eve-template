@@ -28,7 +28,6 @@ import type {
 import { resolveWorkflowCallbackBaseUrl } from "#execution/workflow-callback-url.js";
 import { turnStep } from "#execution/session/turn-step.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
-import { coalesceDeliveries } from "#harness/messages.js";
 import { TurnCancelledError } from "#harness/turn-cancellation.js";
 import { decodeSessionInboxPayload } from "#execution/session-inbox/protocol.js";
 import { isInboxToolResultFromRecordedWorkflowToolRun } from "#harness/workflow-tool-runs.js";
@@ -338,20 +337,17 @@ class ActiveTurn {
 
   /** Steering admitted during this turn, routed to children first and coalesced. */
   async takeSteering(): Promise<DeliverHookPayload | undefined> {
-    const steering: DeliverHookPayload[] = [];
     while (true) {
       const selection = this.input.queue.takeSteering(this.admitted, this.callerCallId);
-      if (selection === undefined) break;
+      if (selection === undefined) return undefined;
       for (const sequence of selection.sequences) this.admitted.delete(sequence);
       const routed = await routeSelectedDelivery(selection, this.input.cursor);
       if (routed.kind === "cancel-turn") {
         this.abort();
-        break;
+        return undefined;
       }
-      if (routed.kind === "turn") steering.push(routed.delivery);
+      if (routed.kind === "turn") return routed.delivery;
     }
-    if (steering.length === 0) return undefined;
-    return steering.length === 1 ? steering[0] : coalesceDeliveries(steering);
   }
 
   /** Next runtime result or workflow message, admitting inbox traffic while waiting. */
