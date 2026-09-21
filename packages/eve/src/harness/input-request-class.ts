@@ -13,14 +13,11 @@ export function isApprovalRequest(request: InputRequest): boolean {
 /**
  * Behavioral class of a pending input request.
  *
- * `"required"` — the request must be explicitly answered before the turn can
- * move on. While one is unanswered, any other arriving input is queued and
- * replayed on the step after the answer. The pending batch never churns, so
- * the request ids the user is answering stay valid.
+ * `"required"` requests need an explicit answer before their gated work can run.
+ * `"dismissable"` questions can resolve as `ignored` when the user moves on.
  *
- * `"dismissable"` — a plain follow-up message counts as the user moving on.
- * The request resolves as a real `tool-result` with `status: "ignored"` and
- * the model continues with the message in the same step.
+ * Batch and turn ownership determine which work waits and whether a question
+ * can be dismissed. This class is not a session-wide scheduling decision.
  */
 export type InputRequestClass = "dismissable" | "required";
 

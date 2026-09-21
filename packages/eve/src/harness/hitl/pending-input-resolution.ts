@@ -1,10 +1,8 @@
 import type { ModelMessage } from "ai";
 
 import type { RuntimeToolResultActionResult } from "#shared/action-types.js";
-import type { InputResponse } from "#shared/input.js";
 import type { ResolvedInputBatch } from "#harness/input-request-resolution.js";
 import type { PendingInputBatch, PendingInputBatchEvent } from "#harness/pending-input-batches.js";
-import { queueDeferredStepInput } from "#harness/pending-input-batches.js";
 import type { HarnessSession, StepInput } from "#harness/types.js";
 import { attachClientContext, readClientContext } from "#internal/client-context.js";
 
@@ -17,15 +15,6 @@ export interface ResolvedInputActionBatch {
 }
 
 export type ResolvedStepInput = StepInput & { readonly messageConsumed?: boolean };
-
-export type InputDomainResolverInput = {
-  readonly baseHistory: ModelMessage[];
-  readonly batches: readonly PendingInputBatch[];
-  readonly deferTurnInput: boolean;
-  readonly resolvedStepInput: ResolvedStepInput | undefined;
-  readonly responses: readonly InputResponse[];
-  readonly session: HarnessSession;
-};
 
 export type ResolvePendingInputResult = {
   readonly consumedMessage?: boolean;
@@ -40,17 +29,6 @@ export type ResolvePendingInputResult = {
   readonly session: HarnessSession;
 };
 
-export function responsesForBatches(
-  responses: readonly InputResponse[],
-  batches: readonly PendingInputBatch[],
-): readonly InputResponse[] {
-  return responses.filter((response) =>
-    batches.some((batch) =>
-      batch.requests.some((request) => request.requestId === response.requestId),
-    ),
-  );
-}
-
 export function appendResolvedBatchTranscript(
   messages: ModelMessage[],
   batch: PendingInputBatch,
@@ -60,69 +38,6 @@ export function appendResolvedBatchTranscript(
   if (toolParts.length > 0) {
     messages.push({ content: [...toolParts], role: "tool" });
   }
-}
-
-export function finishResolvedInput(input: {
-  readonly deferTurnInput: boolean;
-  readonly leftoverResponses: readonly InputResponse[];
-  readonly limitContinuation?: { readonly granted: boolean };
-  readonly messages: ModelMessage[];
-  readonly rejectedActions?: readonly ResolvedInputActionBatch[];
-  readonly resolvedInputs?: readonly ResolvedInputBatch[];
-  readonly resolvedStepInput: ResolvedStepInput | undefined;
-  readonly session: HarnessSession;
-}): ResolvePendingInputResult {
-  // AI SDK collects approval responses only from the tail tool message. Turn
-  // input must replay after that isolated approval response.
-  const deferredInput: {
-    context?: StepInput["context"];
-    inputResponses?: StepInput["inputResponses"];
-    message?: StepInput["message"];
-  } = {};
-  let clientContext: readonly string[] | undefined;
-  if (input.leftoverResponses.length > 0) {
-    deferredInput.inputResponses = input.leftoverResponses;
-  }
-  if (input.deferTurnInput) {
-    if ((input.resolvedStepInput?.context?.length ?? 0) > 0) {
-      deferredInput.context = input.resolvedStepInput?.context;
-    }
-    const resolvedClientContext = readClientContext(input.resolvedStepInput);
-    if ((resolvedClientContext?.length ?? 0) > 0) {
-      clientContext = resolvedClientContext;
-    }
-    if (input.resolvedStepInput?.message !== undefined) {
-      deferredInput.message = input.resolvedStepInput.message;
-    }
-  }
-  attachClientContext(deferredInput, clientContext);
-
-  if (Object.keys(deferredInput).length > 0) {
-    return {
-      consumedMessage: input.resolvedStepInput?.messageConsumed,
-      deferredContext:
-        deferredInput.context === undefined && readClientContext(deferredInput) === undefined
-          ? undefined
-          : true,
-      deferredMessage: deferredInput.message === undefined ? undefined : true,
-      limitContinuation: input.limitContinuation,
-      outcome: "resolved",
-      messages: input.messages,
-      rejectedActions: input.rejectedActions,
-      resolvedInputs: input.resolvedInputs,
-      session: queueDeferredStepInput(input.session, deferredInput),
-    };
-  }
-
-  return {
-    consumedMessage: input.resolvedStepInput?.messageConsumed,
-    limitContinuation: input.limitContinuation,
-    outcome: "resolved",
-    messages: input.messages,
-    rejectedActions: input.rejectedActions,
-    resolvedInputs: input.resolvedInputs,
-    session: input.session,
-  };
 }
 
 export function compactStepInput(input: ResolvedStepInput | undefined): ResolvedStepInput {
