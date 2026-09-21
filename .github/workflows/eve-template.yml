@@ -28,16 +28,14 @@ jobs:
       run:
         working-directory: apps/templates/eve-template
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
       - uses: pnpm/action-setup@v4
         with:
           version: 12.4.2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: apps/templates/eve-template/pnpm-lock.yaml
-      - run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install --no-frozen-lockfile; fi
+      - run: pnpm install --no-frozen-lockfile
       - run: pnpm eve:surface:check
       - run: pnpm typecheck
       - run: pnpm build:eve
