@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
-import { VercelIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -101,7 +100,7 @@ export function ChatSidebar({
             }}
             type="button"
           >
-            <VercelIcon className="size-3.5 text-foreground" />
+            <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/eve.svg" />
           </button>
           {onToggleSidebar ? (
             <Button
