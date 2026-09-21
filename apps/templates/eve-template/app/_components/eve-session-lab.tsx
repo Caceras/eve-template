@@ -49,12 +49,10 @@ export function EveSessionLab() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
-        <p className="text-sm text-muted-foreground">Eve Client SDK</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Session lifecycle</h1>
+        <p className="text-sm text-muted-foreground">Advanced</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sessions</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These controls call Eve's fixed-session API directly. They demonstrate bounded stream
-          reads plus the framework-native cancel, compact, clear, and reset operations without a
-          second session abstraction.
+          Inspect and control durable Eve sessions directly: stream history, cancel an active turn, compact context, clear context, or reset a session.
         </p>
 
         <div className="mt-6 rounded-lg border bg-card p-4">
@@ -84,7 +82,7 @@ export function EveSessionLab() {
         </div>
 
         <div className="mt-5 rounded-lg border bg-card">
-          <div className="border-b px-4 py-3 text-sm font-medium">Durable event stream</div>
+          <div className="border-b px-4 py-3 text-sm font-medium">Event stream</div>
           {events.length ? (
             <pre className="max-h-[60vh] overflow-auto p-4 text-xs leading-5">
               {JSON.stringify(events, null, 2)}
