@@ -1,6 +1,19 @@
 # Design contract
 
-This file is the visual and product-UX contract for the ai-chat.se Eve template. Read it before changing any user-facing UI.
+This file is the visual and product-UX contract for Ægentica on ai-chat.se. Read it before changing any user-facing UI.
+
+## Brand
+
+The product name is **Ægentica**.
+
+- Never show **Eve** or **eve** as the product name in user-facing UI.
+- The underlying Eve framework may still appear in code, package imports, internal diagnostics, developer documentation, and implementation-specific advanced details where technically necessary.
+- Use `/aegentica.svg` as the primary product mark.
+- Use the black square + white Æ monogram for app icons, Apple icons and social previews.
+- Do not reintroduce the old Eve logo, Vercel logo, or generic framework branding into the product shell.
+- Product copy uses **Ægentica**: e.g. “Message Ægentica”, “Ægentica is responding”, “Sign in to Ægentica”.
+- Preserve the supplied monogram geometry; do not reinterpret, round, decorate, gradient-fill, or add text inside the mark.
+- The visual identity remains monochrome, restrained and consistent with the existing Vercel-style product shell.
 
 ## North star
 
@@ -116,7 +129,7 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 - Respect safe-area insets for top chrome and bottom composers.
 - A stop control must actually cancel generation; never render a fake disabled stop icon.
 - Skeletons must mirror the current production layout closely enough that hydration does not visually jump.
-- Prefer short, calm product copy: "Message eve", "Sign in", "No session loaded", "Runtime live".
+- Prefer short, calm product copy: "Message Ægentica", "Sign in", "No session loaded", "Runtime live".
 - Avoid exposing internal route names, implementation jargon, registry mechanics or framework concepts unless the surface is specifically for advanced inspection.
 
 ## Completion bar
