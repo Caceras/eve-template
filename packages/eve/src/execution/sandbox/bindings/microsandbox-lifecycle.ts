@@ -170,6 +170,7 @@ export async function prewarmMicrosandboxTemplate(input: {
 
   try {
     await hydrateSandboxProviderResources({
+      copySkills: true,
       log: input.context.log,
       resources: input.context.resources,
       session: templateSession,

@@ -32,6 +32,7 @@ export async function prepareImmutableResources(input: {
 }
 
 export async function hydrateSandboxProviderResources(input: {
+  readonly copySkills?: boolean;
   readonly log?: (message: string) => void;
   readonly resources: SandboxProviderResources;
   readonly session: SandboxSession;
@@ -43,12 +44,21 @@ export async function hydrateSandboxProviderResources(input: {
       return;
     case "materialized":
       input.log?.("hydrating workspace and skills from read-only resources");
-      await hydrateSandboxFromImmutableResources(input.session);
+      await hydrateSandboxFromImmutableResources(input.session, input.copySkills);
       return;
   }
 }
 
-export async function hydrateSandboxFromImmutableResources(session: SandboxSession): Promise<void> {
+export async function hydrateSandboxFromImmutableResources(
+  session: SandboxSession,
+  copySkills = false,
+): Promise<void> {
+  const hydrateSkills = copySkills
+    ? [
+        '  mkdir -p "$HOME/.agents/skills"',
+        `  cp -a ${SANDBOX_RESOURCES_ROOT}/skills/. "$HOME/.agents/skills/"`,
+      ]
+    : [`  ln -s ${SANDBOX_RESOURCES_ROOT}/skills "$HOME/.agents/skills"`];
   const result = await session.run({
     command: [
       "set -e",
@@ -56,7 +66,7 @@ export async function hydrateSandboxFromImmutableResources(session: SandboxSessi
       `if [ -d ${SANDBOX_RESOURCES_ROOT}/skills ]; then`,
       '  mkdir -p "$HOME/.agents"',
       '  rm -rf "$HOME/.agents/skills"',
-      `  ln -s ${SANDBOX_RESOURCES_ROOT}/skills "$HOME/.agents/skills"`,
+      ...hydrateSkills,
       "fi",
     ].join("\n"),
   });
