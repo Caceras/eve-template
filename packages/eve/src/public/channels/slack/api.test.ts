@@ -282,6 +282,60 @@ describe("SlackThread.post with files", () => {
   });
 });
 
+/**
+ * Pins a latent production bug rather than fixing it: this PR is
+ * test-only.
+ *
+ * {@link SlackPostedMessage.id} is documented as the Slack message `ts`,
+ * which is what a follow-up `chat.update` needs, and the
+ * `{ markdown | blocks | card } + files` branches do return one. The
+ * `{ text, files }` branch instead returns `raw.files[0].id` — a file id
+ * from a different Slack namespace — so a caller that updates the
+ * message it just posted addresses a file that no `chat.update` can
+ * reach. The old canned mocks hid this because every response carried
+ * the same `ts`.
+ */
+describe("SlackThread.post id namespace", () => {
+  let slack: MockSlackApi;
+
+  beforeEach(() => {
+    slack = mockSlackApi();
+  });
+
+  it("returns a file id from { text, files } and a message ts from the other branches", async () => {
+    const { thread } = buildSlackBinding({
+      api: { fetch: slack.fetch },
+      botToken: "xoxb-test",
+      channelId: "C01",
+      threadTs: "1.0",
+      teamId: undefined,
+    });
+
+    const fromText = await thread.post({
+      text: "*Report attached*",
+      files: [{ data: Buffer.from([1]), filename: "text.csv", mimeType: "text/csv" }],
+    });
+    const fromMarkdown = await thread.post({
+      markdown: "**Report attached**",
+      files: [{ data: Buffer.from([2]), filename: "markdown.csv", mimeType: "text/csv" }],
+    });
+    const fromCard = await thread.post({
+      card: Card({ children: [CardText("Report attached")] }),
+      files: [{ data: Buffer.from([3]), filename: "card.csv", mimeType: "text/csv" }],
+    });
+
+    // The sibling branches honor the contract: their id names a message
+    // the workspace holds, so chat.update would land.
+    expect(slack.message(fromMarkdown.id)?.channel).toBe("C01");
+    expect(slack.message(fromCard.id)?.channel).toBe("C01");
+
+    // The { text, files } branch does not: it hands back the file id.
+    expect(fromText.id).toBe("F1");
+    expect(slack.files().map((file) => file.id)).toContain(fromText.id);
+    expect(slack.message(fromText.id)).toBeUndefined();
+  });
+});
+
 describe("Slack outbound text", () => {
   let slack: MockSlackApi;
 
