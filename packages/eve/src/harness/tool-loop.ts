@@ -107,6 +107,7 @@ import {
   emitTurnEpilogue,
   emitTurnPreamble,
   getHarnessEmissionState,
+  isHarnessBetweenTurns,
   setHarnessEmissionState,
 } from "#harness/emission.js";
 import {
@@ -423,18 +424,6 @@ function updateCompactionThresholdForModelReference(input: {
       ),
     ),
   };
-}
-
-/** Runtime action results resume a turn; only channel input anchors a new one. */
-function isInternalContinuationInput(input: StepInput | undefined): boolean {
-  return (
-    input === undefined ||
-    (input.message === undefined &&
-      (input.attributedInputResponses?.length ?? 0) === 0 &&
-      (input.inputResponses?.length ?? 0) === 0 &&
-      (input.context?.length ?? 0) === 0 &&
-      input.outputSchema === undefined)
-  );
 }
 
 function buildHarnessToolsWithDynamicSubagents(
@@ -822,20 +811,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         coordinated.stepInput === undefined
           ? session
           : queueDeferredStepInput(session, coordinated.stepInput);
-      const pendingInputEvent = getPendingInputBatches(session.state).at(-1)?.event;
-      const continuationEvent = pendingCoordination?.event ?? pendingInputEvent;
-      const coordinationEmissionState =
-        continuationEvent === undefined
-          ? emissionState
-          : {
-              ...emissionState,
-              turnId: continuationEvent.turnId,
-              sessionStarted: true,
-            };
-      return {
-        next: runStep,
-        session: setHarnessEmissionState(continuedSession, advanceStep(coordinationEmissionState)),
-      };
+      return { next: runStep, session: continuedSession };
     }
     if (coordinated.challenges.length > 0) {
       if (emit) {
@@ -874,7 +850,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
       activeTurnId: pendingCoordination?.event.turnId ?? activeTurnId(emissionState),
       deferMessagesWhileApprovalsPending: config.mode !== "conversation",
       history: resolvedCoordination.messages,
-      internalStep: isInternalContinuationInput(input),
+      internalStep: !isHarnessBetweenTurns(session),
       resolveApprovalKey: resolveApprovalKeyFromTools(responseAuthorizationTools),
       session,
       stepInput: coordinated.stepInput,
@@ -1049,15 +1025,6 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
 
     let instructionMessages: UserModelMessage[] = [];
     let memoryCommit: ReturnType<typeof drainMemoryCommit> = undefined;
-    if (
-      input === undefined &&
-      pending.resolvedInputs !== undefined &&
-      pending.resolvedInputs.length > 0 &&
-      hasStepInput(coordinated.stepInput) &&
-      emissionState.turnId !== ""
-    ) {
-      emissionState = { ...emissionState, stepIndex: 0, turnId: "" };
-    }
     if (emit && (hasStepInput(effectiveStepInput) || hasStepInput(coordinated.stepInput))) {
       if (store !== undefined) {
         prepareDynamicInstructionPreamble(

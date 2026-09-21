@@ -6,7 +6,7 @@ import { resolveTextToResponses } from "#channel/resolve-text.js";
 import { hasTailApprovalResponse } from "#harness/current-messages.js";
 import {
   getApprovedTools,
-  hasAnsweredApprovalBatch,
+  findAnsweredApprovalBatches,
   resolveApprovalInputBatches,
 } from "#harness/hitl/approval-input-requests.js";
 import type { RejectedActionBatch } from "#harness/hitl/approval-input-requests.js";
@@ -79,7 +79,7 @@ export function hasRunnableDeferredStepInput(session: HarnessSession): boolean {
       );
     case "approval":
       return (
-        hasAnsweredApprovalBatch(route.approvalBatches, responses) ||
+        findAnsweredApprovalBatches(route.approvalBatches, responses).length > 0 ||
         findAnsweredQuestionBatches(route.questionBatches, responses).length > 0
       );
     case "question":
@@ -104,7 +104,7 @@ export function hasPendingApprovalBatch(session: HarnessSession): boolean {
 export function resolvePendingInput(input: {
   /** The turn currently advancing through the harness tool loop. */
   readonly activeTurnId?: string;
-  /** True when this is an internal continuation after a tool result. */
+  /** True while the harness has an open turn to continue. */
   readonly internalStep?: boolean;
   readonly deferMessagesWhileApprovalsPending?: boolean;
   readonly history?: readonly ModelMessage[];
@@ -152,7 +152,7 @@ export function resolvePendingInput(input: {
     route.kind === "approval" &&
     input.deferMessagesWhileApprovalsPending === true &&
     resolvedStepInput?.message !== undefined &&
-    !hasAnsweredApprovalBatch(route.approvalBatches, responses)
+    findAnsweredApprovalBatches(route.approvalBatches, responses).length === 0
   ) {
     return {
       deferredMessage: true,
@@ -211,7 +211,7 @@ function canContinuePastHistoricalInput(input: {
   if (
     input.responses.length > 0 &&
     (input.route.kind !== "approval" ||
-      hasAnsweredApprovalBatch(input.route.approvalBatches, input.responses) ||
+      findAnsweredApprovalBatches(input.route.approvalBatches, input.responses).length > 0 ||
       findAnsweredQuestionBatches(input.route.questionBatches, input.responses).length > 0)
   ) {
     return false;
