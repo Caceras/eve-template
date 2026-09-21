@@ -1,4 +1,6 @@
 import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { jsonSchema, simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { expect, it, vi } from "vitest";
@@ -174,7 +176,7 @@ it("continues the second step past an older approval batch", async () => {
     events: events.slice(beforeApproval).map((event) => event.type),
   };
   writeFileSync(
-    "/tmp/eve-3494-diagnosis.json",
+    join(tmpdir(), "eve-3494-diagnosis.json"),
     JSON.stringify({ continuedObservation, controlObservation, approvalObservation }, null, 2),
   );
 });
