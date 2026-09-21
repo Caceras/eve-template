@@ -1231,6 +1231,10 @@ describe("Slack Web API base URL", () => {
 
   it("raises SlackApiError carrying the method and status on a non-2xx JSON call", async () => {
     const simulator = mockSlack({ url: "https://sim.example/api" });
+    // Stubbed so the 500 is the only reason the call fails: without it
+    // the double would reject views.open as undeclared, and the test
+    // would pass on the wrong error.
+    simulator.allow("views.open").andReturn({ ok: true, view: {} });
     simulator.failNextHttp("views.open", {
       status: 500,
       body: { ok: false, error: "expired_trigger_id" },

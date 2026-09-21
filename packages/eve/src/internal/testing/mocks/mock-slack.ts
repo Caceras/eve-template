@@ -44,11 +44,11 @@
  * ```
  */
 
-import {
-  SLACK_TRANSPORT_LEGS,
-  type SlackApiMethod,
-  type SlackApiRequest,
-  type SlackApiResponseFor,
+import type {
+  SlackApiMethod,
+  SlackApiRequest,
+  SlackApiResponseFor,
+  SlackTransportLeg,
 } from "#internal/testing/mocks/slack-api-contract.js";
 import { decodeSlackApiBody } from "#public/channels/slack/api-encoding.js";
 
@@ -65,10 +65,7 @@ const JSON_METHODS = new Set<string>(["views.open", "chat.update"]);
 
 /** One request observed by the double, in call order. */
 export interface MockSlackCall {
-  /**
-   * The Slack method name, or one of the synthetic transport-leg names
-   * in `SLACK_TRANSPORT_LEGS`.
-   */
+  /** The Slack method name, or a synthetic {@link SlackTransportLeg}. */
   readonly method: string;
   readonly url: string;
   /** Request body decoded exactly as production encoded it. */
@@ -109,6 +106,12 @@ export interface MockSlackStub<M extends SlackApiMethod> {
    * The expectation is in {@link SlackApiRequest} — the wire shape — so
    * a form-encoded number is written as the string it arrives as:
    * `.with({ limit: "50" })`, never `.with({ limit: 50 })`.
+   *
+   * One constraint per method. A second `with` on the same method
+   * replaces the first rather than adding an argument-discriminated
+   * alternative, because the double answers a method from a single
+   * stub; express two argument cases with `andRespond` reading the
+   * body.
    */
   with(expected: Partial<SlackApiRequest<M>>): MockSlackStub<M>;
   /** Answer with a Slack-level `{ ok: false, error }` envelope. */
@@ -159,15 +162,27 @@ export interface MockSlack {
   allowUncheckedMethod(method: string, response: Readonly<Record<string, unknown>>): void;
   /**
    * Queues a one-shot Slack-level `{ ok: false, error }` ahead of
-   * whatever the method is stubbed to return.
+   * whatever the method is stubbed to return. The method still has to
+   * be stubbed: a queued failure says how the next call fails, not that
+   * the call was expected at all.
+   *
+   * Deliberately narrower than {@link failNextHttp}: a Slack envelope is
+   * something only a Web API method produces, so the two transport legs
+   * have no `{ ok: false }` to serve. The asymmetry is the point, not an
+   * oversight.
    */
   failNext(method: SlackApiMethod, error: string): void;
   /**
    * Queues a one-shot HTTP failure, served before any {@link failNext}
    * for the same method because the request never reaches Slack's
    * method dispatch.
+   *
+   * Accepts the two transport legs as well as a Web API method: an
+   * upload POST and a `url_private` download are ordinary HTTP requests
+   * that Slack can rate limit, and they never produce a Slack envelope,
+   * which is why {@link failNext} stays narrower.
    */
-  failNextHttp(method: SlackApiMethod, failure: MockSlackHttpFailure): void;
+  failNextHttp(method: SlackApiMethod | SlackTransportLeg, failure: MockSlackHttpFailure): void;
   /** The URL `files.getUploadURLExternal` should hand out for a file id. */
   uploadUrl(fileId: string): string;
   /** A `url_private` on this double's origin, for the download leg. */
@@ -177,9 +192,22 @@ export interface MockSlack {
   /** Serve one authenticated `url_private` download with these bytes. */
   allowDownload(bytes: Uint8Array): void;
   /**
+   * Fails the request in flight and records a violation, for a stub
+   * whose `andRespond` has decided the call itself is wrong — an
+   * unexpected channel id, more uploads than the test declared ids for.
+   *
+   * Reach for this rather than `throw new Error(...)`, which rejects
+   * the fetch and nothing else. Several production paths swallow a
+   * rejected fetch: a throwing `conversations.info` fails closed and
+   * routes the turn down the "treat as private" branch, so a plain
+   * throw leaves the test passing while asserting the wrong branch.
+   */
+  reject(message: string): never;
+  /**
    * Protocol violations: an unstubbed method, an unsatisfied `with`
    * constraint, a call that was not form-encoded on a form-only method,
-   * or one carrying no bearer token. Each also rejects the `fetch`.
+   * one carrying no bearer token, or a {@link reject} from a stub. Each
+   * also rejects the `fetch`.
    */
   readonly violations: readonly string[];
   /** Throws when the double rejected any request. */
@@ -234,7 +262,17 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
       : `stubbed methods: ${declared.join(", ")}`;
   }
 
-  function answer(method: string, body: Record<string, unknown>): Record<string, unknown> {
+  /**
+   * Resolves the stub a call is answered from, rejecting a method
+   * nobody declared or a call its constraint refuses.
+   *
+   * Split out of {@link answer} so the one-shot `failNext` queues run
+   * *after* it. Serving a queued failure for an undeclared method would
+   * hand back a well-formed Slack envelope for a collaboration no test
+   * ever admitted to, which is the one thing this double exists to make
+   * impossible.
+   */
+  function requireStub(method: string, body: Record<string, unknown>): StubState {
     const stub = stubs.get(method);
     if (stub === undefined) {
       reject(
@@ -251,6 +289,14 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
       );
     }
 
+    return stub;
+  }
+
+  function answer(
+    stub: StubState,
+    method: string,
+    body: Record<string, unknown>,
+  ): Record<string, unknown> {
     if (stub.httpFailure !== undefined) throw new HttpFailureSignal(stub.httpFailure);
     if (stub.failure !== undefined) return { ok: false, error: stub.failure };
     if (stub.respond !== undefined) return asRecord(stub.respond(body));
@@ -315,6 +361,8 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     requireBearer(method, headers);
     requireEncoding(method, contentType);
 
+    const stub = requireStub(method, asRecord(body));
+
     const queuedHttp = takeQueued(failNextHttpQueue, method);
     if (queuedHttp !== undefined) return httpFailureResponse(queuedHttp);
     const queuedFailure = takeQueued(failNextQueue, method);
@@ -323,7 +371,7 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     }
 
     try {
-      return jsonResponse(answer(method, asRecord(body)));
+      return jsonResponse(answer(stub, method, asRecord(body)));
     } catch (error) {
       if (error instanceof HttpFailureSignal) return httpFailureResponse(error.failure);
       throw error;
@@ -384,24 +432,24 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     allow(method) {
       const state = stubFor(method);
       const stub: MockSlackStub<typeof method> = {
-        // Each of these three replaces the others: the last declaration
-        // for a method wins, rather than an earlier one shadowing it.
+        // Every one of these five replaces the others: the last
+        // declaration for a method wins outright, so re-stubbing after
+        // an andFail is not quietly ignored. `with` is the exception —
+        // it narrows whichever answer is declared, so it survives.
         andReturn(response) {
+          clearAnswer(state);
           state.responses = [response];
-          state.sequence = false;
-          state.respond = undefined;
           return stub;
         },
         andReturnEach(responses) {
+          clearAnswer(state);
           state.responses = [...responses];
           state.sequence = true;
-          state.respond = undefined;
           return stub;
         },
         andRespond(respond) {
+          clearAnswer(state);
           state.respond = respond as (body: Record<string, unknown>) => unknown;
-          state.responses = [];
-          state.sequence = false;
           return stub;
         },
         with(expected) {
@@ -409,10 +457,12 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
           return stub;
         },
         andFail(error) {
+          clearAnswer(state);
           state.failure = error;
           return stub;
         },
         andFailHttp(failure) {
+          clearAnswer(state);
           state.httpFailure = failure;
           return stub;
         },
@@ -421,9 +471,10 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     },
     allowUncheckedMethod(method, response) {
       const state = stubFor(method);
+      clearAnswer(state);
       state.responses = [response];
-      state.sequence = false;
     },
+    reject,
     failNext(method, error) {
       failNextQueue.set(method, [...(failNextQueue.get(method) ?? []), error]);
     },
@@ -457,6 +508,18 @@ class HttpFailureSignal extends Error {
     super("mockSlack http failure");
     this.failure = failure;
   }
+}
+
+/**
+ * Drops whatever answer a stub currently holds, so the next
+ * declaration is the only one in play.
+ */
+function clearAnswer(state: StubState): void {
+  state.responses = [];
+  state.sequence = false;
+  state.respond = undefined;
+  state.failure = undefined;
+  state.httpFailure = undefined;
 }
 
 function matchesConstraint(
@@ -510,5 +573,3 @@ async function toBytes(body: unknown): Promise<Uint8Array> {
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
-
-export { SLACK_TRANSPORT_LEGS };

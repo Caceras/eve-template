@@ -37,6 +37,45 @@ describe("mockSlack strictness", () => {
     );
   });
 
+  it("fails a queued failNext for a method that was never stubbed", async () => {
+    const slack = mockSlack();
+    slack.failNext("chat.postMessage", "ratelimited");
+
+    // A queued failure says how the next call fails, not that the call
+    // was expected: serving it would hand back a well-formed envelope
+    // for a collaboration no test ever declared.
+    await expect(call(slack, "chat.postMessage", { channel: "C01" })).rejects.toThrow(
+      /never stubbed/,
+    );
+    expect(slack.violations).toHaveLength(1);
+  });
+
+  it("fails a queued failNextHttp for a method that was never stubbed", async () => {
+    const slack = mockSlack();
+    slack.failNextHttp("chat.postMessage", { status: 500 });
+
+    await expect(call(slack, "chat.postMessage", { channel: "C01" })).rejects.toThrow(
+      /never stubbed/,
+    );
+    expect(slack.violations).toHaveLength(1);
+  });
+
+  it("records a violation when a stub rejects the call it was given", async () => {
+    const slack = mockSlack();
+    slack.allow("conversations.info").andRespond((body) => {
+      if (body.channel !== "C01") slack.reject(`conversations.info: unexpected ${body.channel}`);
+      return { ok: true, channel: { id: body.channel } };
+    });
+
+    // Production swallows a throwing conversations.info and falls back
+    // to treating the channel as private, so a stub that merely threw
+    // would leave the test green on the wrong branch.
+    await expect(call(slack, "conversations.info", { channel: "C_OTHER" })).rejects.toThrow(
+      /unexpected C_OTHER/,
+    );
+    expect(() => slack.assertNoViolations()).toThrow(/unexpected C_OTHER/);
+  });
+
   it("fails when a sequence stub runs out of declared responses", async () => {
     const slack = mockSlack();
     slack.allow("conversations.replies").andReturnEach([{ ok: true, messages: [] }]);
@@ -56,6 +95,44 @@ describe("mockSlack responses", () => {
 
     expect(await call(slack, "chat.postMessage", { channel: "C01" })).toMatchObject({
       ts: "from-return",
+    });
+  });
+
+  it("lets a later andReturn replace a declared failure", async () => {
+    const slack = mockSlack();
+    slack.allow("chat.postMessage").andFail("channel_not_found");
+    slack.allow("chat.postMessage").andReturn({ ok: true, ts: "1700.1" });
+
+    // A failure that outlived the declaration replacing it would make
+    // every subsequent stub for the method silently inert.
+    expect(await call(slack, "chat.postMessage", { channel: "C01" })).toEqual({
+      ok: true,
+      ts: "1700.1",
+    });
+  });
+
+  it("lets a later andReturn replace a declared HTTP failure", async () => {
+    const slack = mockSlack();
+    slack.allow("chat.postMessage").andFailHttp({ status: 500 });
+    slack.allow("chat.postMessage").andReturn({ ok: true, ts: "1700.1" });
+
+    expect(await call(slack, "chat.postMessage", { channel: "C01" })).toMatchObject({
+      ts: "1700.1",
+    });
+  });
+
+  it("keeps a with constraint across a re-declared response", async () => {
+    const slack = mockSlack();
+    slack.allow("chat.postMessage").with({ channel: "C01" }).andFail("channel_not_found");
+    slack.allow("chat.postMessage").andReturn({ ok: true, ts: "1700.1" });
+
+    // `with` narrows whichever answer is declared rather than being one
+    // of the answers, so replacing the answer leaves it in place.
+    await expect(call(slack, "chat.postMessage", { channel: "C_OTHER" })).rejects.toThrow(
+      /arguments the stub does not accept/,
+    );
+    expect(await call(slack, "chat.postMessage", { channel: "C01" })).toMatchObject({
+      ts: "1700.1",
     });
   });
 

@@ -238,9 +238,4 @@ export const SLACK_API_METHODS: readonly SlackApiMethod[] = Object.keys(
  * name, no form-encoded body, and no JSON response, so folding them in
  * would distort the shape the contract exists to pin down.
  */
-export const SLACK_TRANSPORT_LEGS = ["files.upload", "files.download"] as const;
-
-export type SlackTransportLeg = (typeof SLACK_TRANSPORT_LEGS)[number];
-
-/** Any name that can appear as a recorded call's `method`. */
-export type SlackRecordedMethod = SlackApiMethod | SlackTransportLeg | (string & {});
+export type SlackTransportLeg = "files.upload" | "files.download";
