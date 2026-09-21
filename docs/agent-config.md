@@ -63,7 +63,7 @@ to compaction calls.
 ### Choose the model dynamically
 
 To select a model from the incoming prompt with an AI SDK evaluation model, use
-[`autoModel` from `eve/experimental/evaluate`](./guides/evaluate).
+[`auto` from `eve/models`](./guides/evaluate).
 
 `model` also accepts `defineDynamic({ events })`. Each matching handler must
 return the concrete model for its scope; a dynamic model has no compiled
@@ -350,7 +350,7 @@ During `eve dev`, ordinary dependencies are bundled into each retained runtime g
 | Per-tool approval (HITL)      | `agent/tools/*.ts`, [Tools](./tools)                                             |
 | Inbound auth & network policy | the channel layer, [Auth & route protection](./guides/auth-and-route-protection) |
 | Sandbox / workspace           | `agent/sandbox/`, [Sandbox](./sandbox)                                           |
-| Telemetry & debugging         | `agent/instrumentation.ts`, [Instrumentation](./observability/instrumentation)   |
+| Telemetry & debugging         | `agent/instrumentation/`, [Instrumentation](./observability/instrumentation)     |
 
 ## What to read next
 

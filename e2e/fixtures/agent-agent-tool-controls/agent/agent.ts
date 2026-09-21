@@ -4,6 +4,7 @@ import { mockModel } from "eve/evals";
 
 export default defineAgent({
   ...e2eAgentConfig(),
+  description: "Coordinate specialist work and delegate focused subtasks.",
   model: mockModel({
     modelId: "root-agent-tool-disabled",
     respond(request) {
@@ -11,12 +12,16 @@ export default defineAgent({
         message.includes("E2E_INTERNAL_ROOT_COPY"),
       );
       if (internalCopy) return "INTERNAL-ROOT-COPY-OK";
-      if (request.tools.some((tool) => tool.name === "agent")) {
-        throw new Error("The built-in agent tool was exposed to the model.");
+      if (request.tools.some((tool) => ["agent", "operator", "researcher"].includes(tool.name))) {
+        throw new Error("A hidden agent tool was exposed to the model.");
       }
-      const result = request.toolResults.find((entry) => entry.name === "invoke-self");
+      const inspectAgents = request.userMessages.some((message) =>
+        message.includes("E2E_INSPECT_WORKFLOW_AGENTS"),
+      );
+      const toolName = inspectAgents ? "inspect-agents" : "invoke-self";
+      const result = request.toolResults.find((entry) => entry.name === toolName);
       return result === undefined
-        ? { toolCalls: [{ name: "invoke-self", input: {} }] }
+        ? { toolCalls: [{ name: toolName, input: {} }] }
         : JSON.stringify(result.output);
     },
   }),

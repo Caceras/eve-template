@@ -1,5 +1,100 @@
 # eve
 
+## 0.63.0
+
+### Minor Changes
+
+- d2c92df: Require durable background tools to use `defineWorkflowTool`. Remove background execution from `defineTool` and dynamic tools, including the `TaskExec` and `postMessage` authoring APIs, and deliver each background cohort's completed, failed, and cancelled outcomes in one automatic report.
+  
+  Background invocations share workflow execution and cancellation cleanup. Agent settlement records usage once before its enclosing workflow returns a tool result. Parent sessions retain task outcomes, and late results cannot overwrite a recorded cancellation; channel task views no longer include executor bindings. Background workflow yields are consumed without publishing progress or retaining a task-progress stream.
+  
+  Align `subagent.completed` for blocking and background agents: emit the actual output only after the parent records success. Background receipts remain `action.result` tool outputs; completion events no longer announce admission or wait for cohort reporting.
+  
+  Use task lifecycle values in subagent eval assertions: replace `status: "pending"` with `"working"` and `"rejected"` with `"failed"`. Explicit cancelled child outcomes now retain `"cancelled"` instead of appearing as failures.
+
+### Patch Changes
+
+- a042a9a: Choose a model, speed, and reasoning through separate steps in the terminal UI, with clear defaults and changes applied together after the final choice. The slash menu now puts model selection and session controls first, and a steady Thinking, Generating, or Running label with a blinking dot replaces the animated Working label during turns.
+- f240baa: Fix local development snapshots for extension subagents mounted from hoisted workspace dependencies.
+
+## 0.62.0
+
+### Minor Changes
+
+- 9d394fa: Package self-modification as an extension-owned subagent and retire the legacy scaffolded self-modification capability. Registry installation uses local-only setup, while deployed-aware setup remains available separately.
+- 8e01190: Replace `t.judge.autoevals.*` with `t.judge(...)`, supporting criteria, typed questions, and batches through evaluation models with a default of `typesafe-ai/jev`. Configure provider evaluation model instances instead of language model instances; autoevals is removed while deterministic similarity and Braintrust reporting remain available.
+- fcb3ba2: Make path-named files under `agent/instrumentation/` the supported instrumentation API. Existing `agent/instrumentation.ts` configurations must be split into lifecycle instrumentation, OpenTelemetry destinations, and shared `otel()` settings; extensions that contribute subagents must be rebuilt for the new contract epoch.
+- 804e670: Remove deprecated instrumentation compatibility shapes. Providers now reject the removed `capture` option in favor of `tracePolicy`, destination export policies return object decisions, and flat `instrumentation.ts` modules are no longer discovered.
+
+### Patch Changes
+
+- 9f1d1cf: Polish `eve init` with inline terminal output, timed installation progress, and a quiet transition into chat without automatic login entries in history. Failed installs show bounded diagnostics and recovery instructions; debug logging retains package-manager output.
+- 38ad163: Keep registry installation error traces visible in the dev TUI after an `/add` failure, alongside the per-item recovery guidance.
+- d0d2b5e: Refine the `eve dev` terminal header with a compact `☰eve` mark, clearer metadata separation, and a persistent command hint. `eve dev` no longer shows the startup `/add` tip.
+- 06e17ae: Wrap long setup questions in the `eve dev` terminal UI instead of clipping them at the terminal edge.
+
+## 0.61.1
+
+### Patch Changes
+
+- 8a21c0c: `agentRouter()` now advertises model-supplied output schemas as permissive objects, avoiding unsupported JSON Schema `propertyNames` warnings on OpenAI models while preserving downstream object validation.
+- cbb2206: Clear stale model setup warnings when the local development server becomes ready, and avoid diagnosing unavailable startup information as missing model credentials.
+- d58065e: Workflow steps now fail immediately with actionable guidance when they access workflow-body-only `ctx.agents`, `ctx.agent()`, or `ctx.ask()` capabilities. Use the new `WorkflowStepToolContext` type for step helpers and pass serializable agent metadata from the workflow body.
+
+## 0.61.0
+
+### Minor Changes
+
+- cbfc425: Root workflow tools now receive the built-in root-copy target at `ctx.agents.agent`, with its authored description or an empty string, and `agent` is reserved from use as a declared subagent name. Tool definitions can set `availableInSubagents: false`; `agentRouter()` sets it automatically, routes only to entries with non-empty descriptions, and can replace the model-facing tool at `agent/tools/agent.ts` without being inherited by the root copy.
+
+### Patch Changes
+
+- 7e95b64: Keep Web Chat attached for background task results without rendering runtime-authored task input as a user message. Task wake-ups now retain explicit provenance in the durable session stream while the default frontend reducer omits them from participant messages.
+- 7259b96: Set `minimumReleaseAge: 0` in newly generated pnpm workspace files so dependencies installed by `eve init` also pass pnpm's checks when starting the dev server or installing again.
+- 260a359: Reconcile frontend optimistic messages with their server delivery identities instead of stream order. Concurrent, coalesced, identical, and structured message submissions now resolve the correct placeholders, and separately delivered messages within one turn remain separate chat bubbles.
+- 5f17320: Reduce development startup and production build time by removing duplicate bundler work, skipping unnecessary parsing, and overlapping independent preparation. Development terminal inspection now has a deadline, and `Client.info()` accepts an abort signal so slow inspection requests do not hold up startup.
+- 6b99f12: Upgrade eve's Workflow runtime dependencies to the latest beta releases, including the Postgres world fix for steering pending generations.
+
+## 0.60.1
+
+### Patch Changes
+
+- 76d4dd8: Workflow tools can read effective declared-subagent descriptions from `ctx.agents`, including subagents hidden from the parent model. Export `agentRouter()` from `eve/tools/agent-router` to route each task across that complete map with JEV and invoke the selected agent.
+
+## 0.60.0
+
+### Minor Changes
+
+- da82a95: Make managed destination `exportPolicy` accept one policy or an ordered policy array, with explicit span `emit` and redaction decisions. Attribute policies now return `emit` or `replace` decisions; and the deprecated `redactSpanInputs()`, `redactSpanOutputs()`, destination `recordInputs`, destination `recordOutputs`, `content`, and `composeSpanExportPolicies()` APIs are removed.
+  
+  Use these replacements:
+  
+  | Before                            | After                                                                           |
+  | --------------------------------- | ------------------------------------------------------------------------------- |
+  | `span: () => false`               | `span: () => ({ emit: false })`                                                 |
+  | `redactSpanInputs(when)`          | `span: (span) => when(span) ? { redact: true, inputs: true } : { emit: true }`  |
+  | `redactSpanOutputs(when)`         | `span: (span) => when(span) ? { redact: true, outputs: true } : { emit: true }` |
+  | `recordInputs: false`             | `exportPolicy: { span: () => ({ redact: true, inputs: true }) }`                |
+  | `recordOutputs: false`            | `exportPolicy: { span: () => ({ redact: true, outputs: true }) }`               |
+  | `{ action: "keep" }`              | `{ emit: true }`                                                                |
+  | `{ action: "drop" }`              | `{ emit: false }`                                                               |
+  | `{ action: "replace", value }`    | `{ replace: true, value }`                                                      |
+  | `composeSpanExportPolicies(a, b)` | `exportPolicy: [a, b]`                                                          |
+  
+  Passing the removed destination `recordInputs` or `recordOutputs` options now
+  throws during declaration instead of silently exporting content.
+  
+  Returning a boolean from `span` still works but is deprecated; return
+  `{ emit: boolean }`.
+- f3cd55a: Move automatic model selection to `auto` from `eve/models` and standalone evaluation to `evaluate` from `eve/ai`. The former `autoModel` and `eve/experimental/evaluate` imports are no longer available.
+
+### Patch Changes
+
+- ed88ff4: Preserve canonical OpenTelemetry session metadata when channel delivery instrumentation runs before the session lifecycle event.
+- 190a49a: Run dependency installation during `eve init` non-interactively where supported and bypass inherited minimum-release-age policies for the initial scaffold install.
+- 649180b: Preserve schema composition when compiling tools that reuse another tool's Zod input or output schema. Built agents no longer fail route initialization with `Cannot read properties of undefined (reading 'def')` for these nested schemas.
+- a87ad46: Allow React `useEveAgent` to observe `prewarm` across renders so interfaces can prepare a session when the user starts composing. Reset uses the latest rendered value, while disabling prewarming does not discard a session already starting or created.
+
 ## 0.59.1
 
 ### Patch Changes

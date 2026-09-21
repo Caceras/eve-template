@@ -325,6 +325,7 @@ function createMetadata(input: {
   readonly resolver: ResolvedDynamicToolResolver;
 }): CurrentDynamicToolMetadata {
   return {
+    availableInSubagents: input.entry.availableInSubagents,
     callbacks: validateDurableDynamicToolCallbacks(input.name, input.entry, {
       sessionId: input.sessionId,
       scope: input.scope,
@@ -333,7 +334,6 @@ function createMetadata(input: {
       name: input.name,
     }),
     description: input.entry.description,
-    execution: input.entry.execution === "background" ? "background" : undefined,
     entryKey: input.entryKey,
     inputSchema: serializeInputSchema(input.entry.inputSchema),
     name: input.name,
