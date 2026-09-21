@@ -50,8 +50,8 @@ export function ChatSidebar({
   readonly viewer: Viewer | null;
 }) {
   const authDisabled = !setupStatus.appReady;
-  const newSessionActive = activeChatId === null && pathname === "/";
   const [pathname, setPathname] = useState("/");
+  const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
