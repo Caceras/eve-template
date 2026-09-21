@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 
 const nextPort = process.env.PORT?.trim() || "3000";
 const evePort = process.env.EVE_NEXT_PRODUCTION_PORT?.trim() || "4274";
-const host = process.env.HOSTNAME?.trim() || "0.0.0.0";
+const host = process.env.NEXT_HOST?.trim() || "0.0.0.0";
 const children = new Set();
 let shuttingDown = false;
 
