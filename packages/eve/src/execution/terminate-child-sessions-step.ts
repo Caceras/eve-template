@@ -1,4 +1,4 @@
-import { isAttachedRemoteSession } from "#subagents/handles/registered-remote.js";
+import { isAttachedRemoteSession } from "#subagents/registry/registered-remote.js";
 import { deserializeContext } from "#context/serialize.js";
 import type { ContextContainer } from "#context/container.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
@@ -9,7 +9,7 @@ import {
   resolveRemoteAgentForAction,
   resolveRemoteAgentStreamHeaders,
 } from "#subagents/remote-dispatch.js";
-import { getAgentHandleStore } from "#subagents/handles/store.js";
+import { getAgentRegistryState } from "#subagents/registry/state.js";
 import { createLogger, logError } from "#internal/logging.js";
 import { cancelRun, getWorld } from "#internal/workflow/runtime.js";
 import { BundleKey, type CompiledBundle } from "#runtime/sessions/runtime-context-keys.js";
@@ -42,7 +42,7 @@ export async function terminateChildSessionsStep(input: {
     return;
   }
 
-  const handles = (getAgentHandleStore(session.state)?.handles ?? []).filter(
+  const handles = (getAgentRegistryState(session.state)?.handles ?? []).filter(
     (handle) => !isAttachedRemoteSession(handle.identity),
   );
   const hasRemoteHandle = handles.some(

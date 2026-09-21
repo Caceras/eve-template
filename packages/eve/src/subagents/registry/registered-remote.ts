@@ -1,6 +1,6 @@
 import { EVE_SESSION_ROUTE_PATH } from "#protocol/routes.js";
 import type { DynamicRemoteAgentConfig } from "#runtime/subagents/dynamic-remote-agent-config.js";
-import type { AgentIdentity } from "#subagents/handles/store.js";
+import type { AgentIdentity } from "#subagents/registry/state.js";
 
 export function registeredRemoteConfig(
   identity: AgentIdentity,

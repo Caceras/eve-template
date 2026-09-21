@@ -64,10 +64,12 @@ the workflow claim protocol.
   and sandbox configuration. Dynamic aliases can refer to them, while new remote
   endpoints need no compiled declaration.
 
-The [registry provider](../packages/eve/src/context/agent-registry.ts) owns a
-step-local working view of the existing
-[handle store](../packages/eve/src/subagents/handles/store.ts). Registration metadata
-travels with handle identity through reservation, dispatch, and settlement.
+The [agent registry](../packages/eve/src/subagents/registry/registry.ts) owns
+registrations and invocation transitions in one collection. Its
+[context provider](../packages/eve/src/context/providers/agent-registry.ts) binds
+that collection to a step and commits it with the session. Registration metadata
+travels with each entry through reservation, dispatch, and settlement. The existing
+persisted key and shape remain stable so active sessions retain their addresses.
 Ordinary calls reuse the [background task executor](../packages/eve/src/execution/tasks/parent/tool-execution.ts),
 including its admission, rollback, cancellation, and result-delivery machinery.
 There is no second persisted registry or separate agent execution loop.
@@ -79,14 +81,14 @@ The model sees the key, description, handle ID, and execution state, without rem
 routing coordinates. `available` describes the absence of an active invocation;
 it does not assert network health.
 
-| Boundary                           | Semantics                                                                                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Callback mutation                  | Later code in the same step sees the new state immediately.                                                                               |
-| Successful harness step            | Provider commit persists the handle store with session state. A tool exception reported as a tool result does not undo earlier mutations. |
-| Failed or cancelled step           | Existing provider rollback and accepted-background-task retention apply. Immediate visibility is not a separate durable commit.           |
-| `session.started` / `step.started` | Mutations enter the next model request before its context is frozen.                                                                      |
-| Tool completion                    | The next eligible request advertises changes after required tool results. The returned tool value does not control advertisement.         |
-| Resume / compaction                | Current persisted handles reconstruct the advertisement. Removal can publish an empty listing; unchanged listings are not repeated.       |
+| Boundary                           | Semantics                                                                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Callback mutation                  | Later code in the same step sees the new state immediately.                                                                           |
+| Successful harness step            | Provider commit persists the registry with session state. A tool exception reported as a tool result does not undo earlier mutations. |
+| Failed or cancelled step           | Existing provider rollback and accepted-background-task retention apply. Immediate visibility is not a separate durable commit.       |
+| `session.started` / `step.started` | Mutations enter the next model request before its context is frozen.                                                                  |
+| Tool completion                    | The next eligible request advertises changes after required tool results. The returned tool value does not control advertisement.     |
+| Resume / compaction                | Current persisted handles reconstruct the advertisement. Removal can publish an empty listing; unchanged listings are not repeated.   |
 
 Registration alone does not wake an idle session. Requests already in flight retain
 their snapshots; new calls resolve current membership. Static registration happens

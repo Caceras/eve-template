@@ -9,7 +9,7 @@ import {
 import { prepareOwnerAgentInvocation } from "#execution/tools/subagent/invoke-preparation.js";
 import { dispatchToClaimedAgentAddress } from "#subagents/handle-dispatch.js";
 import { startSubagent } from "#execution/tools/subagent/start.js";
-import { getAgentHandleStore, setAgentHandleStore } from "#subagents/handles/store.js";
+import { getAgentRegistryState, setAgentRegistryState } from "#subagents/registry/state.js";
 
 vi.mock("#execution/tools/subagent/invoke-preparation.js", () => ({
   prepareOwnerAgentInvocation: vi.fn(),
@@ -89,7 +89,7 @@ describe("blocking workflow agent continuation", () => {
       continuationToken: "parent-token",
       history: [],
       sessionId: "parent",
-      state: setAgentHandleStore(undefined, {
+      state: setAgentRegistryState(undefined, {
         handles: [{ phase: "registered", identity: { ...identity, registration } }],
       }),
     };
@@ -150,7 +150,7 @@ describe("blocking workflow agent continuation", () => {
       }),
     );
     expect(
-      getAgentHandleStore(readDurableSession(result.sessionState).state)?.handles,
+      getAgentRegistryState(readDurableSession(result.sessionState).state)?.handles,
     ).toContainEqual(
       expect.objectContaining({
         identity: expect.objectContaining({ registration }),
@@ -250,7 +250,7 @@ describe("blocking workflow agent continuation", () => {
       continuationToken: "parent-token",
       history: [],
       sessionId: "parent",
-      state: setAgentHandleStore(undefined, {
+      state: setAgentRegistryState(undefined, {
         handles: [{ address, identity, phase: "available" }],
       }),
     };
@@ -273,7 +273,9 @@ describe("blocking workflow agent continuation", () => {
       });
       expect(dispatched).toMatchObject({ agentId: identity.id, kind: "dispatched" });
       if (dispatched.kind !== "dispatched") throw new Error("Expected dispatch.");
-      const claimed = getAgentHandleStore(dispatched.sessionState.snapshot.session.state)?.handles;
+      const claimed = getAgentRegistryState(
+        dispatched.sessionState.snapshot.session.state,
+      )?.handles;
       expect(claimed).toEqual([
         expect.objectContaining({ identity, ownerId: "workflow-run-1", phase: "claimed" }),
       ]);
@@ -329,7 +331,7 @@ describe("blocking workflow agent continuation", () => {
       });
       previousSettlement = settlement;
       sessionState = settled.sessionState;
-      expect(getAgentHandleStore(sessionState.snapshot.session.state)?.handles).toEqual([
+      expect(getAgentRegistryState(sessionState.snapshot.session.state)?.handles).toEqual([
         { address, identity, phase: "available" },
       ]);
     }

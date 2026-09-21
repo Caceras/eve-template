@@ -81,9 +81,9 @@ import {
 import { activeTurnId } from "#harness/active-turn-id.js";
 import { registerWorkflowToolRun } from "#harness/workflow-tool-runs.js";
 import { getPendingCoordinationBatch } from "#harness/coordination.js";
-import { AGENT_HANDLES_STATE_KEY } from "#subagents/handles/store.js";
+import { AGENT_REGISTRY_STATE_KEY } from "#subagents/registry/state.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
-import { AgentRegistry, AgentRegistryKey } from "#context/agent-registry.js";
+import { AgentRegistry, AgentRegistryKey } from "#subagents/registry/registry.js";
 import { BackgroundToolExecutorKey } from "#harness/background-tools.js";
 import { PendingSkillAnnouncementKey } from "#context/dynamic-skill-lifecycle.js";
 import { deserializeContext, serializeContext } from "#context/serialize.js";
@@ -1324,7 +1324,7 @@ describe("createToolLoopHarness", () => {
     );
     const session = createTestSession({
       state: {
-        [AGENT_HANDLES_STATE_KEY]: {
+        [AGENT_REGISTRY_STATE_KEY]: {
           handles: [
             {
               address: {
@@ -1422,7 +1422,7 @@ describe("createToolLoopHarness", () => {
     const runStep = createToolLoopHarness(createTestConfig("conversation"));
     const session = createTestSession({
       state: {
-        [AGENT_HANDLES_STATE_KEY]: {
+        [AGENT_REGISTRY_STATE_KEY]: {
           handles: [
             {
               identity: {
@@ -1498,7 +1498,7 @@ describe("createToolLoopHarness", () => {
         },
       ],
       state: {
-        [AGENT_HANDLES_STATE_KEY]: {
+        [AGENT_REGISTRY_STATE_KEY]: {
           handles: [
             {
               address: {
@@ -2038,7 +2038,7 @@ describe("createToolLoopHarness", () => {
       ...parked.session,
       state: {
         ...parked.session.state,
-        [AGENT_HANDLES_STATE_KEY]: {
+        [AGENT_REGISTRY_STATE_KEY]: {
           handles: [
             {
               address: {
@@ -6868,7 +6868,7 @@ describe("createToolLoopHarness", () => {
       ...pending,
       state: {
         ...pending.state,
-        [AGENT_HANDLES_STATE_KEY]: {
+        [AGENT_REGISTRY_STATE_KEY]: {
           handles: [
             {
               address: {

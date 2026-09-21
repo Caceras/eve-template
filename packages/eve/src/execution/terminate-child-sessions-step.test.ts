@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AGENT_HANDLES_STATE_KEY, type AgentHandle } from "#subagents/handles/store.js";
+import { AGENT_REGISTRY_STATE_KEY, type AgentRegistryEntry } from "#subagents/registry/state.js";
 import type { DurableSessionState } from "#execution/durable-session-store.js";
 import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-step.js";
 import type { BackgroundWorkflowToolRun } from "#harness/workflow-tool-runs.js";
@@ -418,7 +418,7 @@ function runningHandle(input: {
   readonly id: string;
   readonly kind: AddressKind;
   readonly sessionId: string;
-}): AgentHandle {
+}): AgentRegistryEntry {
   return {
     address: makeAddress(input.kind, input.sessionId, input.credentialResolver),
     identity: makeIdentity(input.id),
@@ -437,7 +437,7 @@ function parkedHandle(input: {
   readonly id: string;
   readonly kind: AddressKind;
   readonly sessionId: string;
-}): AgentHandle {
+}): AgentRegistryEntry {
   return {
     address: makeAddress(input.kind, input.sessionId, input.credentialResolver),
     identity: makeIdentity(input.id),
@@ -449,7 +449,7 @@ function parkedHandle(input: {
 function startingHandle(input: {
   readonly id: string;
   readonly kind: LocalAddressKind;
-}): AgentHandle {
+}): AgentRegistryEntry {
   return {
     identity: makeIdentity(input.id),
     operation: {
@@ -485,7 +485,7 @@ function indexedTask(taskId: string): BackgroundWorkflowToolRun {
 }
 
 function makeSessionState(
-  handles: readonly AgentHandle[],
+  handles: readonly AgentRegistryEntry[],
   tasks: readonly BackgroundWorkflowToolRun[] = [],
 ): DurableSessionState {
   return {
@@ -506,9 +506,9 @@ function makeSessionState(
         sessionId: "parent-session",
         state:
           tasks.length === 0
-            ? { [AGENT_HANDLES_STATE_KEY]: { handles } }
+            ? { [AGENT_REGISTRY_STATE_KEY]: { handles } }
             : {
-                [AGENT_HANDLES_STATE_KEY]: { handles },
+                [AGENT_REGISTRY_STATE_KEY]: { handles },
                 "eve.workflowTool": { version: 3, runs: tasks },
               },
       },

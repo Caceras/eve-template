@@ -1,7 +1,7 @@
 import {
   registeredRemoteConfig,
   isAttachedRemoteSession,
-} from "#subagents/handles/registered-remote.js";
+} from "#subagents/registry/registered-remote.js";
 import { getPendingCoordinationBatch } from "#harness/coordination.js";
 import type { CancelTurnResult } from "#channel/types.js";
 import { deserializeContext } from "#context/serialize.js";
@@ -19,7 +19,7 @@ import {
   type BlockingWorkflowToolRun,
 } from "#harness/workflow-tool-runs.js";
 
-import { getAgentHandleStore, type AgentHandle } from "#subagents/handles/store.js";
+import { getAgentRegistryState, type AgentRegistryEntry } from "#subagents/registry/state.js";
 import { createLogger, logError } from "#internal/logging.js";
 import type { RuntimeSubagentRegistry } from "#runtime/subagents/registry.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
@@ -33,10 +33,10 @@ const CANCEL_RETRY_INITIAL_DELAY_MS = 250;
 const CANCEL_RETRY_MAX_DELAY_MS = 1_500;
 const log = createLogger("execution.cancel-descendant-turns");
 
-type RunningAgentHandle = Extract<AgentHandle, { phase: "claimed" | "running" }>;
+type RunningAgentRegistryEntry = Extract<AgentRegistryEntry, { phase: "claimed" | "running" }>;
 
 /**
- * Cancels every running delegated child recorded in the agent handle store
+ * Cancels every running delegated child recorded in the agent registry
  * and every workflow tool run the turn is waiting on.
  */
 export async function cancelDescendantTurnsStep(input: {
@@ -45,7 +45,7 @@ export async function cancelDescendantTurnsStep(input: {
 }): Promise<void> {
   "use step";
 
-  let running: readonly RunningAgentHandle[];
+  let running: readonly RunningAgentRegistryEntry[];
   let workflowToolRuns: readonly BlockingWorkflowToolRun[];
   try {
     const session = readDurableSession(input.sessionState);
@@ -55,8 +55,8 @@ export async function cancelDescendantTurnsStep(input: {
         input.sessionState.emissionState.turnId,
     );
     const workflowOwnerIds = new Set(workflowToolRuns.map((run) => run.address.runId));
-    running = (getAgentHandleStore(session.state)?.handles ?? []).filter(
-      (handle): handle is RunningAgentHandle =>
+    running = (getAgentRegistryState(session.state)?.handles ?? []).filter(
+      (handle): handle is RunningAgentRegistryEntry =>
         !isAttachedRemoteSession(handle.identity) &&
         (handle.phase === "running" ||
           (handle.phase === "claimed" && workflowOwnerIds.has(handle.ownerId))),
@@ -93,7 +93,7 @@ export async function cancelDescendantTurnsStep(input: {
 }
 
 async function cancelLocalDescendant(input: {
-  readonly handle: RunningAgentHandle;
+  readonly handle: RunningAgentRegistryEntry;
 }): Promise<void> {
   const { handle } = input;
   try {
@@ -123,7 +123,7 @@ async function cancelRemoteDescendant(input: {
     readonly ctx: ContextContainer;
     readonly registry: RuntimeSubagentRegistry["subagentsByNodeId"];
   }>;
-  readonly handle: RunningAgentHandle;
+  readonly handle: RunningAgentRegistryEntry;
 }): Promise<void> {
   const { handle } = input;
   if (handle.address.kind !== "agent/remote") {
@@ -167,7 +167,7 @@ async function cancelRemoteDescendant(input: {
   }
 }
 
-function readHandleCallId(handle: RunningAgentHandle): string | undefined {
+function readHandleCallId(handle: RunningAgentRegistryEntry): string | undefined {
   return handle.phase === "running" ? handle.operation.callId : handle.callId;
 }
 

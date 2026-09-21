@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextContainer, contextStorage } from "#context/container.js";
-import { AgentRegistry, AgentRegistryKey, agentRegistryProvider } from "#context/agent-registry.js";
+import { agentRegistryProvider } from "#context/providers/agent-registry.js";
+import { AgentRegistry, AgentRegistryKey } from "#subagents/registry/registry.js";
 import { buildBaseToolContext } from "#context/build-base-tool-context.js";
 import { SessionKey } from "#context/keys.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
@@ -10,12 +11,12 @@ import { startTaskRun, waitForTaskCommandOwner } from "#execution/tasks/parent/r
 import { setHarnessEmissionState } from "#harness/emission-state.js";
 import type { HarnessSession } from "#harness/types.js";
 import { defineTool } from "#tools/definition.js";
-import { getAgentHandleStore } from "#subagents/handles/store.js";
-import { applyTaskAgentHandleCommand } from "#subagents/handles/transitions.js";
+import { getAgentRegistryState } from "#subagents/registry/state.js";
+import { applySessionAgentRegistryCommand } from "#subagents/registry/transitions.js";
 import {
   projectRegisteredAgentViews,
   resolveAgentsAnnouncement,
-} from "#subagents/handles/prompt.js";
+} from "#subagents/registry/prompt.js";
 import {
   planAgentDispatch,
   resolveAgentInvocationAction,
@@ -91,11 +92,61 @@ describe("session agent registration", () => {
 
   it("automatically registers static agents without starting a task", async () => {
     const { registry, commit } = await scope();
-    expect(registry.handles).toMatchObject([
+    expect(registry.entries).toMatchObject([
       { phase: "registered", identity: { name: "researcher" } },
     ]);
-    expect(getAgentHandleStore((await commit()).state)?.handles).toEqual(registry.handles);
+    expect(getAgentRegistryState((await commit()).state)?.handles).toEqual(registry.entries);
     expect(startTaskRun).not.toHaveBeenCalled();
+  });
+
+  it("commits registration edits and invocation transitions from one collection", async () => {
+    const instance = await scope();
+    const ref = instance.registry.register(remote);
+    instance.registry.dispatch({
+      kind: "reserve",
+      identity: instance.registry.resolve(ref.id).identity,
+      operationId: "operation-1",
+      ownerId: "task-1",
+    });
+    instance.registry.update(ref, "Updated while starting");
+    instance.registry.dispatch({
+      kind: "confirm",
+      operationId: "operation-1",
+      ownerId: "task-1",
+      address: {
+        kind: "agent/remote",
+        sessionId: "remote-session",
+        url: remote.target.url,
+        callbackBaseUrl: "https://parent.example",
+      },
+    });
+    const resumed = await scope(JSON.parse(JSON.stringify(await instance.commit())));
+    expect(resumed.registry.resolve(ref.id)).toMatchObject({
+      phase: "claimed",
+      ownerId: "task-1",
+      identity: { registration: { description: "Updated while starting" } },
+      address: { sessionId: "remote-session" },
+    });
+    resumed.registry.dispatch({ kind: "release-owner", ownerId: "task-1" });
+    expect(resumed.registry.resolve(ref.id)).toMatchObject({
+      phase: "available",
+      identity: { registration: { description: "Updated while starting", visible: true } },
+      address: { sessionId: "remote-session" },
+    });
+    const again = await scope(JSON.parse(JSON.stringify(await resumed.commit())));
+    expect(again.registry.register({ ...remote, description: "Updated while starting" })).toEqual(
+      ref,
+    );
+  });
+
+  it("preserves the session on a read-only registry command", async () => {
+    const instance = await scope();
+    const committed = await instance.commit();
+    const registry = new AgentRegistry(instance.ctx, committed);
+    const entries = registry.entries;
+    expect(registry.dispatch({ kind: "read" })).toEqual({ kind: "ready" });
+    expect(registry.entries).toBe(entries);
+    expect(registry.commit(committed)).toBe(committed);
   });
 
   it("can explicitly register the root-copy destination", async () => {
@@ -148,7 +199,7 @@ describe("session agent registration", () => {
       }),
     );
     expect(waitForTaskCommandOwner).toHaveBeenCalledOnce();
-    expect(getAgentHandleStore((await instance.commit()).state)?.handles).toContainEqual(
+    expect(getAgentRegistryState((await instance.commit()).state)?.handles).toContainEqual(
       expect.objectContaining({
         phase: "reserved",
         identity: expect.objectContaining({
@@ -173,7 +224,7 @@ describe("session agent registration", () => {
     const view = resolveAgentsAnnouncement({
       messages: [],
       store: undefined,
-      agentViews: projectRegisteredAgentViews(resumed.registry.handles),
+      agentViews: projectRegisteredAgentViews(resumed.registry.entries),
     });
     expect(view).toContain("external-reviewer");
     expect(view).toContain("Reviews &lt;changes&gt;");
@@ -185,7 +236,7 @@ describe("session agent registration", () => {
     await instance.run(async (ctx) => {
       const handle = ctx.registerAgent(remote);
       ctx.updateAgent(handle, "Updated description");
-      expect(projectRegisteredAgentViews(instance.registry.handles)).toContainEqual(
+      expect(projectRegisteredAgentViews(instance.registry.entries)).toContainEqual(
         expect.objectContaining({ statusLine: expect.stringContaining("Updated description") }),
       );
       ctx.unregisterAgent(handle);
@@ -193,7 +244,7 @@ describe("session agent registration", () => {
         "Unknown or unregistered",
       );
       expect(
-        projectRegisteredAgentViews(instance.registry.handles).some(
+        projectRegisteredAgentViews(instance.registry.entries).some(
           (view) => view.id === handle.id,
         ),
       ).toBe(false);
@@ -225,17 +276,11 @@ describe("session agent registration", () => {
       target: { kind: "agent", name: "researcher" },
     });
     const identity = instance.registry.resolve(ref.id).identity;
-    instance.registry.replace(
-      instance.registry.handles.map((handle) =>
-        handle.identity.id === ref.id
-          ? { phase: "reserved", identity, operationId: "op", ownerId: "task" }
-          : handle,
-      ),
-    );
+    instance.registry.dispatch({ kind: "reserve", identity, operationId: "op", ownerId: "task" });
     instance.registry.unregister(ref);
     const request = {
       ctx: instance.ctx,
-      handles: instance.registry.handles,
+      handles: instance.registry.entries,
       input: { target: ref.id, message: "Continue" },
       invocationId: "call",
     };
@@ -248,7 +293,7 @@ describe("session agent registration", () => {
 
   it("does not restore removed static destinations on resume and allows discovery to replace entries", async () => {
     const instance = await scope();
-    for (const handle of instance.registry.handles)
+    for (const handle of instance.registry.entries)
       instance.registry.unregister({ id: handle.identity.id });
     for (let i = 0; i < 140; i++) {
       instance.registry.unregister(
@@ -256,7 +301,7 @@ describe("session agent registration", () => {
       );
     }
     const resumed = await scope(await instance.commit());
-    expect(resumed.registry.handles).toEqual([]);
+    expect(resumed.registry.entries).toEqual([]);
   });
 
   it("keeps registration idempotent after serialization removes undefined optional fields", async () => {
@@ -272,28 +317,28 @@ describe("session agent registration", () => {
     const ref = instance.registry.register(remote);
     let session = await instance.commit();
     const identity = instance.registry.resolve(ref.id).identity;
-    session = applyTaskAgentHandleCommand(session, {
+    session = applySessionAgentRegistryCommand(session, {
       kind: "reserve",
       identity,
       operationId: "op",
       ownerId: "task",
     }).session;
-    session = applyTaskAgentHandleCommand(session, {
+    session = applySessionAgentRegistryCommand(session, {
       kind: "remove",
       agentId: ref.id,
       ownerId: "task",
     }).session;
     expect(
-      getAgentHandleStore(session.state)?.handles.find((handle) => handle.identity.id === ref.id)
+      getAgentRegistryState(session.state)?.handles.find((handle) => handle.identity.id === ref.id)
         ?.phase,
     ).toBe("registered");
-    session = applyTaskAgentHandleCommand(session, {
+    session = applySessionAgentRegistryCommand(session, {
       kind: "reserve",
       identity,
       operationId: "op2",
       ownerId: "task2",
     }).session;
-    session = applyTaskAgentHandleCommand(session, {
+    session = applySessionAgentRegistryCommand(session, {
       kind: "confirm",
       operationId: "op2",
       ownerId: "task2",
@@ -305,13 +350,13 @@ describe("session agent registration", () => {
         credentialResolver: {},
       },
     }).session;
-    session = applyTaskAgentHandleCommand(session, {
+    session = applySessionAgentRegistryCommand(session, {
       kind: "remove",
       agentId: ref.id,
       ownerId: "task2",
     }).session;
     expect(
-      getAgentHandleStore(session.state)?.handles.find((handle) => handle.identity.id === ref.id),
+      getAgentRegistryState(session.state)?.handles.find((handle) => handle.identity.id === ref.id),
     ).toMatchObject({ phase: "available", address: { sessionId: "expired" } });
   });
 
@@ -320,7 +365,7 @@ describe("session agent registration", () => {
     const ref = instance.registry.register(remote);
     const action = resolveAgentInvocationAction({
       ctx: instance.ctx,
-      handles: instance.registry.handles,
+      handles: instance.registry.entries,
       input: { target: ref.id, message: "Review" },
       invocationId: "call",
     });
@@ -332,7 +377,7 @@ describe("session agent registration", () => {
     expect(
       resolveAgentInvocationAction({
         ctx: instance.ctx,
-        handles: instance.registry.handles,
+        handles: instance.registry.entries,
         input: { target: remote.key, message: "Review" },
         invocationId: "call",
       }),

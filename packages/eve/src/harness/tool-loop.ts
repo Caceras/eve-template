@@ -75,10 +75,10 @@ import type { HarnessToolDefinition } from "#harness/execute-tool.js";
 import { AgentRegistryKey } from "#context/agent-registry-key.js";
 import {
   projectRegisteredAgentViews,
-  projectParkedAgentHandles,
+  projectParkedAgentRegistryEntries,
   resolveAgentsAnnouncement,
-} from "#subagents/handles/prompt.js";
-import { getAgentHandleStore } from "#subagents/handles/store.js";
+} from "#subagents/registry/prompt.js";
+import { getAgentRegistryState } from "#subagents/registry/state.js";
 import type { InputRequest } from "#shared/input.js";
 import {
   hydrateSandboxAttachments,
@@ -1196,9 +1196,9 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         return failBoundaryEvent(error, emissionState);
       }
     }
-    const agentStore = getAgentHandleStore(session.state);
+    const agentStore = getAgentRegistryState(session.state);
     if (!hasUnansweredToolCall(messages)) {
-      const handles = ctx?.get(AgentRegistryKey)?.handles ?? agentStore?.handles ?? [];
+      const handles = ctx?.get(AgentRegistryKey)?.entries ?? agentStore?.handles ?? [];
       const taskViews = (await ctx?.get(BackgroundToolExecutorKey)?.readAgentViews?.()) ?? [];
       const hidden = new Set(
         handles
@@ -1206,7 +1206,7 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
           .map((handle) => handle.identity.id),
       );
       const views = [
-        ...projectParkedAgentHandles({ handles })
+        ...projectParkedAgentRegistryEntries({ handles })
           .filter((handle) => !hidden.has(handle.identity.id))
           .map((handle) => ({
             availability: "available" as const,

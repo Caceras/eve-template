@@ -1,14 +1,14 @@
 import {
   registeredRemoteConfig,
   isAttachedRemoteSession,
-} from "#subagents/handles/registered-remote.js";
+} from "#subagents/registry/registered-remote.js";
 import type { RuntimeSession } from "#subagents/handle-dispatch.js";
 import type { TaskExecutorCancel } from "#execution/tasks/parent/task-cancel.js";
 import { requestWorkflowTurnCancellation } from "#execution/workflow-runtime.js";
 import { cancelRemoteAgentTurn, resolveRemoteAgentForAction } from "#subagents/remote-dispatch.js";
 import { deserializeContext } from "#context/serialize.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
-import { getAgentHandleStore, type AgentHandle } from "#subagents/handles/store.js";
+import { getAgentRegistryState, type AgentRegistryEntry } from "#subagents/registry/state.js";
 import { readDurableSession, type DurableSessionState } from "#execution/durable-session-store.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
 import { createLogger, logError } from "#internal/logging.js";
@@ -49,8 +49,8 @@ async function cancelAgentInvocationOwner(input: {
   readonly serializedContext: Record<string, unknown>;
   readonly session: Pick<RuntimeSession, "state">;
 }): Promise<void> {
-  const handles = (getAgentHandleStore(input.session.state)?.handles ?? []).filter(
-    (candidate): candidate is Extract<AgentHandle, { phase: "claimed" }> =>
+  const handles = (getAgentRegistryState(input.session.state)?.handles ?? []).filter(
+    (candidate): candidate is Extract<AgentRegistryEntry, { phase: "claimed" }> =>
       candidate.phase === "claimed" &&
       candidate.ownerId === input.ownerId &&
       !isAttachedRemoteSession(candidate.identity),

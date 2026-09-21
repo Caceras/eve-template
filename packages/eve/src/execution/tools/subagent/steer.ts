@@ -1,4 +1,4 @@
-import { registeredRemoteConfig } from "#subagents/handles/registered-remote.js";
+import { registeredRemoteConfig } from "#subagents/registry/registered-remote.js";
 import type { ContextReader } from "#context/key.js";
 import { AuthKey } from "#context/keys.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
@@ -7,13 +7,13 @@ import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
 import type { JsonObject } from "#shared/json.js";
 import { createAgentContinuationBundle } from "#subagents/continuation-bundle.js";
 import { dispatchToClaimedAgentAddress } from "#subagents/handle-dispatch.js";
-import type { TaskOwnedAgentHandle } from "#subagents/handles/store.js";
+import type { TaskOwnedAgentEntry } from "#subagents/registry/state.js";
 import { normalizeRequestedOutputSchema } from "#subagents/invocation.js";
 import { resolveAgentInvocationAction } from "./invoke-preparation.js";
 
 export async function steerBackgroundAgent(input: {
   readonly ctx: ContextReader;
-  readonly handle: Extract<TaskOwnedAgentHandle, { phase: "claimed" }>;
+  readonly handle: Extract<TaskOwnedAgentEntry, { phase: "claimed" }>;
   readonly callId: string;
   readonly input: JsonObject;
   readonly session: HarnessSession;

@@ -40,7 +40,7 @@ export function resolveWorkflowAgentMetadata(
     });
   }
 
-  for (const handle of ctx.get(AgentRegistryKey)?.handles ?? []) {
+  for (const handle of ctx.get(AgentRegistryKey)?.entries ?? []) {
     const registration = handle.identity.registration;
     if (registration?.visible === true)
       agents.set(registration.key, {

@@ -3,7 +3,7 @@ import { type ContextContainer, contextStorage } from "#context/container.js";
 import type { FrameworkContextProvider } from "#context/provider.js";
 import { connectionProvider } from "#context/providers/connection.js";
 import { sandboxProvider } from "#context/providers/sandbox.js";
-import { agentRegistryProvider } from "#context/agent-registry.js";
+import { agentRegistryProvider } from "#context/providers/agent-registry.js";
 import { sessionProvider } from "#context/providers/session.js";
 
 /**

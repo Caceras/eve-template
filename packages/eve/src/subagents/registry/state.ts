@@ -3,9 +3,9 @@ import { z } from "#compiled/zod/index.js";
 import type { SessionStateMap } from "#harness/types.js";
 import type { AgentRegistration } from "#subagents/registration.js";
 
-import { AGENT_HANDLES_STATE_KEY } from "./state-key.js";
+import { AGENT_REGISTRY_STATE_KEY } from "./state-key.js";
 
-export { AGENT_HANDLES_STATE_KEY };
+export { AGENT_REGISTRY_STATE_KEY };
 
 const MAX_STATUS_LENGTH = 120;
 
@@ -102,7 +102,7 @@ export type AgentAddress =
  * owns one outstanding child turn, and `parked` retains an idle, resumable
  * child. A terminal child or dead dispatch leaves this union entirely.
  */
-export type TurnOwnedAgentHandle =
+export type TurnOwnedAgentEntry =
   | {
       readonly phase: "starting";
       readonly identity: AgentIdentity;
@@ -130,7 +130,7 @@ export type TurnOwnedAgentHandle =
  * retains the idle address between invocations. A terminal child leaves this
  * union entirely.
  */
-export type TaskOwnedAgentHandle =
+export type TaskOwnedAgentEntry =
   | {
       /** Fresh identity leased to one owner before the child's address is confirmed. */
       readonly phase: "reserved";
@@ -162,28 +162,29 @@ export type TaskOwnedAgentHandle =
  * but their lifecycle states and transitions are disjoint. Registration survives
  * settlement; an existing address is retained to prevent silent session replacement.
  */
-export type AgentHandle =
-  | TurnOwnedAgentHandle
-  | TaskOwnedAgentHandle
+export type AgentRegistryEntry =
+  | TurnOwnedAgentEntry
+  | TaskOwnedAgentEntry
   | {
       readonly phase: "registered";
       readonly identity: AgentIdentity & { readonly registration: AgentRegistration };
     };
 
 /** Lifecycle phase of a delegated agent handle. */
-export type AgentHandlePhase = AgentHandle["phase"];
+export type AgentRegistryPhase = AgentRegistryEntry["phase"];
 
 /** Session-state collection of destinations and delegated agent handles. */
-export interface AgentHandleStore {
-  readonly handles: readonly AgentHandle[];
+export interface AgentRegistryState {
+  /** Persisted field name retained for existing session snapshots. */
+  readonly handles: readonly AgentRegistryEntry[];
   readonly registrationSequence?: number;
   readonly registrationsInitialized?: boolean;
 }
 
-export const EMPTY_AGENT_HANDLE_STORE: AgentHandleStore = { handles: [] };
+export const EMPTY_AGENT_REGISTRY_STATE: AgentRegistryState = { handles: [] };
 
-/** One serialized owner-lease mutation against the shared agent handle store. */
-export type AgentHandleStoreCommand =
+/** One serialized owner-lease mutation against the shared agent registry. */
+export type AgentRegistryCommand =
   | { readonly kind: "read" }
   | {
       readonly identity: AgentIdentity;
@@ -210,10 +211,10 @@ export type AgentHandleStoreCommand =
   | { readonly agentId: string; readonly kind: "remove"; readonly ownerId: string }
   | { readonly kind: "release-owner"; readonly ownerId: string };
 
-export type AgentHandleStoreCommandResult =
-  | { readonly kind: "ready"; readonly handle?: TaskOwnedAgentHandle }
-  | { readonly kind: "busy"; readonly handle: AgentHandle }
-  | { readonly kind: "mismatch"; readonly handle: AgentHandle }
+export type AgentRegistryCommandResult =
+  | { readonly kind: "ready"; readonly handle?: TaskOwnedAgentEntry }
+  | { readonly kind: "busy"; readonly handle: AgentRegistryEntry }
+  | { readonly kind: "mismatch"; readonly handle: AgentRegistryEntry }
   | { readonly kind: "unknown" };
 
 const nonEmptyString = z.string().min(1);
@@ -285,42 +286,39 @@ const addressSchema: z.ZodType<AgentAddress> = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const agentHandleStoreCommandSchema: z.ZodType<AgentHandleStoreCommand> = z.discriminatedUnion(
-  "kind",
-  [
-    z.strictObject({ kind: z.literal("read") }),
-    z.strictObject({
-      identity: identitySchema,
-      callId: nonEmptyString.optional(),
-      kind: z.literal("reserve"),
-      operationId: nonEmptyString,
-      ownerId: nonEmptyString,
-    }),
-    z.strictObject({
-      address: addressSchema,
-      kind: z.literal("confirm"),
-      operationId: nonEmptyString,
-      ownerId: nonEmptyString,
-    }),
-    z.strictObject({
-      agentId: nonEmptyString,
-      callId: nonEmptyString.optional(),
-      expectedTarget: z.enum(["local", "remote"]),
-      invokedName: nonEmptyString,
-      kind: z.literal("claim"),
-      operationId: nonEmptyString,
-      ownerId: nonEmptyString,
-    }),
-    z.strictObject({
-      agentId: nonEmptyString,
-      kind: z.literal("remove"),
-      ownerId: nonEmptyString,
-    }),
-    z.strictObject({ kind: z.literal("release-owner"), ownerId: nonEmptyString }),
-  ],
-);
+const agentRegistryCommandSchema: z.ZodType<AgentRegistryCommand> = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("read") }),
+  z.strictObject({
+    identity: identitySchema,
+    callId: nonEmptyString.optional(),
+    kind: z.literal("reserve"),
+    operationId: nonEmptyString,
+    ownerId: nonEmptyString,
+  }),
+  z.strictObject({
+    address: addressSchema,
+    kind: z.literal("confirm"),
+    operationId: nonEmptyString,
+    ownerId: nonEmptyString,
+  }),
+  z.strictObject({
+    agentId: nonEmptyString,
+    callId: nonEmptyString.optional(),
+    expectedTarget: z.enum(["local", "remote"]),
+    invokedName: nonEmptyString,
+    kind: z.literal("claim"),
+    operationId: nonEmptyString,
+    ownerId: nonEmptyString,
+  }),
+  z.strictObject({
+    agentId: nonEmptyString,
+    kind: z.literal("remove"),
+    ownerId: nonEmptyString,
+  }),
+  z.strictObject({ kind: z.literal("release-owner"), ownerId: nonEmptyString }),
+]);
 
-const turnOwnedAgentHandleSchema: z.ZodType<TurnOwnedAgentHandle> = z.discriminatedUnion("phase", [
+const turnOwnedAgentEntrySchema: z.ZodType<TurnOwnedAgentEntry> = z.discriminatedUnion("phase", [
   z.looseObject({
     identity: identitySchema,
     operation: startOperationSchema,
@@ -341,7 +339,7 @@ const turnOwnedAgentHandleSchema: z.ZodType<TurnOwnedAgentHandle> = z.discrimina
   }),
 ]);
 
-const taskOwnedAgentHandleSchema: z.ZodType<TaskOwnedAgentHandle> = z.discriminatedUnion("phase", [
+const taskOwnedAgentEntrySchema: z.ZodType<TaskOwnedAgentEntry> = z.discriminatedUnion("phase", [
   z.looseObject({
     callId: nonEmptyString.optional(),
     identity: identitySchema,
@@ -364,25 +362,25 @@ const taskOwnedAgentHandleSchema: z.ZodType<TaskOwnedAgentHandle> = z.discrimina
   }),
 ]);
 
-const agentHandleSchema: z.ZodType<AgentHandle> = z.union([
-  turnOwnedAgentHandleSchema,
-  taskOwnedAgentHandleSchema,
+const agentRegistryEntrySchema: z.ZodType<AgentRegistryEntry> = z.union([
+  turnOwnedAgentEntrySchema,
+  taskOwnedAgentEntrySchema,
   z.looseObject({
     phase: z.literal("registered"),
     identity: identitySchema.extend({ registration: identitySchema.shape.registration.unwrap() }),
   }),
 ]);
 
-const agentHandleStoreSchema: z.ZodType<AgentHandleStore> = z
+const agentRegistryStateSchema: z.ZodType<AgentRegistryState> = z
   .looseObject({
-    handles: z.array(agentHandleSchema),
+    handles: z.array(agentRegistryEntrySchema),
     registrationSequence: z.number().int().nonnegative().optional(),
     registrationsInitialized: z.boolean().optional(),
   })
   .refine(
     (store) =>
       new Set(store.handles.map((handle) => handle.identity.id)).size === store.handles.length,
-    { message: "Agent handle ids must be unique." },
+    { message: "Agent registry ids must be unique." },
   );
 
 /** Derives the model-visible agent id from the first start operation. */
@@ -397,72 +395,77 @@ export function formatAgentStatus(output: unknown): string {
 }
 
 /**
- * Validates one agent handle store about to be persisted, returning the
+ * Validates one agent registry about to be persisted, returning the
  * parsed value. Throws instead of writing an invalid store: transitions run
  * this on every write, which is the invariant that lets the schema-free
  * owner-side reader (`query.ts`) trust stored values without revalidating.
  */
-export function assertPersistableAgentHandleStore(store: AgentHandleStore): AgentHandleStore {
-  const parsed = agentHandleStoreSchema.safeParse(store);
+export function assertPersistableAgentRegistryState(store: AgentRegistryState): AgentRegistryState {
+  const parsed = agentRegistryStateSchema.safeParse(store);
   if (!parsed.success) {
-    throw new Error(`Refusing to persist a corrupt agent handle store: ${parsed.error.message}`);
+    throw new Error(`Refusing to persist a corrupt agent registry: ${parsed.error.message}`);
   }
   return parsed.data;
 }
 
 /** Parses one complete command before the session inbox routes it to the handle store. */
-export function parseAgentHandleStoreCommand(value: unknown): AgentHandleStoreCommand | undefined {
-  const parsed = agentHandleStoreCommandSchema.safeParse(value);
+export function parseAgentRegistryCommand(value: unknown): AgentRegistryCommand | undefined {
+  const parsed = agentRegistryCommandSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
 /**
- * Reads and validates the agent handle store from session state.
+ * Reads and validates the agent registry from session state.
  *
  * Returns `undefined` only when no store has been written. A present but
  * invalid store throws: treating corruption as absence would let the next
  * transition silently replace every delegated child's delivery coordinates.
  */
-export function getAgentHandleStore(
+export function getAgentRegistryState(
   state: SessionStateMap | undefined,
-): AgentHandleStore | undefined {
-  const raw = state?.[AGENT_HANDLES_STATE_KEY];
+): AgentRegistryState | undefined {
+  const raw = state?.[AGENT_REGISTRY_STATE_KEY];
   if (raw === undefined) {
     return undefined;
   }
-  const parsed = agentHandleStoreSchema.safeParse(raw);
+  const parsed = agentRegistryStateSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
-      `Corrupt agent handle store under session state key "${AGENT_HANDLES_STATE_KEY}": ${parsed.error.message}`,
+      `Corrupt agent registry under session state key "${AGENT_REGISTRY_STATE_KEY}": ${parsed.error.message}`,
     );
   }
   return parsed.data;
 }
 
-/** Writes the validated agent handle store under its single session-state key. */
-export function setAgentHandleStore(
+/** Writes the validated agent registry under its single session-state key. */
+export function setAgentRegistryState(
   state: SessionStateMap | undefined,
-  store: AgentHandleStore,
+  store: AgentRegistryState,
 ): SessionStateMap {
   return {
     ...state,
-    [AGENT_HANDLES_STATE_KEY]: assertPersistableAgentHandleStore(store),
+    [AGENT_REGISTRY_STATE_KEY]: assertPersistableAgentRegistryState(store),
   };
 }
 
 /** Writes a validated handle list to a session-shaped value. */
-export function writeHandles<Session extends { readonly state?: SessionStateMap }>(
+export function writeAgentRegistryEntries<Session extends { readonly state?: SessionStateMap }>(
   session: Session,
-  handles: readonly AgentHandle[],
+  handles: readonly AgentRegistryEntry[],
 ): Session {
   return {
     ...session,
-    state: setAgentHandleStore(session.state, { ...getAgentHandleStore(session.state), handles }),
+    state: setAgentRegistryState(session.state, {
+      ...getAgentRegistryState(session.state),
+      handles,
+    }),
   };
 }
 
 /** Keep advertised destinations after invocation lifetime ends. */
-export function retireAgentHandle(handle: AgentHandle): readonly AgentHandle[] {
+export function retireAgentRegistryEntry(
+  handle: AgentRegistryEntry,
+): readonly AgentRegistryEntry[] {
   const registration = handle.identity.registration;
   if (registration?.visible !== true) return [];
   if ("address" in handle)

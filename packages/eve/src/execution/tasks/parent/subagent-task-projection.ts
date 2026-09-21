@@ -30,7 +30,7 @@ export function projectSubagentTask(input: {
   const continuation = input.input.agentId;
   const handle =
     typeof continuation === "string"
-      ? input.ctx.get(AgentRegistryKey)?.handles.find((entry) => entry.identity.id === continuation)
+      ? input.ctx.get(AgentRegistryKey)?.entries.find((entry) => entry.identity.id === continuation)
       : undefined;
   if (handle?.phase === "registered") {
     const identity = createSubagentReceiptIdentity({

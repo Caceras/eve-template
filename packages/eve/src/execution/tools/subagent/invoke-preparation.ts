@@ -28,7 +28,7 @@ import {
   type RuntimeAgentHandleAction,
   type RuntimeSession,
 } from "#subagents/handle-dispatch.js";
-import { getAgentHandleStore, type AgentHandle } from "#subagents/handles/store.js";
+import { getAgentRegistryState, type AgentRegistryEntry } from "#subagents/registry/state.js";
 import { EVE_SESSION_ROUTE_PATH } from "#protocol/routes.js";
 import { getDynamicSubagentSelection } from "#context/dynamic-subagent-lifecycle.js";
 import {
@@ -73,7 +73,7 @@ export async function prepareOwnerAgentInvocation(input: {
     ctx,
     input: input.invocation,
     invocationId: input.invocationId,
-    handles: getAgentHandleStore(durableSession.state)?.handles,
+    handles: getAgentRegistryState(durableSession.state)?.handles,
     allowUnregistered: task !== undefined,
   });
   return await prepareActionDispatch({
@@ -111,13 +111,15 @@ export function planAgentDispatch(input: {
 }): OwnerAgentDispatchPlanEntry {
   const knownAgentIds = new Set(
     input.knownAgentIds ??
-      (getAgentHandleStore(input.session.state)?.handles ?? []).map((handle) => handle.identity.id),
+      (getAgentRegistryState(input.session.state)?.handles ?? []).map(
+        (handle) => handle.identity.id,
+      ),
   );
   const rawAgentId = input.action.input.agentId;
   const agentId =
     typeof rawAgentId === "string" && rawAgentId.trim() !== "" ? rawAgentId : undefined;
   if (agentId !== undefined && isAgentHandleAction(input.action)) {
-    const handle = getAgentHandleStore(input.session.state)?.handles.find(
+    const handle = getAgentRegistryState(input.session.state)?.handles.find(
       (entry) => entry.identity.id === agentId,
     );
     if (handle?.phase === "registered" || handle?.phase === "reserved")
@@ -187,7 +189,7 @@ function classifyFreshStart(input: {
     return { kind: "reject", result: createRecursiveAgentRootOnlyResult(action) };
   }
   if (action.kind === "remote-agent-call") {
-    const registration = getAgentHandleStore(input.session.state)?.handles.find(
+    const registration = getAgentRegistryState(input.session.state)?.handles.find(
       (handle) => handle.identity.id === action.input.agentId,
     )?.identity.registration;
     const destination = registration?.target;
@@ -267,7 +269,7 @@ export function resolveAgentInvocationAction(input: {
   readonly ctx: ContextReader;
   readonly input: AgentInvocationRequest["input"];
   readonly invocationId: string;
-  readonly handles?: readonly AgentHandle[];
+  readonly handles?: readonly AgentRegistryEntry[];
   readonly allowUnregistered?: boolean;
 }): RuntimeAgentDispatchRequest {
   const bundle = input.ctx.require(BundleKey);
