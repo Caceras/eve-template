@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isCompiledChannel } from "#channel/compiled-channel.js";
 import { getChannelActivityPresentation } from "#channel/activity-renderer.js";
 import { createActivitySnapshot, reduceActivityBatch } from "#execution/session-activity.js";
-import { mockSlackApi } from "#internal/testing/mocks/mock-slack-api.js";
+import { mockSlack } from "#internal/testing/mocks/mock-slack.js";
 import {
   buildSlackActivityRenderers,
   experimental_slackActivityRenderer,
@@ -235,7 +235,8 @@ describe("Slack status activity", () => {
   });
 
   it("passes the installation team to function bot tokens", async () => {
-    const slack = mockSlackApi();
+    const slack = mockSlack();
+    slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const tokenContext = vi.fn(() => "xoxb-team");
     const renderer = buildSlackActivityRenderers({
       api: { fetch: slack.fetch },
@@ -256,7 +257,8 @@ describe("Slack status activity", () => {
 
   it("suppresses duplicate provider writes", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const slack = mockSlackApi();
+    const slack = mockSlack();
+    slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const renderer = buildSlackActivityRenderers({
       api: { fetch: slack.fetch },
       botToken: undefined,
@@ -276,14 +278,18 @@ describe("Slack status activity", () => {
       state,
     });
     expect(slack.callsTo("assistant.threads.setStatus")).toHaveLength(1);
-    expect(slack.statuses()).toEqual([
-      { channelId: "C1", threadTs: "T1", status: "Working…", loadingMessages: ["Working…"] },
-    ]);
+    expect(slack.bodyOf("assistant.threads.setStatus")).toMatchObject({
+      channel_id: "C1",
+      thread_ts: "T1",
+      status: "Working…",
+      loading_messages: ["Working…"],
+    });
   });
 
   it("clears transient status on disposal", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const slack = mockSlackApi();
+    const slack = mockSlack();
+    slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const renderer = buildSlackActivityRenderers({
       api: { fetch: slack.fetch },
       botToken: undefined,
@@ -293,9 +299,10 @@ describe("Slack status activity", () => {
       destination: { channelId: "C1", threadTs: "T1" },
       state: { status: "Working…" },
     });
-    expect(slack.callsTo("assistant.threads.setStatus")[0]?.body).toMatchObject({ status: "" });
-    expect(slack.statuses()).toEqual([
-      { channelId: "C1", threadTs: "T1", status: "", loadingMessages: undefined },
-    ]);
+    const cleared = slack.bodyOf("assistant.threads.setStatus");
+    expect(cleared).toMatchObject({ channel_id: "C1", thread_ts: "T1", status: "" });
+    // Clearing sends no loading_messages, so Slack drops the indicator
+    // rather than showing an empty one.
+    expect(cleared.loading_messages).toBeUndefined();
   });
 });
