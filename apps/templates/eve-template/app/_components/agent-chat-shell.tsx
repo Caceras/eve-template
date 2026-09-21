@@ -324,7 +324,7 @@ export function AgentChatShell({
         </div>
 
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between px-2 py-2 md:px-3">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between px-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-3">
             <div className="pointer-events-auto flex items-center gap-1">
               <Button
                 aria-label="Open sidebar"
@@ -362,25 +362,29 @@ export function AgentChatShell({
           )}
           onClick={() => setMobileSidebarOpen(false)}
         />
-        {mobileSidebarOpen ? (
-          <div className="fixed inset-y-0 left-0 z-50 md:hidden">
-            <ChatSidebar
-              activeChatId={activeChatId}
-              chats={history}
-              className="w-[84vw] max-w-80"
-              hasMoreChats={Boolean(nextCursor)}
-              isLoadingChats={historyLoading}
-              isLoadingMore={loadingMore}
-              onDeleteChat={handleDeleteChat}
-              onLoadMoreChats={loadMoreChats}
-              onNavigate={handleSidebarNavigate}
-              onNewChat={startNewChat}
-              onSignIn={() => requestSignIn()}
-              setupStatus={setupStatusState}
-              viewer={viewerState}
-            />
-          </div>
-        ) : null}
+        <div
+          aria-hidden={!mobileSidebarOpen}
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:hidden",
+            mobileSidebarOpen ? "translate-x-0" : "pointer-events-none -translate-x-full",
+          )}
+        >
+          <ChatSidebar
+            activeChatId={activeChatId}
+            chats={history}
+            className="w-[86vw] max-w-[21rem] shadow-2xl"
+            hasMoreChats={Boolean(nextCursor)}
+            isLoadingChats={historyLoading}
+            isLoadingMore={loadingMore}
+            onDeleteChat={handleDeleteChat}
+            onLoadMoreChats={loadMoreChats}
+            onNavigate={handleSidebarNavigate}
+            onNewChat={startNewChat}
+            onSignIn={() => requestSignIn()}
+            setupStatus={setupStatusState}
+            viewer={viewerState}
+          />
+        </div>
 
         <SignInModal
           authMode={setupStatusState.authMode}
