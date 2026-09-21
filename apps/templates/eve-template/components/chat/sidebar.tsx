@@ -100,7 +100,7 @@ export function ChatSidebar({
             }}
             type="button"
           >
-            <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/eve.svg" />
+            <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/aegentica.svg" />
           </button>
           {onToggleSidebar ? (
             <Button
