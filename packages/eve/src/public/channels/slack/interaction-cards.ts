@@ -1,5 +1,9 @@
-import { postSlackApiJson, resolveSlackBotToken } from "#public/channels/slack/api-transport.js";
-import { buildAnsweredBlocks, isHitlAction } from "#public/channels/slack/hitl.js";
+import { callSlackApiJson, resolveSlackBotToken } from "#public/channels/slack/api-transport.js";
+import {
+  buildAnsweredBlocks,
+  findPromptBlocks,
+  isHitlAction,
+} from "#public/channels/slack/hitl.js";
 import {
   SLACK_CARD_SUBTEXT_MAX_LENGTH,
   truncateCardSubtext,
@@ -43,19 +47,6 @@ function buildAnsweredHitlMessageBlocks(input: {
     ...answeredBlocks,
     ...input.messageBlocks.slice(actionBlockIndex + 1),
   ];
-}
-
-function findPromptBlocks(blocks: readonly unknown[]): unknown[] {
-  const promptBlocks: unknown[] = [];
-  for (const block of blocks) {
-    if (!isObjectRecord(block)) continue;
-    const type = block.type;
-    if (type === "actions") break;
-    if (type === "section" || type === "context" || type === "divider" || type === "image") {
-      promptBlocks.push(block);
-    }
-  }
-  return promptBlocks;
 }
 
 function blockContainsActionId(block: unknown, actionId: string): boolean {
@@ -186,7 +177,9 @@ async function updateAnsweredCard(input: {
   const token = await resolveSlackBotToken(input.deps.config.credentials?.botToken, {
     teamId: input.installationTeamId,
   });
-  const response = await postSlackApiJson({
+  // Non-2xx raises SlackApiError, which names the method and carries
+  // Slack's parsed error body alongside the status.
+  await callSlackApiJson({
     api: input.deps.config.api,
     body: {
       channel: input.channelId,
@@ -197,5 +190,4 @@ async function updateAnsweredCard(input: {
     method: "chat.update",
     token,
   });
-  if (!response.ok) throw new Error(`Slack chat.update returned HTTP ${response.status}`);
 }

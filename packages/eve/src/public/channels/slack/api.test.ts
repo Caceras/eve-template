@@ -5,9 +5,10 @@ import { decodeSlackApiBody } from "#public/channels/slack/api-encoding.js";
 import { buildSlackBinding, buildSlackWorkspaceHandle } from "#public/channels/slack/api.js";
 import {
   callSlackApi,
-  postSlackApiJson,
+  callSlackApiJson,
   resolveSlackApiUrl,
   resolveSlackBotToken,
+  SlackApiError,
   type SlackBotTokenContext,
 } from "#public/channels/slack/api-transport.js";
 
@@ -1035,13 +1036,52 @@ describe("Slack Web API base URL", () => {
     expect(resolveSlackApiUrl({ url: "https://sim.example/api" })).toBe("https://sim.example/api/");
 
     for (const url of ["https://sim.example/api", "https://sim.example/api/"]) {
-      await postSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" });
+      await callSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" });
     }
 
     expect(requestedUrls(fetchMock)).toEqual([
       "https://sim.example/api/chat.update",
       "https://sim.example/api/chat.update",
     ]);
+  });
+
+  it("encodes the JSON-only surfaces as JSON and signs them with the bot token", async () => {
+    const apiFetch = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ ok: true }),
+    );
+
+    const response = await callSlackApiJson({
+      api: { url: "https://sim.example/api", fetch: apiFetch },
+      body: { channel: "C01", ts: "1700000000.000001", dropped: undefined },
+      method: "chat.update",
+      token: "xoxb-json",
+    });
+
+    expect(response).toEqual({ ok: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    const [url, init] = apiFetch.mock.calls[0] ?? [];
+    expect(String(url)).toBe("https://sim.example/api/chat.update");
+    expect(init?.headers).toMatchObject({
+      authorization: "Bearer xoxb-json",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({ channel: "C01", ts: "1700000000.000001" });
+  });
+
+  it("raises SlackApiError carrying the method and status on a non-2xx JSON call", async () => {
+    const apiFetch = vi.fn(async () =>
+      Response.json({ ok: false, error: "expired_trigger_id" }, { status: 500 }),
+    );
+
+    const rejection = callSlackApiJson({
+      api: { url: "https://sim.example/api", fetch: apiFetch },
+      body: { trigger_id: "T1", view: {} },
+      method: "views.open",
+      token: "xoxb-json",
+    });
+
+    await expect(rejection).rejects.toThrow(SlackApiError);
+    await expect(rejection).rejects.toMatchObject({ method: "views.open", status: 500 });
   });
 
   it("normalizes the parsed pathname rather than the raw string", () => {
@@ -1055,7 +1095,7 @@ describe("Slack Web API base URL", () => {
     for (const url of ["https://sim.example/api?fixture=demo", "https://sim.example/api#frag"]) {
       expect(() => resolveSlackApiUrl({ url })).toThrow(/query string or fragment/);
       await expect(
-        postSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" }),
+        callSlackApiJson({ api: { url }, body: {}, method: "chat.update", token: "xoxb" }),
       ).rejects.toThrow(/query string or fragment/);
       const { thread } = buildSlackBinding({
         api: { url },

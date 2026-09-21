@@ -3961,9 +3961,11 @@ describe("slackChannel() HITL interaction pipeline", () => {
       inputResponses: [{ requestId: "call_abc123", text: "approved with context" }],
     });
     expect(botToken).toHaveBeenCalledWith({ teamId: "T_INSTALLATION" });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.objectContaining({ body: expect.stringContaining('"channel":"D_REVIEW"') }),
+    const updateCall = fetchMock.mock.calls.find(
+      ([url]) => String(url) === "https://slack.com/api/chat.update",
+    );
+    expect(String((updateCall?.[1] as RequestInit | undefined)?.body)).toContain(
+      '"channel":"D_REVIEW"',
     );
   });
 

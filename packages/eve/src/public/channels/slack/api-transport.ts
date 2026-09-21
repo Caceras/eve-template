@@ -10,9 +10,12 @@
 import {
   callSlackApi as callSlackApiPrimitive,
   resolveSlackBotToken as resolveSlackBotTokenPrimitive,
+  SlackApiError,
   type SlackApiOptions,
   type SlackApiResponse as SlackPrimitiveApiResponse,
 } from "#compiled/@chat-adapter/slack/api.js";
+
+export { SlackApiError };
 
 /** Slack app installation workspace available when eve resolves a bot token. */
 export interface SlackBotTokenContext {
@@ -166,24 +169,20 @@ export function createSlackApiOptions(
 }
 
 /**
- * One hand-rolled JSON POST to a Slack Web API method, for the two
- * surfaces (`views.open`, the answered-card `chat.update`) whose payloads
- * Slack only accepts as JSON.
+ * JSON-encoded POST to a Slack Web API method, for the two surfaces
+ * (`views.open`, the answered-card `chat.update`) whose payloads Slack
+ * only accepts as JSON. Throws {@link SlackApiError} on a non-2xx
+ * response; an `{ ok: false }` body comes back for the caller to inspect.
  */
-export async function postSlackApiJson(input: {
+export async function callSlackApiJson(input: {
   readonly api: SlackApiConfig | undefined;
-  readonly body: unknown;
+  readonly body: Record<string, unknown>;
   readonly method: string;
   readonly token: string;
-}): Promise<Response> {
-  const url = new URL(input.method, resolveSlackApiUrl(input.api)).toString();
-  return (input.api?.fetch ?? fetch)(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${input.token}`,
-      "content-type": "application/json; charset=utf-8",
-    },
-    body: JSON.stringify(input.body),
+}): Promise<SlackApiResponse> {
+  return callSlackApiPrimitive(input.method, input.body, {
+    ...createSlackApiOptions(input.token, {}, input.api),
+    contentType: "json",
   });
 }
 

@@ -12,6 +12,7 @@
  * UX grounds without changing the read path.
  */
 
+import { readSlackTextObject } from "#public/channels/slack/inbound-content.js";
 import {
   truncateCardBodyText,
   SLACK_SECTION_TEXT_MAX_LENGTH,
@@ -19,6 +20,7 @@ import {
   truncatePlainText,
   truncateSectionText,
 } from "#public/channels/slack/limits.js";
+import { isObject } from "#shared/guards.js";
 import {
   type InputRequest,
   parseInputResponse,
@@ -441,6 +443,31 @@ function toCardButtonOption(option: InputRequestOption): CardButtonOption {
     return { ...result, style: option.style };
   }
   return result;
+}
+
+/**
+ * Blocks a posted HITL card rendered before its actions block — the
+ * prompt as the user sees it. The actions block terminates the scan
+ * because everything after it belongs to the widget, not the prompt.
+ */
+export function findPromptBlocks(blocks: readonly unknown[]): unknown[] {
+  const promptBlocks: unknown[] = [];
+  for (const block of blocks) {
+    if (!isObject(block)) continue;
+    const type = block.type;
+    if (type === "actions") break;
+    if (type === "section" || type === "context" || type === "divider" || type === "image") {
+      promptBlocks.push(block);
+    }
+  }
+  return promptBlocks;
+}
+
+/** Plain text of the leading prompt block, when it carries any. */
+export function readPromptTextFromBlocks(blocks: readonly unknown[]): string | undefined {
+  const prompt = findPromptBlocks(blocks)[0] as { text?: unknown } | undefined;
+  const text = readSlackTextObject(prompt?.text);
+  return text.length > 0 ? text : undefined;
 }
 
 /**

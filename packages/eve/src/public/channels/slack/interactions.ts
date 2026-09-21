@@ -16,7 +16,11 @@ import {
   buildSlackWorkspaceHandle,
   slackContinuationToken,
 } from "#public/channels/slack/api.js";
-import { postSlackApiJson, resolveSlackBotToken } from "#public/channels/slack/api-transport.js";
+import {
+  callSlackApiJson,
+  resolveSlackBotToken,
+  SlackApiError,
+} from "#public/channels/slack/api-transport.js";
 import { buildSlackAuthContext } from "#public/channels/slack/auth.js";
 import {
   buildFreeformModalView,
@@ -27,9 +31,9 @@ import {
   HITL_FREEFORM_MODAL_CALLBACK_ID,
   isFreeformAction,
   isHitlAction,
+  readPromptTextFromBlocks,
   type HitlFreeformModalMetadata,
 } from "#public/channels/slack/hitl.js";
-import { readSlackTextObject } from "#public/channels/slack/inbound-content.js";
 import {
   updateAnsweredFreeformCard,
   updateAnsweredHitlCard,
@@ -179,33 +183,6 @@ function extractActionLabel(action: Record<string, unknown>): string | undefined
   const buttonText = (action.text as { text?: unknown } | undefined)?.text;
   if (typeof buttonText === "string" && buttonText.length > 0) return buttonText;
   return undefined;
-}
-
-function findPromptBlock(blocks: readonly unknown[]): unknown {
-  return findPromptBlocks(blocks)[0];
-}
-
-function findPromptBlocks(blocks: readonly unknown[]): unknown[] {
-  const promptBlocks: unknown[] = [];
-  for (const block of blocks) {
-    if (typeof block !== "object" || block === null) {
-      continue;
-    }
-    const type = (block as { type?: unknown }).type;
-    if (type === "actions") {
-      break;
-    }
-    if (type === "section" || type === "context" || type === "divider" || type === "image") {
-      promptBlocks.push(block);
-    }
-  }
-  return promptBlocks;
-}
-
-function readPromptTextFromBlocks(blocks: readonly unknown[]): string | undefined {
-  const prompt = findPromptBlock(blocks) as { text?: unknown } | undefined;
-  const text = readSlackTextObject(prompt?.text);
-  return text.length > 0 ? text : undefined;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -572,14 +549,18 @@ async function openFreeformModal(input: {
     teamId: input.interaction.installationTeamId,
   });
 
-  const response = await postSlackApiJson({
-    api: input.deps.config.api,
-    body: { trigger_id: triggerId, view },
-    method: "views.open",
-    token,
-  });
-  if (!response.ok) {
-    log.error("Slack views.open returned non-2xx", { status: response.status });
+  // Slack retries a non-2xx ack, so a modal that fails to open must not
+  // become one — the ack stands and the failure goes to the log.
+  try {
+    await callSlackApiJson({
+      api: input.deps.config.api,
+      body: { trigger_id: triggerId, view },
+      method: "views.open",
+      token,
+    });
+  } catch (error) {
+    if (!(error instanceof SlackApiError)) throw error;
+    log.error("Slack views.open returned non-2xx", { status: error.status });
   }
 }
 
