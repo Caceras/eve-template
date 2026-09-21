@@ -58,10 +58,11 @@ The generator deliberately removes the copied Chat Template lockfile because the
 ## Reference surfaces
 
 - `/` — persisted Chat Template experience
-- `/capabilities` — compiled Eve agent-info plus the current official registry
-- `/native` — current official `channel/web` scaffold using `useEveAgent`
+- `/capabilities` — Agent: live runtime, included scaffolds, and the official installable Eve surface
+- `/native` — Web: current official `channel/web` scaffold using `useEveAgent`
+- `/session` — Sessions: inspect and control durable Eve sessions
 
-The capabilities page is intentionally not a hand-maintained list. Runtime capabilities come from `Client.info()` (agent-info v4), while installable official integrations are generated from `apps/docs/registry.json`.
+The Agent page separates three truths: **Active** capabilities from `Client.info()` (agent-info v4), **Included** scaffolds present in this repo, and **Available** official integrations generated from `apps/docs/registry.json`.
 
 ## Security defaults
 
