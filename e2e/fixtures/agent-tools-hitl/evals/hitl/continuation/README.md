@@ -6,7 +6,7 @@ These evals exercise the real HTTP session, approval, tool, workflow, and event-
 
 These sessions explicitly select the scripted model with a fixture-only header. Other HITL evals keep the CI-selected model. The fixture has a one-million-output-token session limit; only the budget scripts report that much synthetic usage in one call.
 
-Start with [`evals/read.eval.ts`](./read.eval.ts): prepare a change, leave its approval pending, ask for a draft status, require the answer, then approve the original change. Every other regression follows that same conversation shape.
+Start with [`read.eval.ts`](./read.eval.ts): prepare a change, leave its approval pending, ask for a draft status, require the answer, then approve the original change. Every other regression follows that same conversation shape.
 
 ## What makes a passing answer
 
@@ -18,29 +18,28 @@ The eval saves each approval ID when it is first emitted. It does not infer dura
 
 Each link is one eval, with the user messages and expected outcome in the test body.
 
-| While earlier input remains unanswered       | Expected current outcome                           | Eval                                                      |
-| -------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| Read                                         | Report the returned status                         | [read](./read.eval.ts)                                    |
-| Write                                        | Confirm exactly one write                          | [write](./write.eval.ts)                                  |
-| Parallel read and write                      | Report both results                                | [parallel tools](./parallel-tools.eval.ts)                |
-| Tool throws                                  | Explain the actual error                           | [tool error](./tool-error.eval.ts)                        |
-| Invalid tool input                           | Correct the input and report the result            | [invalid input](./invalid-input.eval.ts)                  |
-| Approval requires an authenticated responder | Finish an unrelated read                           | [authorized pending](./authorized-pending.eval.ts)        |
-| Approve a separate change                    | Execute it, read, and reply                        | [approve sibling](./approve-sibling.eval.ts)              |
-| Cancel a separate change                     | Keep it unexecuted, read, and reply                | [cancel sibling](./cancel-sibling.eval.ts)                |
-| Authenticated approval of a separate change  | Settle authorization, read, and reply              | [authorized sibling](./authorized-sibling.eval.ts)        |
-| Answer a question                            | Continue that question's work and reply            | [answer question](./answer-question.eval.ts)              |
-| Workflow completes                           | Interpret its result                               | [workflow result](./workflow-result.eval.ts)              |
-| Runtime task control completes               | Explain its result                                 | [runtime control](./runtime-control.eval.ts)              |
-| Background task starts                       | Acknowledge its working receipt                    | [background receipt](./background-receipt.eval.ts)        |
-| Provider executes a tool                     | Interpret the provider's result                    | [provider result](./provider-result.eval.ts)              |
-| Only multiple questions remain               | Finish a new read without silently answering them  | [multiple questions](./multiple-questions.eval.ts)        |
-| One of two approvals is submitted            | Finish a new tool request                          | [partial approval, tool](./partial-approval-tool.eval.ts) |
-| One of two approvals is submitted            | Finish a new text-only request                     | [partial approval, text](./partial-approval-text.eval.ts) |
-| User repeats a resolved approval response    | Process the new input without authorizing old work | [stale response](./stale-response.eval.ts)                |
-| User grants another budget window            | Run the tool and ask for the next needed grant     | [budget grant](./budget-grant.eval.ts)                    |
-
-| Two approvals are answered in separate requests | Resolve both and reply | [separate approval responses](./separate-approval-responses.eval.ts) |
+| While earlier input remains unanswered          | Expected current outcome                           | Eval                                                                 |
+| ----------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------- |
+| Read                                            | Report the returned status                         | [read](./read.eval.ts)                                               |
+| Write                                           | Confirm exactly one write                          | [write](./write.eval.ts)                                             |
+| Parallel read and write                         | Report both results                                | [parallel tools](./parallel-tools.eval.ts)                           |
+| Tool throws                                     | Explain the actual error                           | [tool error](./tool-error.eval.ts)                                   |
+| Invalid tool input                              | Correct the input and report the result            | [invalid input](./invalid-input.eval.ts)                             |
+| Approval requires an authenticated responder    | Finish an unrelated read                           | [authorized pending](./authorized-pending.eval.ts)                   |
+| Approve a separate change                       | Execute it, read, and reply                        | [approve sibling](./approve-sibling.eval.ts)                         |
+| Cancel a separate change                        | Keep it unexecuted, read, and reply                | [cancel sibling](./cancel-sibling.eval.ts)                           |
+| Authenticated approval of a separate change     | Settle authorization, read, and reply              | [authorized sibling](./authorized-sibling.eval.ts)                   |
+| Answer a question                               | Continue that question's work and reply            | [answer question](./answer-question.eval.ts)                         |
+| Workflow completes                              | Interpret its result                               | [workflow result](./workflow-result.eval.ts)                         |
+| Runtime task control completes                  | Explain its result                                 | [runtime control](./runtime-control.eval.ts)                         |
+| Background task starts                          | Acknowledge its working receipt                    | [background receipt](./background-receipt.eval.ts)                   |
+| Provider executes a tool                        | Interpret the provider's result                    | [provider result](./provider-result.eval.ts)                         |
+| Only multiple questions remain                  | Finish a new read without silently answering them  | [multiple questions](./multiple-questions.eval.ts)                   |
+| One of two approvals is submitted               | Finish a new tool request                          | [partial approval, tool](./partial-approval-tool.eval.ts)            |
+| One of two approvals is submitted               | Finish a new text-only request                     | [partial approval, text](./partial-approval-text.eval.ts)            |
+| User repeats a resolved approval response       | Process the new input without authorizing old work | [stale response](./stale-response.eval.ts)                           |
+| User grants another budget window               | Run the tool and ask for the next needed grant     | [budget grant](./budget-grant.eval.ts)                               |
+| Two approvals are answered in separate requests | Resolve both and reply                             | [separate approval responses](./separate-approval-responses.eval.ts) |
 
 Fourteen `*.control.eval.ts` conversations cover the same tool paths without an older approval, text-only replies, resolving the only approval, approving both calls together, and preserving a same-turn approval beside a workflow.
 
