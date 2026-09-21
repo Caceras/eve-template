@@ -4,5 +4,5 @@ import { betterAuthEveAuth, passwordEveAuth } from "@/lib/eve-auth";
 
 export default eveChannel({
   auth: [betterAuthEveAuth, passwordEveAuth, vercelOidc(), localDev()],
-  uploadPolicy: "disabled",
+  uploadPolicy: { allowedMediaTypes: ["image/*", "application/pdf", "text/*"], maxBytes: 10 * 1024 * 1024 },
 });

@@ -1,5 +1,5 @@
 {
-  "name": "eve-chat-template",
+  "name": "eve-template",
   "version": "0.0.0",
   "type": "module",
   "imports": {
@@ -18,7 +18,11 @@
     "typecheck": "next typegen && tsgo --noEmit -p tsconfig.json",
     "build:eve": "eve build",
     "dev:eve": "eve dev",
-    "start:eve": "eve start"
+    "start:eve": "eve start",
+    "eval": "eve eval",
+    "eve:info": "eve info",
+    "eve:surface": "node scripts/sync-eve-surface.mjs",
+    "eve:surface:check": "node scripts/check-eve-surface.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.1.0",
@@ -40,7 +44,7 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "drizzle-orm": "0.45.2",
-    "eve": "^0.54.2",
+    "eve": "0.63.0",
     "lucide-react": "1.33.0",
     "next": "16.3.4",
     "radix-ui": "1.6.7",
@@ -62,5 +66,6 @@
     "microsandbox": "^0.5.10",
     "typescript": "7.0.2"
   },
-  "packageManager": "pnpm@12.4.2"
+  "packageManager": "pnpm@12.4.2",
+  "description": "Ultimate Eve reference template: the official chat template plus the current public Eve surface."
 }
