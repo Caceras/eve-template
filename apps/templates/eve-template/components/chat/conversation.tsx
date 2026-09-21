@@ -24,7 +24,7 @@ export function ChatConversationContent({
 }: ComponentProps<typeof StickToBottom.Content>) {
   return (
     <StickToBottom.Content
-      className={cn("mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 sm:px-6", className)}
+      className={cn("mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 pb-8 pt-3 sm:gap-6 sm:px-6 sm:pb-10 sm:pt-5", className)}
       {...props}
     />
   );
@@ -42,7 +42,7 @@ export function ChatScrollButton({ className, ...props }: ComponentProps<typeof 
     <Button
       aria-label="Scroll to latest message"
       className={cn(
-        "absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full shadow-sm",
+        "absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border-black/[0.06] bg-background/90 shadow-md backdrop-blur-xl",
         className,
       )}
       onClick={handleScrollToBottom}
