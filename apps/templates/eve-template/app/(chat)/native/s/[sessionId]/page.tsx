@@ -1,5 +1,7 @@
 import { NativeAgentChat } from "@/app/_components/native-agent-chat";
 
+export const instant = false;
+
 export default async function NativeWebChatSessionPage({
   params,
 }: {
