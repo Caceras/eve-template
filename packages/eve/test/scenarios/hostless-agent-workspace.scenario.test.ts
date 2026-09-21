@@ -41,7 +41,14 @@ describe("hostless agent workspace", () => {
       name: "hostless-agent-workspace",
     });
     await runPnpmCommand({
-      args: ["exec", "vercel", "build", "--yes"],
+      args: [
+        "exec",
+        "vercel",
+        "build",
+        "--yes",
+        "--build-env",
+        "EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM=1",
+      ],
       cwd: app.appRoot,
       env: { ...process.env, EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM: "1" },
     });
