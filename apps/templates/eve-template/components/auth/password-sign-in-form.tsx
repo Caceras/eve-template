@@ -51,7 +51,7 @@ export function PasswordSignInForm({
   }
 
   return (
-    <form className="space-y-3" onSubmit={handleSubmit}>
+    <form className="space-y-3.5" onSubmit={handleSubmit}>
       <Input
         aria-label="Password"
         autoComplete="current-password"
@@ -59,6 +59,8 @@ export function PasswordSignInForm({
         disabled={pending}
         id="eve-chat-password"
         onChange={(event) => setPassword(event.target.value)}
+        className="h-11"
+        placeholder="Password"
         type="password"
         value={password}
       />
@@ -67,7 +69,7 @@ export function PasswordSignInForm({
           {error}
         </p>
       ) : null}
-      <Button aria-busy={pending} className="h-11 w-full" disabled={pending} type="submit">
+      <Button aria-busy={pending} className="h-11 w-full rounded-lg" disabled={pending} type="submit">
         {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
         {pending ? "Signing in..." : "Continue"}
       </Button>
