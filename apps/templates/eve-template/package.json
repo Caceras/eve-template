@@ -70,5 +70,8 @@
     "typescript": "7.0.2"
   },
   "packageManager": "pnpm@12.4.2",
-  "description": "Ultimate Eve reference template: the official chat template plus the current public Eve surface."
+  "description": "Ultimate Eve reference template: the official chat template plus the current public Eve surface.",
+  "engines": {
+    "node": ">=24"
+  }
 }
