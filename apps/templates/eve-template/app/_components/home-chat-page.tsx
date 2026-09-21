@@ -9,7 +9,6 @@ import {
 } from "@/app/_components/agent-chat";
 import { useChatShell } from "@/app/_components/chat-shell-context";
 import { ChatComposer } from "@/components/chat/composer";
-import { TemplateFooterLinks } from "@/components/chat/template-footer-links";
 import { getChatMessageLengthError } from "@/lib/chat/limits";
 import { createProvisionalChatId, writePendingChatMessage } from "@/lib/chat/provisional-chat";
 import type { SetupStatus } from "@/lib/chat/types";
@@ -127,8 +126,8 @@ export function HomeChatPage() {
         <ErrorToast message={toastError} onDismiss={() => setDismissedError(toastError)} />
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col justify-between px-4 pt-8 pb-4 sm:px-6 sm:pb-6">
-        <div className="flex min-h-0 flex-1 items-center justify-center pb-16 sm:pb-[10vh]">
+      <div className="flex min-h-0 flex-1 px-4 sm:px-6">
+        <div className="flex min-h-0 flex-1 items-center justify-center pb-[8vh]">
           <div className="w-full max-w-2xl space-y-6 sm:space-y-7">
             <h1 className="flex justify-center">
               <img
@@ -153,7 +152,6 @@ export function HomeChatPage() {
             />
           </div>
         </div>
-        <TemplateFooterLinks />
       </div>
     </div>
   );
