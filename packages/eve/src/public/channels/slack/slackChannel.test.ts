@@ -13,9 +13,13 @@ import {
   mockChannelContext,
   type ObservedChannelDelivery,
 } from "#internal/testing/mocks/mock-channel-operations.js";
+import {
+  mockSlackApi,
+  type MockSlackApi,
+  type MockSlackApiCall,
+} from "#internal/testing/mocks/mock-slack-api.js";
 import type { UnstampedMessageStreamEvent } from "#protocol/message.js";
 import { experimental_slackActivityStatus } from "#public/channels/slack/activity.js";
-import { decodeSlackApiBody } from "#public/channels/slack/api-encoding.js";
 import {
   HITL_ACTION_PREFIX,
   HITL_FREEFORM_ACTION_PREFIX,
@@ -84,48 +88,9 @@ function asCompiled<T = unknown>(channel: unknown): CompiledChannel<T> {
   return channel as CompiledChannel<T>;
 }
 
-// Decodes a captured Slack outbound request body. All Slack API calls
-// are sent form-encoded, so the test infra mirrors that to inspect them.
-function parseSlackRequestBody(init: RequestInit | undefined): Record<string, unknown> {
-  if (!init?.body) return {};
-  const contentType = init.headers ? new Headers(init.headers).get("content-type") : null;
-  return decodeSlackApiBody(init.body, contentType) as Record<string, unknown>;
-}
-
-function useSuccessfulSlackFileUpload(
-  fetchMock: ReturnType<typeof vi.fn>,
-  postTs = "1700000001.000001",
-): string[] {
-  const uploadedBodies: string[] = [];
-  fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "https://slack.com/api/chat.postMessage") {
-      return new Response(JSON.stringify({ ok: true, ts: postTs }), {
-        headers: { "content-type": "application/json" },
-      });
-    }
-    if (url === "https://slack.com/api/files.getUploadURLExternal") {
-      return new Response(
-        JSON.stringify({
-          file_id: "F01",
-          ok: true,
-          upload_url: "https://files.slack.com/upload/F01",
-        }),
-        { headers: { "content-type": "application/json" } },
-      );
-    }
-    if (url === "https://files.slack.com/upload/F01") {
-      uploadedBodies.push(await new Response(init?.body ?? null).text());
-      return new Response("OK");
-    }
-    if (url === "https://slack.com/api/files.completeUploadExternal") {
-      return new Response(JSON.stringify({ files: [{ id: "F01" }], ok: true }), {
-        headers: { "content-type": "application/json" },
-      });
-    }
-    throw new Error(`Unexpected Slack request: ${url}`);
-  });
-  return uploadedBodies;
+/** Decoded body of one request the Slack fake recorded. */
+function bodyOf(call: MockSlackApiCall | undefined): Record<string, unknown> {
+  return (call?.body ?? {}) as Record<string, unknown>;
 }
 
 function withState(
@@ -211,6 +176,30 @@ const THREAD_STATE = {
 };
 
 const SIGNING_SECRET = "test-signing-secret";
+
+/**
+ * Conversations the inbound pipelines resolve through
+ * `conversations.info`. Everything else comes back `channel_not_found`,
+ * as it would for a channel the app is not in.
+ */
+/** A configured Slack API base that is not Slack's own host. */
+const SIMULATOR_URL = "https://sim.example/api";
+
+/** The base a locally running Slack Simulator is reached on. */
+const LOCAL_URL = "http://localhost:3000/api/slack";
+
+/** The review-DM card the freeform modal submission marks as answered. */
+const REVIEW_CARD_TS = "1700000000.000010";
+
+function seedReviewCard(api: MockSlackApi): void {
+  api.seedMessage("D_REVIEW", { text: "awaiting an answer", ts: REVIEW_CARD_TS });
+}
+
+const PUBLIC_CONVERSATIONS = {
+  C01: { is_private: false },
+  C_PUBLIC: { is_private: false },
+  D01: { is_private: true },
+};
 
 function buildSignedRequest(input: {
   body: string;
@@ -450,24 +439,22 @@ describe("slackChannel()", () => {
 });
 
 describe("slackChannel() default event handlers", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let slack: MockSlackApi;
   beforeEach(() => {
-    fetchMock = vi.fn().mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-          headers: { "content-type": "application/json" },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi();
   });
   afterEach(() => {
     vi.useRealTimers();
+    // Typing indicators and thread refreshes swallow transport errors, so
+    // a malformed request would otherwise pass unnoticed.
+    slack.assertNoViolations();
   });
 
   it("message.completed posts the agent message via Slack API", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -484,10 +471,9 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe("https://slack.com/api/chat.postMessage");
-    const body = parseSlackRequestBody(init as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("chat.postMessage");
+    const body = bodyOf(slack.calls[0]);
     expect(body).toMatchObject({
       channel: "C01",
       thread_ts: "1700000000.000001",
@@ -497,7 +483,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("message.completed keeps a reply at the Markdown limit inline", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -515,17 +503,18 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("https://slack.com/api/chat.postMessage");
-    expect(parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit)).toMatchObject({
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("chat.postMessage");
+    expect(bodyOf(slack.calls[0])).toMatchObject({
       markdown_text: message,
     });
   });
 
   it("message.completed uploads an oversized reply as a Markdown snippet", async () => {
-    const uploadedBodies = useSuccessfulSlackFileUpload(fetchMock);
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -543,48 +532,45 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    const urls = fetchMock.mock.calls.map(([input]) => String(input));
-    expect(urls).toEqual([
-      "https://slack.com/api/files.getUploadURLExternal",
-      "https://files.slack.com/upload/F01",
-      "https://slack.com/api/files.completeUploadExternal",
+    expect(slack.calls.map((call) => call.method)).toEqual([
+      "files.getUploadURLExternal",
+      "files.upload",
+      "files.completeUploadExternal",
     ]);
-    expect(uploadedBodies).toEqual([message]);
-    expect(parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit)).toMatchObject({
+    expect(bodyOf(slack.calls[0])).toMatchObject({
       filename: "eve-response.md",
       snippet_type: "markdown",
       length: String(new TextEncoder().encode(message).byteLength),
     });
-    expect(parseSlackRequestBody(fetchMock.mock.calls[2]![1] as RequestInit)).toMatchObject({
+    expect(bodyOf(slack.calls[2])).toMatchObject({
       channel_id: "C01",
-      files: [{ id: "F01", title: "eve-response.md" }],
+      files: [{ id: "F1", title: "eve-response.md" }],
       initial_comment: "Here's a snippet with the full response.",
       thread_ts: "1700000000.000001",
     });
+    // The handshake only coheres if the bytes Slack was promised are the
+    // bytes it stored, under the thread the reply belonged to.
+    expect(slack.files()).toEqual([
+      expect.objectContaining({
+        filename: "eve-response.md",
+        bytes: new TextEncoder().encode(message),
+        completed: true,
+        channelId: "C01",
+        threadTs: "1700000000.000001",
+        initialComment: "Here's a snippet with the full response.",
+      }),
+    ]);
   });
 
   it.each([
     ["files.getUploadURLExternal", "missing_scope"],
     ["files.completeUploadExternal", "channel_not_found"],
   ])("message.completed propagates %s failure", async (method, error) => {
-    useSuccessfulSlackFileUpload(fetchMock);
-    const successfulFetch = fetchMock.getMockImplementation() as typeof fetch;
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url === `https://slack.com/api/${method}`) {
-        return new Response(JSON.stringify({ error, ok: false }), {
-          headers: { "content-type": "application/json" },
-        });
-      }
-      if (url === "https://slack.com/api/chat.postMessage") {
-        return new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return successfulFetch(input);
-    });
+    slack.failNext(method, error);
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -604,14 +590,17 @@ describe("slackChannel() default event handlers", () => {
       ),
     ).rejects.toThrow(error);
 
-    expect(fetchMock).toHaveBeenCalledTimes(method === "files.getUploadURLExternal" ? 1 : 3);
+    expect(slack.calls).toHaveLength(method === "files.getUploadURLExternal" ? 1 : 3);
+    // A rejected handshake leaves nothing shared: either no file was ever
+    // staged, or the staged one never completed.
+    expect(slack.files().filter((file) => file.completed)).toEqual([]);
   });
 
   it("activity-owned message.completed uses the same oversized reply snippet", async () => {
-    const uploadedBodies = useSuccessfulSlackFileUpload(fetchMock);
     const adapter = withState(
       getAdapter(
         slackChannel({
+          api: { fetch: slack.fetch },
           activity: { renderers: [experimental_slackActivityStatus()] },
           credentials: { botToken: "xoxb-test" },
         }),
@@ -633,15 +622,21 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(uploadedBodies).toEqual([message]);
-    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(
-      "https://slack.com/api/chat.postMessage",
-    );
+    expect(slack.files()).toEqual([
+      expect.objectContaining({
+        filename: "eve-response.md",
+        bytes: new TextEncoder().encode(message),
+        completed: true,
+      }),
+    ]);
+    expect(slack.callsTo("chat.postMessage")).toEqual([]);
   });
 
   it("message.completed skips post when finishReason is tool-calls", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -658,12 +653,14 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(slack.calls).toEqual([]);
   });
 
   it("surfaces pre-tool assistant text when the following action is requested", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -690,10 +687,9 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe("https://slack.com/api/assistant.threads.setStatus");
-    expect(parseSlackRequestBody(init as RequestInit)).toMatchObject({
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("assistant.threads.setStatus");
+    expect(bodyOf(slack.calls[0])).toMatchObject({
       status: "Checking the issue context first.",
     });
     expect(ctx.state.pendingToolCallMessage).toBeNull();
@@ -701,7 +697,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("message.completed clears typing without posting for empty delivery", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -718,30 +716,20 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe("https://slack.com/api/assistant.threads.setStatus");
-    expect(parseSlackRequestBody(init as RequestInit)).toMatchObject({ status: "" });
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("assistant.threads.setStatus");
+    expect(bodyOf(slack.calls[0])).toMatchObject({ status: "" });
   });
 
   it("lets an input override delegate selected requests to default delivery", async () => {
-    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
-      const operation = String(input).split("/").at(-1);
-      if (operation === "conversations.open") {
-        return Response.json({ channel: { id: "D01" }, ok: true });
-      }
-      if (operation === "chat.getPermalink") {
-        return Response.json({ ok: true, permalink: "https://example.slack.com/message" });
-      }
-      if (operation === "chat.postMessage") {
-        return Response.json({ ok: true, ts: "1700000001.000001" });
-      }
-      throw new Error(`Unexpected Slack request: ${String(input)} ${String(init?.body)}`);
-    });
+    // The private hand-off links back to the message that triggered it,
+    // so that message has to already exist in the workspace.
+    slack.seedMessage("C01", { text: "please review", ts: "1700000000.000002" });
     const customPrompts: string[] = [];
     const adapter = withState(
       getAdapter(
         slackChannel({
+          api: { fetch: slack.fetch },
           approvalChannel: (request) =>
             request.prompt.startsWith("Sensitive") ? "direct-message" : "thread",
           credentials: { botToken: "xoxb-test" },
@@ -796,17 +784,27 @@ describe("slackChannel() default event handlers", () => {
     );
 
     expect(customPrompts).toEqual(["Ordinary follow-up"]);
-    const posts = fetchMock.mock.calls
-      .filter(([input]) => String(input).endsWith("/chat.postMessage"))
-      .map(([, init]) => parseSlackRequestBody(init as RequestInit));
-    expect(posts.some((body) => body.channel === "D01")).toBe(true);
+    const directMessageChannel = slack.directMessageChannel("U01");
+    const posts = slack.callsTo("chat.postMessage").map((call) => bodyOf(call));
+    expect(posts.some((body) => body.channel === directMessageChannel)).toBe(true);
     expect(JSON.stringify(posts)).toContain("eve_input:route:C01:1700000000.000001:sensitive");
     expect(posts.some((body) => JSON.stringify(body).includes("Ordinary follow-up"))).toBe(false);
+    // The delegated request landed in the DM; the thread only gets the
+    // pointer to it, and the prompt the override kept for itself never
+    // reached Slack at all.
+    expect(slack.messages({ channelId: directMessageChannel })).not.toEqual([]);
+    expect(
+      slack
+        .messages({ channelId: "C01", threadTs: "1700000000.000001" })
+        .map((message) => message.text),
+    ).toEqual(["Waiting on a response from <@U01>…"]);
   });
 
   it("input.requested keeps tool input out of the interactive approval message", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -839,11 +837,12 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [detailsCall, controlsCall] = fetchMock.mock.calls;
-    expect(String(detailsCall?.[0])).toBe("https://slack.com/api/chat.postMessage");
-    expect(String(controlsCall?.[0])).toBe("https://slack.com/api/chat.postMessage");
-    const detailsBody = parseSlackRequestBody(detailsCall?.[1] as RequestInit) as {
+    expect(slack.calls.map((call) => call.method)).toEqual([
+      "chat.postMessage",
+      "chat.postMessage",
+    ]);
+    const [detailsCall, controlsCall] = slack.calls;
+    const detailsBody = bodyOf(detailsCall) as {
       blocks: Array<{
         child_blocks?: Array<{ text?: { text?: string; type?: string }; type: string }>;
         title?: { text: string; type: string };
@@ -876,7 +875,7 @@ describe("slackChannel() default event handlers", () => {
       }),
     ]);
 
-    const controlsBody = parseSlackRequestBody(controlsCall?.[1] as RequestInit) as {
+    const controlsBody = bodyOf(controlsCall) as {
       blocks: Array<{
         actions?: Array<{
           action_id: string;
@@ -928,16 +927,20 @@ describe("slackChannel() default event handlers", () => {
         value: "approve",
       },
     ]);
+    // The card has to record the ts of the controls post, not of the
+    // tool-input post that precedes it.
+    const [, controlsMessage] = slack.messages();
     expect(ctx.state.pendingApprovalCards).toEqual({
       approval_abc123: {
         messageBlocks: controlsBody.blocks,
-        messageTs: "1700000001.000001",
+        messageTs: controlsMessage?.ts,
       },
     });
   });
 
   it("keeps a large tool input out of the Slack button callback", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test", signingSecret: SIGNING_SECRET },
     });
     const adapter = withState(getAdapter(channel), THREAD_STATE);
@@ -972,14 +975,12 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    const postCalls = fetchMock.mock.calls.filter(
-      ([url]) => String(url) === "https://slack.com/api/chat.postMessage",
-    );
+    const postCalls = slack.callsTo("chat.postMessage");
     expect(postCalls).toHaveLength(2);
-    const details = parseSlackRequestBody(postCalls[0]?.[1] as RequestInit);
+    const details = bodyOf(postCalls[0]);
     expect(JSON.stringify(details)).toContain("cursor cloud task");
 
-    const controls = parseSlackRequestBody(postCalls[1]?.[1] as RequestInit) as {
+    const controls = bodyOf(postCalls[1]) as {
       blocks: Array<{
         actions?: Array<{
           action_id: string;
@@ -1020,7 +1021,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("input.requested caps section and fallback text so Slack does not reject the post", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1050,9 +1053,8 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0]!;
-    const body = parseSlackRequestBody(init as RequestInit) as {
+    expect(slack.calls).toHaveLength(1);
+    const body = bodyOf(slack.calls[0]) as {
       blocks: Array<{ type: string; text?: { text: string } }>;
       text: string;
     };
@@ -1064,7 +1066,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("input.requested splits large batches so no post exceeds Slack's block cap", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1094,11 +1098,11 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(slack.calls).toHaveLength(4);
     const allRequestIds: string[] = [];
-    for (const [callIndex, [url, init]] of fetchMock.mock.calls.entries()) {
-      expect(String(url)).toBe("https://slack.com/api/chat.postMessage");
-      const body = parseSlackRequestBody(init as RequestInit) as {
+    for (const [callIndex, call] of slack.calls.entries()) {
+      expect(call.method).toBe("chat.postMessage");
+      const body = bodyOf(call) as {
         blocks: Array<{
           type: string;
           actions?: Array<{ action_id: string }>;
@@ -1121,7 +1125,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("turn.started calls assistant.threads.setStatus", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1132,10 +1138,9 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe("https://slack.com/api/assistant.threads.setStatus");
-    const body = parseSlackRequestBody(init as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("assistant.threads.setStatus");
+    const body = bodyOf(slack.calls[0]);
     expect(body).toMatchObject({
       channel_id: "C01",
       thread_ts: "1700000000.000001",
@@ -1149,6 +1154,7 @@ describe("slackChannel() default event handlers", () => {
     const adapter = withState(
       getAdapter(
         slackChannel({
+          api: { fetch: slack.fetch },
           events: { "turn.started": onTurnStarted },
         }),
       ),
@@ -1184,7 +1190,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("reasoning.appended calls assistant.threads.setStatus with a truncated snippet", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1202,10 +1210,9 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe("https://slack.com/api/assistant.threads.setStatus");
-    const body = parseSlackRequestBody(init as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("assistant.threads.setStatus");
+    const body = bodyOf(slack.calls[0]);
     expect(body).toMatchObject({
       channel_id: "C01",
       thread_ts: "1700000000.000001",
@@ -1220,7 +1227,9 @@ describe("slackChannel() default event handlers", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-18T12:00:00Z"));
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1236,9 +1245,7 @@ describe("slackChannel() default event handlers", () => {
     await callEvent(adapter, reasoningEvent(" ca"), ctx);
     await callEvent(adapter, reasoningEvent("n"), ctx);
 
-    const statuses = fetchMock.mock.calls.map(
-      ([, init]) => parseSlackRequestBody(init as RequestInit).status,
-    );
+    const statuses = slack.calls.map((call) => bodyOf(call).status);
     expect(statuses).toEqual(["I", "I can"]);
     expect(ctx.state).not.toHaveProperty("reasoningText");
   });
@@ -1247,7 +1254,9 @@ describe("slackChannel() default event handlers", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-18T12:00:00Z"));
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1265,10 +1274,8 @@ describe("slackChannel() default event handlers", () => {
     vi.setSystemTime(new Date("2026-06-18T12:00:05Z"));
     await callEvent(adapter, reasoningEvent("."), ctx);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const statuses = fetchMock.mock.calls.map(
-      ([, init]) => parseSlackRequestBody(init as RequestInit).status,
-    );
+    expect(slack.calls).toHaveLength(2);
+    const statuses = slack.calls.map((call) => bodyOf(call).status);
     expect(statuses).toEqual(["Need", "Need to."]);
   });
 
@@ -1276,7 +1283,9 @@ describe("slackChannel() default event handlers", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-18T12:00:00Z"));
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1302,9 +1311,7 @@ describe("slackChannel() default event handlers", () => {
     await callEvent(adapter, reasoningEvent("Second block", 0), ctx);
     await callEvent(adapter, reasoningEvent("Next step", 1), ctx);
 
-    const statuses = fetchMock.mock.calls.map(
-      ([, init]) => parseSlackRequestBody(init as RequestInit).status,
-    );
+    const statuses = slack.calls.map((call) => bodyOf(call).status);
     expect(statuses).toEqual(["First block", "Second block", "Next step"]);
   });
 
@@ -1312,7 +1319,9 @@ describe("slackChannel() default event handlers", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-18T12:00:00Z"));
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1344,16 +1353,16 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    const statuses = fetchMock.mock.calls.map(
-      ([, init]) => parseSlackRequestBody(init as RequestInit).status,
-    );
+    expect(slack.calls).toHaveLength(3);
+    const statuses = slack.calls.map((call) => bodyOf(call).status);
     expect(statuses).toEqual(["Need to inspect the repo.", "Working...", "Fresh turn reasoning."]);
   });
 
   it("turn.failed posts a semantic error's remediation hint", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1378,8 +1387,8 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    const body = bodyOf(slack.calls[0]);
     expect(body.markdown_text).toBe(
       [
         "I hit an error while handling your request.",
@@ -1399,7 +1408,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("keeps fallback remediation outside a semantic error block without a hint", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1420,7 +1431,7 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    const body = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    const body = bodyOf(slack.calls[0]);
     expect(body.markdown_text).toBe(
       [
         "I hit an error while handling your request.",
@@ -1436,7 +1447,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("session.failed posts a terminal markdown message with remediation and id", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1458,8 +1471,8 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    const body = bodyOf(slack.calls[0]);
     expect(body.markdown_text).toBe(
       [
         "This session couldn't recover from an error.",
@@ -1481,7 +1494,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("session.failed does not repeat its fallback remediation without a hint", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1502,7 +1517,7 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    const body = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    const body = bodyOf(slack.calls[0]);
     expect(body.markdown_text).toBe(
       [
         "This session couldn't recover from an error.",
@@ -1521,7 +1536,9 @@ describe("slackChannel() default event handlers", () => {
 
   it("actions.requested typing indicator is truncated to Slack's length cap", async () => {
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       THREAD_STATE,
     );
     const ctx = buildAdapterContext(adapter, stubAccessor());
@@ -1543,20 +1560,31 @@ describe("slackChannel() default event handlers", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    const body = bodyOf(slack.calls[0]);
     expect((body.status as string).length).toBeLessThanOrEqual(50);
     expect((body.status as string).endsWith("...")).toBe(true);
   });
 });
 
 describe("rebuildSlackContext", () => {
+  /** First `ts` the fake allocates, and so every anchor post's own ts. */
+  const ANCHOR_TS = "1700000001.000001";
+  let slack: MockSlackApi;
+
   beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
+    slack = mockSlackApi();
+  });
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   it("seeds ctx.slack with state channelId / threadTs / teamId", () => {
-    const adapter = withState(getAdapter(slackChannel()), THREAD_STATE);
+    const adapter = withState(
+      getAdapter(slackChannel({ api: { fetch: slack.fetch } })),
+      THREAD_STATE,
+    );
     const ctx = buildAdapterContext(adapter, stubAccessor());
     expect(ctx.slack.channelId).toBe("C01");
     expect(ctx.slack.threadTs).toBe("1700000000.000001");
@@ -1568,19 +1596,14 @@ describe("rebuildSlackContext", () => {
 
   it("keeps actor identity public while reusing the installation workspace for credentials", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        }),
-      ),
+    const adapter = withState(
+      getAdapter(slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } })),
+      {
+        ...THREAD_STATE,
+        installationTeamId: "T_INSTALLATION",
+        teamId: "T_ACTOR",
+      },
     );
-    const adapter = withState(getAdapter(slackChannel({ credentials: { botToken } })), {
-      ...THREAD_STATE,
-      installationTeamId: "T_INSTALLATION",
-      teamId: "T_ACTOR",
-    });
     const ctx = buildAdapterContext(adapter, stubAccessor());
 
     expect(ctx.slack.teamId).toBe("T_ACTOR");
@@ -1590,18 +1613,10 @@ describe("rebuildSlackContext", () => {
 
   it("does not fall back to the actor workspace for legacy session credentials", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        }),
-      ),
+    const adapter = withState(
+      getAdapter(slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } })),
+      { ...THREAD_STATE, teamId: "T_ACTOR" },
     );
-    const adapter = withState(getAdapter(slackChannel({ credentials: { botToken } })), {
-      ...THREAD_STATE,
-      teamId: "T_ACTOR",
-    });
     const ctx = buildAdapterContext(adapter, stubAccessor());
 
     await ctx.slack.request("auth.test", {});
@@ -1609,7 +1624,7 @@ describe("rebuildSlackContext", () => {
   });
 
   it("falls back to empty strings when state has no thread", () => {
-    const adapter = withState(getAdapter(slackChannel()), {
+    const adapter = withState(getAdapter(slackChannel({ api: { fetch: slack.fetch } })), {
       channelId: null,
       threadTs: null,
       teamId: null,
@@ -1621,15 +1636,10 @@ describe("rebuildSlackContext", () => {
   });
 
   it("auto-anchors state.threadTs and adds an alias for the session on the first post", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, ts: "1800000000.123456" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       {
         channelId: "C01",
         threadTs: null,
@@ -1652,23 +1662,18 @@ describe("rebuildSlackContext", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const firstBody = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    expect(slack.calls).toHaveLength(1);
+    const firstBody = bodyOf(slack.calls[0]);
     expect(firstBody.thread_ts).toBeUndefined();
-    expect((adapter.state as { threadTs: string | null }).threadTs).toBe("1800000000.123456");
+    expect((adapter.state as { threadTs: string | null }).threadTs).toBe(ANCHOR_TS);
 
     // The anchor moment wrote the new continuation token to context
     // via `session.continuation.alias(...)`. The workflow body picks
     // this up via `reconcileSessionContinuationToken` after the step.
     const tokenWrites = writes.filter(([key]) => key === "eve.continuationToken");
-    expect(tokenWrites).toEqual([["eve.continuationToken", "slack:C01:1800000000.123456"]]);
+    expect(tokenWrites).toEqual([["eve.continuationToken", `slack:C01:${ANCHOR_TS}`]]);
 
     // A follow-up message.completed now threads under the anchor.
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true, ts: "1800000000.999999" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
     await callEvent(
       adapter,
       makeEvent("message.completed", {
@@ -1681,9 +1686,15 @@ describe("rebuildSlackContext", () => {
       ctx,
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const secondBody = parseSlackRequestBody(fetchMock.mock.calls[1]![1] as RequestInit);
-    expect(secondBody.thread_ts).toBe("1800000000.123456");
+    expect(slack.calls).toHaveLength(2);
+    const secondBody = bodyOf(slack.calls[1]);
+    expect(secondBody.thread_ts).toBe(ANCHOR_TS);
+    // Both replies live in the anchored thread, the second hanging off
+    // the first rather than starting a second top-level message.
+    expect(slack.messages().map((message) => [message.ts, message.threadTs])).toEqual([
+      [ANCHOR_TS, undefined],
+      ["1700000002.000002", ANCHOR_TS],
+    ]);
 
     // Once anchored, continuation.alias does not fire again — the
     // raw token is unchanged across subsequent posts.
@@ -1692,11 +1703,10 @@ describe("rebuildSlackContext", () => {
   });
 
   it("anchors a threadless session before uploading an oversized reply snippet", async () => {
-    const fetchMock = vi.fn();
-    const uploadedBodies = useSuccessfulSlackFileUpload(fetchMock, "1800000000.123456");
-    vi.stubGlobal("fetch", fetchMock);
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       {
         channelId: "C01",
         threadTs: null,
@@ -1719,36 +1729,46 @@ describe("rebuildSlackContext", () => {
       ctx,
     );
 
-    expect(uploadedBodies).toEqual([message]);
-    const anchorBody = parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit);
+    expect(slack.calls.map((call) => call.method)).toEqual([
+      "chat.postMessage",
+      "files.getUploadURLExternal",
+      "files.upload",
+      "files.completeUploadExternal",
+    ]);
+    const anchorBody = bodyOf(slack.calls[0]);
     expect(anchorBody).toMatchObject({
       channel: "C01",
       markdown_text: "Here's a snippet with the full response.",
     });
     expect(anchorBody.thread_ts).toBeUndefined();
-    expect(parseSlackRequestBody(fetchMock.mock.calls[1]![1] as RequestInit)).toMatchObject({
-      snippet_type: "markdown",
-    });
-    const completeBody = parseSlackRequestBody(fetchMock.mock.calls[3]![1] as RequestInit);
-    expect(completeBody.thread_ts).toBe("1800000000.123456");
+    expect(bodyOf(slack.calls[1])).toMatchObject({ snippet_type: "markdown" });
+    const completeBody = bodyOf(slack.calls[3]);
+    expect(completeBody.thread_ts).toBe(ANCHOR_TS);
     expect(completeBody.initial_comment).toBeUndefined();
-    expect((adapter.state as { threadTs: string | null }).threadTs).toBe("1800000000.123456");
+    // The snippet carries the whole reply and hangs off the anchor the
+    // post just created.
+    expect(slack.files()).toEqual([
+      expect.objectContaining({
+        bytes: new TextEncoder().encode(message),
+        completed: true,
+        channelId: "C01",
+        threadTs: ANCHOR_TS,
+      }),
+    ]);
+    expect((adapter.state as { threadTs: string | null }).threadTs).toBe(ANCHOR_TS);
     expect(writes.filter(([key]) => key === "eve.continuationToken")).toEqual([
-      ["eve.continuationToken", "slack:C01:1800000000.123456"],
+      ["eve.continuationToken", `slack:C01:${ANCHOR_TS}`],
     ]);
   });
 
   it("does not upload a threadless reply when Slack omits the anchor timestamp", async () => {
-    const fetchMock = vi.fn().mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    // Slack's own chat.postMessage always answers with a ts; this pins
+    // what eve does if it ever does not.
+    slack.respondWith("chat.postMessage", { ok: true });
     const adapter = withState(
-      getAdapter(slackChannel({ credentials: { botToken: "xoxb-test" } })),
+      getAdapter(
+        slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken: "xoxb-test" } }),
+      ),
       {
         channelId: "C01",
         threadTs: null,
@@ -1771,7 +1791,8 @@ describe("rebuildSlackContext", () => {
       ),
     ).rejects.toThrow("Slack did not return a thread timestamp");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.files()).toEqual([]);
   });
 });
 
@@ -1818,20 +1839,18 @@ describe("defaultSlackAuth", () => {
 describe("slackChannel() inbound mention pipeline", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let slack: MockSlackApi;
 
   beforeEach(() => {
     process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
-    fetchMock = vi.fn(async (request: string | URL | Request) =>
-      String(request).includes("conversations.info")
-        ? new Response(JSON.stringify({ ok: true, channel: { is_private: false } }), {
-            headers: { "content-type": "application/json" },
-          })
-        : new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-            headers: { "content-type": "application/json" },
-          }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
+  });
+
+  afterEach(() => {
+    // The mention pipeline swallows transport errors from its typing
+    // indicator and thread refresh, so a rejected request is only
+    // visible here.
+    slack.assertNoViolations();
   });
 
   afterAll(() => {
@@ -1848,7 +1867,10 @@ describe("slackChannel() inbound mention pipeline", () => {
   });
 
   it("answers Slack's URL verification challenge", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const body = JSON.stringify({ type: "url_verification", challenge: "abc123" });
     const { response } = await firePost(channel, buildSignedRequest({ body }));
     expect(response.status).toBe(200);
@@ -1857,6 +1879,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("dispatches when onAppMention returns an auth result", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({
         auth: {
@@ -1884,6 +1907,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("uses the app installation workspace for mention credentials", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken },
       async onAppMention(ctx) {
         expect(ctx.slack.teamId).toBe("T_ACTOR");
@@ -1915,13 +1939,9 @@ describe("slackChannel() inbound mention pipeline", () => {
   });
 
   it("exposes private conversation detection to message handlers", async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, channel: { is_private: false } }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
     let isPrivate: boolean | undefined;
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         isPrivate = await ctx.isDMOrPrivateChannel();
@@ -1933,16 +1953,15 @@ describe("slackChannel() inbound mention pipeline", () => {
     await firePost(channel, buildSignedRequest({ body }));
 
     expect(isPrivate).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]![0])).toContain("conversations.info");
-    expect(parseSlackRequestBody(fetchMock.mock.calls[0]![1] as RequestInit)).toEqual({
-      channel: "C_PUBLIC",
-    });
+    expect(slack.calls).toHaveLength(1);
+    expect(slack.calls[0]!.method).toBe("conversations.info");
+    expect(bodyOf(slack.calls[0])).toEqual({ channel: "C_PUBLIC" });
   });
 
   it("binds onAppMention to flat session operations", async () => {
     const clear = vi.fn().mockResolvedValue({ sessionId: "s1", status: "accepted" });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         await ctx.clear();
@@ -1961,6 +1980,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("sends from the flat message context with Slack-derived auth", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         await ctx.send("Imperative follow-up");
@@ -1993,6 +2013,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("lets onAppMention cancel the active turn before dispatching its replacement", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         await ctx.cancel({ turnId: "turn_observed" });
@@ -2016,6 +2037,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("lets onAppMention reset the thread session before starting a fresh replacement", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         await ctx.reset({ reason: "Slack user requested a fresh conversation" });
@@ -2040,6 +2062,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("drops Slack http_timeout retries without dispatching", async () => {
     const onAppMention = vi.fn().mockReturnValue({ auth: null });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2066,6 +2089,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("processes the original Slack delivery when retry num is 0", async () => {
     const onAppMention = vi.fn().mockReturnValue({ auth: null });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2089,6 +2113,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("processes Slack retries for non-timeout reasons", async () => {
     const onAppMention = vi.fn().mockReturnValue({ auth: null });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2112,6 +2137,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("drops a redelivery of an already-handled event_id", async () => {
     const onAppMention = vi.fn().mockReturnValue({ auth: null });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2131,6 +2157,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("keeps Slack attribution in the message and authored context separate", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({ auth: null, context: ["prior thread context"] }),
     });
@@ -2149,6 +2176,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("attributes the inbound message without adding a separate context entry", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({ auth: null }),
     });
@@ -2168,6 +2196,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("includes the receiving bot user id in the inbound model message", async () => {
     const onAppMention = vi.fn((_ctx, _message) => ({ auth: null }));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2209,6 +2238,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("marks an accepted unmentioned direct message as not mentioned", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage: () => ({ auth: null }),
     });
@@ -2235,6 +2265,7 @@ describe("slackChannel() inbound mention pipeline", () => {
 
   it("uses the run title returned by onAppMention for a public channel", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({ auth: null, title: "Run" }),
     });
@@ -2250,17 +2281,10 @@ describe("slackChannel() inbound mention pipeline", () => {
   });
 
   it("uses an opaque run title for private channel mentions", async () => {
-    fetchMock.mockImplementation(async (request: string | URL | Request) =>
-      String(request).includes("conversations.info")
-        ? new Response(JSON.stringify({ ok: true, channel: { is_private: true } }), {
-            headers: { "content-type": "application/json" },
-          })
-        : new Response(JSON.stringify({ ok: true, messages: [] }), {
-            headers: { "content-type": "application/json" },
-          }),
-    );
+    slack = mockSlackApi({ conversations: { C01: { is_private: true } } });
     let isPrivate: boolean | undefined;
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention(ctx) {
         isPrivate = await ctx.isDMOrPrivateChannel();
@@ -2272,9 +2296,7 @@ describe("slackChannel() inbound mention pipeline", () => {
     const { send } = await firePost(channel, buildSignedRequest({ body }));
 
     expect(isPrivate).toBe(true);
-    expect(
-      fetchMock.mock.calls.filter(([request]) => String(request).includes("conversations.info")),
-    ).toHaveLength(1);
+    expect(slack.callsTo("conversations.info")).toHaveLength(1);
     expect(send).toHaveBeenCalledTimes(1);
     const [, input] = send.mock.calls[0]!;
     expect(input.title).toBe("Private message");
@@ -2286,58 +2308,42 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("uses only this app's reply as the incremental thread context boundary", async () => {
     const threadTs = "1700000000.000001";
     const currentTs = "1700000000.000006";
-    fetchMock.mockImplementation(async (request: string | URL | Request) => {
-      const url = String(request);
-      if (url.includes("conversations.replies")) {
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            messages: [
-              { user: "U_ROOT", text: "root", ts: threadTs, thread_ts: threadTs },
-              {
-                app_id: "A01",
-                bot_id: "B_AGENT",
-                text: "What changed?",
-                ts: "1700000000.000002",
-                thread_ts: threadTs,
-                user: "U_BOT",
-              },
-              {
-                user: "U_BACKEND",
-                text: "I changed the API.",
-                ts: "1700000000.000003",
-                thread_ts: threadTs,
-              },
-              {
-                app_id: "A_OTHER",
-                bot_id: "B_OTHER",
-                text: "Other bot follow-up.",
-                ts: "1700000000.000004",
-                thread_ts: threadTs,
-                user: "U_OTHER_BOT",
-              },
-              {
-                user: "U_FRONTEND",
-                text: "I changed the UI.",
-                ts: "1700000000.000005",
-                thread_ts: threadTs,
-              },
-              {
-                user: "U_CURRENT",
-                text: "Summarize ownership.",
-                ts: currentTs,
-                thread_ts: threadTs,
-              },
-            ],
-          }),
-          { headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-        headers: { "content-type": "application/json" },
-      });
-    });
+    for (const message of [
+      { user: "U_ROOT", text: "root", ts: threadTs, thread_ts: threadTs },
+      {
+        app_id: "A01",
+        bot_id: "B_AGENT",
+        text: "What changed?",
+        ts: "1700000000.000002",
+        thread_ts: threadTs,
+        user: "U_BOT",
+      },
+      {
+        user: "U_BACKEND",
+        text: "I changed the API.",
+        ts: "1700000000.000003",
+        thread_ts: threadTs,
+      },
+      {
+        app_id: "A_OTHER",
+        bot_id: "B_OTHER",
+        text: "Other bot follow-up.",
+        ts: "1700000000.000004",
+        thread_ts: threadTs,
+        user: "U_OTHER_BOT",
+      },
+      {
+        user: "U_FRONTEND",
+        text: "I changed the UI.",
+        ts: "1700000000.000005",
+        thread_ts: threadTs,
+      },
+      { user: "U_CURRENT", text: "Summarize ownership.", ts: currentTs, thread_ts: threadTs },
+    ]) {
+      slack.seedMessage("C01", message);
+    }
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({ auth: null }),
       threadContext: { since: "last-agent-reply" },
@@ -2364,16 +2370,13 @@ describe("slackChannel() inbound mention pipeline", () => {
     expect(message).toContain("sender_id: U_FRONTEND");
     expect(message).toContain("sender_id: U_CURRENT");
     expect(message).not.toContain("sender_id: U_ROOT");
-    expect(
-      fetchMock.mock.calls.filter(([request]) => String(request).includes("conversations.replies")),
-    ).toHaveLength(1);
-    expect(fetchMock.mock.calls.some(([request]) => String(request).includes("users.info"))).toBe(
-      false,
-    );
+    expect(slack.callsTo("conversations.replies")).toHaveLength(1);
+    expect(slack.callsTo("users.info")).toEqual([]);
   });
 
   it("does not dispatch when onAppMention resolves to null", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => null,
     });
@@ -2387,6 +2390,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("awaits an async onAppMention before deciding whether to dispatch", async () => {
     const runOrder: string[] = [];
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onAppMention() {
         runOrder.push("onAppMention:start");
@@ -2404,20 +2408,25 @@ describe("slackChannel() inbound mention pipeline", () => {
   });
 
   it("default onAppMention posts a 'Thinking...' typing indicator", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const { body } = buildMentionBody();
     await firePost(channel, buildSignedRequest({ body }));
 
-    const typingCall = fetchMock.mock.calls.find((call) =>
-      String(call[0]).includes("assistant.threads.setStatus"),
-    );
-    expect(typingCall).toBeDefined();
-    const sent = parseSlackRequestBody(typingCall![1] as RequestInit);
-    expect(sent.status).toBe("Thinking...");
+    // The fake keeps the latest status per thread, so this asserts what
+    // the thread actually shows rather than that a call went out.
+    expect(slack.statuses()).toEqual([
+      expect.objectContaining({ channelId: "C01", status: "Thinking..." }),
+    ]);
   });
 
   it("returns 200 OK without dispatching for non-app_mention events", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const body = JSON.stringify({
       type: "event_callback",
       event: { type: "reaction_added", item: { type: "message" } },
@@ -2428,7 +2437,10 @@ describe("slackChannel() inbound mention pipeline", () => {
   });
 
   it("rejects requests with a bad signature", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const { body } = buildMentionBody();
     const req = buildSignedRequest({ body, signingSecret: "wrong-secret" });
     const { response, send } = await firePost(channel, req);
@@ -2439,6 +2451,7 @@ describe("slackChannel() inbound mention pipeline", () => {
   it("logs and drops the mention when onAppMention throws", async () => {
     const onAppMention = vi.fn().mockRejectedValue(new Error("typing failed"));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
     });
@@ -2613,16 +2626,15 @@ describe("slackChannel() onMessage", () => {
 describe("slackChannel() generic Events API pipeline", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let slack: MockSlackApi;
 
   beforeEach(() => {
     process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
+  });
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   afterAll(() => {
@@ -2654,12 +2666,16 @@ describe("slackChannel() generic Events API pipeline", () => {
         team_id: "T_ACTOR",
       });
       expect(ctx.slack.teamId).toBe("T_ACTOR");
+      // reactions.get is not a surface the channel itself drives, so the
+      // fake only answers it because this test opted in.
+      slack.respondWith("reactions.get", { ok: true, message: { reactions: [] } });
       await ctx.slack.request("reactions.get", {
         channel: "C01",
         timestamp: "1700000000.000001",
       });
     });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken },
       onEvent,
     });
@@ -2683,13 +2699,17 @@ describe("slackChannel() generic Events API pipeline", () => {
     expect(response.status).toBe(200);
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe("https://slack.com/api/reactions.get");
+    expect(slack.calls.map((call) => call.method)).toEqual(["reactions.get"]);
+    expect(bodyOf(slack.calls[0])).toEqual({
+      channel: "C01",
+      timestamp: "1700000000.000001",
+    });
     expect(botToken).toHaveBeenCalledWith({ teamId: "T_INSTALLATION" });
   });
 
   it("cancels a targeted Slack thread from onEvent", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onEvent(ctx) {
         await ctx.cancel({
@@ -2711,6 +2731,7 @@ describe("slackChannel() generic Events API pipeline", () => {
   it("targets session operations from generic Slack events", async () => {
     const compact = vi.fn().mockResolvedValue({ sessionId: "s1", status: "accepted" });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onEvent(ctx) {
         await ctx.compact({
@@ -2728,6 +2749,7 @@ describe("slackChannel() generic Events API pipeline", () => {
   it("binds Slack session state and title when a generic event send creates", async () => {
     const send = vi.fn().mockResolvedValue({ id: "s1" });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onEvent(ctx) {
         await ctx.send("follow up", {
@@ -2757,6 +2779,7 @@ describe("slackChannel() generic Events API pipeline", () => {
 
   it("resets a targeted Slack thread from onEvent", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onEvent(ctx) {
         await ctx.reset({
@@ -2783,6 +2806,7 @@ describe("slackChannel() generic Events API pipeline", () => {
       principalType: "user" as const,
     };
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onEvent(ctx, event) {
         expect(event.type).toBe("reaction_added");
@@ -2824,6 +2848,7 @@ describe("slackChannel() generic Events API pipeline", () => {
 
   it("keeps detached send calls alive through the handler waitUntil", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onEvent(ctx) {
         ctx.waitUntil(
@@ -2845,6 +2870,7 @@ describe("slackChannel() generic Events API pipeline", () => {
   it("uses onEvent instead of the mention default when no onAppMention is authored", async () => {
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onEvent,
     });
@@ -2855,12 +2881,13 @@ describe("slackChannel() generic Events API pipeline", () => {
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent.mock.calls[0]![1]).toMatchObject({ type: "app_mention" });
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(slack.calls).toEqual([]);
   });
 
   it("uses onEvent instead of the DM default when no onDirectMessage is authored", async () => {
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onEvent,
     });
@@ -2871,13 +2898,14 @@ describe("slackChannel() generic Events API pipeline", () => {
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent.mock.calls[0]![1]).toMatchObject({ channel_type: "im", type: "message" });
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(slack.calls).toEqual([]);
   });
 
   it("gives an authored onAppMention precedence over onEvent", async () => {
     const onAppMention = vi.fn().mockReturnValue(null);
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention,
       onEvent,
@@ -2894,6 +2922,7 @@ describe("slackChannel() generic Events API pipeline", () => {
     const onDirectMessage = vi.fn().mockReturnValue(null);
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
       onEvent,
@@ -2910,6 +2939,7 @@ describe("slackChannel() generic Events API pipeline", () => {
     const onDirectMessage = vi.fn();
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
       onEvent,
@@ -2926,6 +2956,7 @@ describe("slackChannel() generic Events API pipeline", () => {
   it("deduplicates generic events by event_id", async () => {
     const onEvent = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onEvent,
     });
@@ -2943,6 +2974,7 @@ describe("slackChannel() generic Events API pipeline", () => {
   it("acks and logs handler failures without starting a turn", async () => {
     const onEvent = vi.fn().mockRejectedValue(new Error("event failed"));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onEvent,
     });
@@ -2959,16 +2991,15 @@ describe("slackChannel() generic Events API pipeline", () => {
 describe("slackChannel() inbound direct message pipeline", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let slack: MockSlackApi;
 
   beforeEach(() => {
     process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
+  });
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   afterAll(() => {
@@ -2994,6 +3025,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
       },
     });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3012,6 +3044,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
 
   it("uses an opaque run title for direct messages", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage: () => ({ auth: null, title: "sensitive message" }),
     });
@@ -3028,6 +3061,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
 
   it("does not dispatch when onDirectMessage resolves to null", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage: () => null,
     });
@@ -3041,6 +3075,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
   it("ignores message events that are not IM (channel posts)", async () => {
     const onDirectMessage = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3055,6 +3090,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
   it("filters bot-authored DMs so the bot's own replies do not re-trigger", async () => {
     const onDirectMessage = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3069,6 +3105,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
   it("filters the app's own DM by its authorized bot user id", async () => {
     const onDirectMessage = vi.fn(() => ({ auth: null }));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3093,6 +3130,7 @@ describe("slackChannel() inbound direct message pipeline", () => {
   it("filters subtype messages (edits, deletes, joins)", async () => {
     const onDirectMessage = vi.fn();
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3105,22 +3143,23 @@ describe("slackChannel() inbound direct message pipeline", () => {
   });
 
   it("default onDirectMessage posts a 'Thinking...' typing indicator and dispatches", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const { body } = buildDirectMessageBody();
     const { send } = await firePost(channel, buildSignedRequest({ body }));
 
-    const typingCall = fetchMock.mock.calls.find((call) =>
-      String(call[0]).includes("assistant.threads.setStatus"),
-    );
-    expect(typingCall).toBeDefined();
-    const sent = parseSlackRequestBody(typingCall![1] as RequestInit);
-    expect(sent.status).toBe("Thinking...");
+    expect(slack.statuses()).toEqual([
+      expect.objectContaining({ channelId: "D01", status: "Thinking..." }),
+    ]);
     expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("logs and drops the DM when onDirectMessage throws", async () => {
     const onDirectMessage = vi.fn().mockRejectedValue(new Error("bad handler"));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onDirectMessage,
     });
@@ -3136,16 +3175,15 @@ describe("slackChannel() inbound direct message pipeline", () => {
 describe("slackChannel() HITL interaction pipeline", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let slack: MockSlackApi;
 
   beforeEach(() => {
     process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
+  });
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   function buildHitlButtonRequest(userId = "U_APPROVER"): Request {
@@ -3200,7 +3238,11 @@ describe("slackChannel() HITL interaction pipeline", () => {
       expect(ctx.slack.teamId).toBe("T01");
       await ctx.slack.request("auth.test", {});
     });
-    const channel = slackChannel({ credentials: { botToken }, onSlashCommand });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken },
+      onSlashCommand,
+    });
 
     const { response, waitUntil } = await firePost(channel, buildSignedSlashCommandRequest());
 
@@ -3209,12 +3251,11 @@ describe("slackChannel() HITL interaction pipeline", () => {
     expect(onSlashCommand).toHaveBeenCalledTimes(1);
     expect(waitUntil).toHaveBeenCalledTimes(1);
     expect(botToken).toHaveBeenCalledWith({ teamId: "T01" });
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://slack.com/api/auth.test");
-    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    expect(slack.calls.map((call) => call.method)).toEqual(["auth.test"]);
   });
 
   it("acknowledges slash commands without a configured handler", async () => {
-    const channel = slackChannel({});
+    const channel = slackChannel({ api: { fetch: slack.fetch } });
 
     const { response, waitUntil } = await firePost(channel, buildSignedSlashCommandRequest());
 
@@ -3243,7 +3284,11 @@ describe("slackChannel() HITL interaction pipeline", () => {
       expect(ctx.slack.teamId).toBe("T_ACTOR");
       await ctx.slack.request("auth.test", {});
     });
-    const channel = slackChannel({ credentials: { botToken }, onShortcut });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken },
+      onShortcut,
+    });
 
     const { response, waitUntil } = await firePost(
       channel,
@@ -3268,13 +3313,12 @@ describe("slackChannel() HITL interaction pipeline", () => {
     expect(onShortcut).toHaveBeenCalledTimes(1);
     expect(waitUntil).toHaveBeenCalledTimes(1);
     expect(botToken).toHaveBeenCalledWith({ teamId: "T_INSTALLATION" });
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://slack.com/api/auth.test");
-    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    expect(slack.calls.map((call) => call.method)).toEqual(["auth.test"]);
   });
 
   it("delivers global shortcuts without channel or message fields", async () => {
     const onShortcut = vi.fn();
-    const channel = slackChannel({ onShortcut });
+    const channel = slackChannel({ api: { fetch: slack.fetch }, onShortcut });
 
     await firePost(
       channel,
@@ -3301,6 +3345,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("cancels the interaction's Slack thread from onInteraction", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onInteraction(action, ctx) {
         expect(action.actionId).toBe("stop");
@@ -3333,13 +3378,8 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("keeps interaction auth on the actor workspace and credentials on the installation", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    fetchMock.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ ok: true }), {
-          headers: { "content-type": "application/json" },
-        }),
-    );
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken },
       async onInteraction(_action, ctx) {
         expect(ctx.slack.teamId).toBe("T_ACTOR");
@@ -3373,6 +3413,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("resets the interaction's Slack thread from onInteraction", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       async onInteraction(action, ctx) {
         expect(action.actionId).toBe("new-conversation");
@@ -3410,7 +3451,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("resumes HITL button answers with the approving Slack user auth", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    const channel = slackChannel({ credentials: { botToken } });
+    const channel = slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } });
 
     const { send } = await firePost(
       channel,
@@ -3466,7 +3507,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("opens routed freeform modals with installation-scoped credentials and metadata", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    const channel = slackChannel({ credentials: { botToken } });
+    const channel = slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } });
 
     await firePost(
       channel,
@@ -3492,14 +3533,10 @@ describe("slackChannel() HITL interaction pipeline", () => {
     );
 
     expect(botToken).toHaveBeenCalledWith({ teamId: "T_INSTALLATION" });
-    const openCall = fetchMock.mock.calls.find(
-      ([url]) => String(url) === "https://slack.com/api/views.open",
-    );
-    expect(openCall).toBeDefined();
-    const body = JSON.parse(String((openCall![1] as RequestInit).body)) as {
-      view: { private_metadata: string };
-    };
-    expect(JSON.parse(body.view.private_metadata)).toMatchObject({
+    const [modal] = slack.views();
+    expect(modal).toMatchObject({ triggerId: "trigger-123" });
+    const view = modal?.view as { private_metadata: string };
+    expect(JSON.parse(view.private_metadata)).toMatchObject({
       channelId: "C_ORIGINAL",
       continuationToken: "C_ORIGINAL:1700000000.000001",
       installationTeamId: "T_INSTALLATION",
@@ -3529,6 +3566,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
       },
     );
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onInputResponse,
     });
@@ -3544,13 +3582,10 @@ describe("slackChannel() HITL interaction pipeline", () => {
   });
 
   it("persists the responder mapping for later approval candidate feedback", async () => {
-    fetchMock.mockImplementation(
-      () =>
-        new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-          headers: { "content-type": "application/json" },
-        }),
-    );
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const { send } = await firePost(channel, buildHitlButtonRequest());
     const delivery = send.mock.calls[0]?.[1] as Extract<
       ObservedChannelDelivery<SlackChannelState>,
@@ -3597,25 +3632,22 @@ describe("slackChannel() HITL interaction pipeline", () => {
       ctx,
     );
 
-    const ephemeralBodies = fetchMock.mock.calls
-      .filter(([url]) => String(url) === "https://slack.com/api/chat.postEphemeral")
-      .map(([, init]) => parseSlackRequestBody(init as RequestInit));
-    expect(ephemeralBodies).toEqual([
+    // Both notices are ephemeral to the approver: nobody else in the
+    // channel sees the policy verdict.
+    expect(slack.messages({ ephemeral: false })).toEqual([]);
+    expect(slack.messages({ ephemeral: true })).toEqual([
       expect.objectContaining({
         channel: "C01",
-        markdown_text: "Checking whether you can approve this action…",
+        text: "Checking whether you can approve this action…",
         user: "U_APPROVER",
       }),
       expect.objectContaining({
         channel: "C01",
-        markdown_text: "Test policy: all approval responses are rejected.",
+        text: "Test policy: all approval responses are rejected.",
         user: "U_APPROVER",
       }),
     ]);
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.anything(),
-    );
+    expect(slack.callsTo("chat.update")).toEqual([]);
   });
 
   it("keeps HITL pending when the input-response hook rejects or throws", async () => {
@@ -3627,8 +3659,9 @@ describe("slackChannel() HITL interaction pipeline", () => {
     ];
 
     for (const onInputResponse of handlers) {
-      fetchMock.mockClear();
+      slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
       const channel = slackChannel({
+        api: { fetch: slack.fetch },
         credentials: { botToken: "xoxb-test" },
         onInputResponse,
       });
@@ -3637,15 +3670,13 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
       expect(onInputResponse).toHaveBeenCalledTimes(1);
       expect(send).not.toHaveBeenCalled();
-      expect(fetchMock).not.toHaveBeenCalledWith(
-        "https://slack.com/api/chat.update",
-        expect.anything(),
-      );
+      expect(slack.callsTo("chat.update")).toEqual([]);
     }
   });
 
   it("uses default HITL auth when onAppMention is authored", async () => {
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: () => ({ auth: null }),
     });
@@ -3658,19 +3689,22 @@ describe("slackChannel() HITL interaction pipeline", () => {
 
   it("does not mark a HITL card answered when response delivery fails", async () => {
     const send = vi.fn().mockRejectedValue(new Error("target session not found"));
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
 
     await firePost(channel, buildHitlButtonRequest(), { send });
 
     expect(send).toHaveBeenCalledTimes(1);
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.anything(),
-    );
+    expect(slack.callsTo("chat.update")).toEqual([]);
   });
 
   it("waits for approval settlement before updating a tool-approval card", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
 
     const firstCancelActionId = `${HITL_ACTION_PREFIX}tool-approval:approval_451:button:0`;
     const firstApproveActionId = `${HITL_ACTION_PREFIX}tool-approval:approval_451:button:1`;
@@ -3773,14 +3807,14 @@ describe("slackChannel() HITL interaction pipeline", () => {
       inputResponses: [{ optionId: "approve", requestId: "approval_451" }],
     });
 
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.anything(),
-    );
+    expect(slack.callsTo("chat.update")).toEqual([]);
   });
 
   it("covers the observed e0 batched escalation approval run", async () => {
-    const channel = slackChannel({ credentials: { botToken: "xoxb-test" } });
+    const channel = slackChannel({
+      api: { fetch: slack.fetch },
+      credentials: { botToken: "xoxb-test" },
+    });
     const adapter = withState(getAdapter(channel), THREAD_STATE);
     const ctx = buildAdapterContext(adapter, stubAccessor());
 
@@ -3828,11 +3862,9 @@ describe("slackChannel() HITL interaction pipeline", () => {
       ctx,
     );
 
-    const postCalls = fetchMock.mock.calls.filter(
-      ([url]) => String(url) === "https://slack.com/api/chat.postMessage",
-    );
+    const postCalls = slack.callsTo("chat.postMessage");
     expect(postCalls).toHaveLength(2);
-    const postedDetails = parseSlackRequestBody(postCalls[0]?.[1] as RequestInit) as {
+    const postedDetails = bodyOf(postCalls[0]) as {
       blocks: Array<{
         child_blocks?: Array<{ text?: { text?: string } }>;
         title?: { text?: string };
@@ -3846,7 +3878,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
     );
     expect(postedDetails.blocks[1]?.child_blocks?.[0]?.text?.text).toContain('"issueNumber": 508');
 
-    const postedControls = parseSlackRequestBody(postCalls[1]?.[1] as RequestInit) as {
+    const postedControls = bodyOf(postCalls[1]) as {
       blocks: Array<{
         actions?: Array<{ action_id?: string; text?: { text?: string }; value?: string }>;
         type?: string;
@@ -3897,15 +3929,12 @@ describe("slackChannel() HITL interaction pipeline", () => {
       inputResponses: [{ optionId: "cancel", requestId: "approval_451" }],
     });
 
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.anything(),
-    );
+    expect(slack.callsTo("chat.update")).toEqual([]);
   });
 
   it("resumes freeform modal answers with the submitting Slack user auth", async () => {
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
-    const channel = slackChannel({ credentials: { botToken } });
+    const channel = slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } });
 
     const { send } = await firePost(
       channel,
@@ -3961,17 +3990,15 @@ describe("slackChannel() HITL interaction pipeline", () => {
       inputResponses: [{ requestId: "call_abc123", text: "approved with context" }],
     });
     expect(botToken).toHaveBeenCalledWith({ teamId: "T_INSTALLATION" });
-    const updateCall = fetchMock.mock.calls.find(
-      ([url]) => String(url) === "https://slack.com/api/chat.update",
-    );
-    expect(String((updateCall?.[1] as RequestInit | undefined)?.body)).toContain(
-      '"channel":"D_REVIEW"',
-    );
+    // The answered card is marked in the review DM the modal was opened
+    // from, not in the thread the request came from.
+    expect(slack.callsTo("chat.update").map((call) => bodyOf(call).channel)).toEqual(["D_REVIEW"]);
   });
 
   it("authorizes freeform modal answers before resuming", async () => {
     const onInputResponse = vi.fn(() => null);
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test" },
       onInputResponse,
     });
@@ -4013,10 +4040,7 @@ describe("slackChannel() HITL interaction pipeline", () => {
       }),
     );
     expect(send).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      "https://slack.com/api/chat.update",
-      expect.anything(),
-    );
+    expect(slack.callsTo("chat.update")).toEqual([]);
   });
 });
 
@@ -4024,17 +4048,16 @@ describe("slackChannel() webhookVerifier credentials path", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 
+  let slack: MockSlackApi;
+
   beforeEach(() => {
     delete process.env.SLACK_SIGNING_SECRET;
     delete process.env.SLACK_BOT_TOKEN;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ ok: true, ts: "1.0" }), {
-          headers: { "content-type": "application/json" },
-        }),
-      ),
-    );
+    slack = mockSlackApi({ conversations: PUBLIC_CONVERSATIONS });
+  });
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   afterAll(() => {
@@ -4053,6 +4076,7 @@ describe("slackChannel() webhookVerifier credentials path", () => {
   it("uses webhookVerifier instead of HMAC when supplied", async () => {
     const verifier = vi.fn().mockResolvedValue(true);
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test", webhookVerifier: verifier },
     });
 
@@ -4072,6 +4096,7 @@ describe("slackChannel() webhookVerifier credentials path", () => {
   it("rejects with 401 when webhookVerifier throws", async () => {
     const verifier = vi.fn().mockRejectedValue(new Error("nope"));
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test", webhookVerifier: verifier },
     });
 
@@ -4089,19 +4114,22 @@ describe("slackChannel() webhookVerifier credentials path", () => {
 });
 
 describe("slackChannel().receive", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  /** First `ts` the fake allocates, and so every anchor card's own ts. */
+  const ANCHOR_TS = "1700000001.000001";
+  let slack: MockSlackApi;
+
   beforeEach(() => {
-    fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    slack = mockSlackApi();
   });
-  afterAll(() => {
-    vi.unstubAllGlobals();
+
+  afterEach(() => {
+    slack.assertNoViolations();
   });
 
   function buildReceive(
     botToken: string | ((context: { readonly teamId?: string }) => string) = "xoxb-test",
   ) {
-    const channel = slackChannel({ credentials: { botToken } });
+    const channel = slackChannel({ api: { fetch: slack.fetch }, credentials: { botToken } });
     const compiled = asCompiled(channel);
     if (!compiled.receive) throw new Error("expected compiled.receive");
     return compiled.receive;
@@ -4141,7 +4169,7 @@ describe("slackChannel().receive", () => {
       },
       mockChannelContext(send),
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(slack.calls).toEqual([]);
     expect(send.mock.calls[0]![1].state).toMatchObject({ audience: "public" });
   });
 
@@ -4172,11 +4200,6 @@ describe("slackChannel().receive", () => {
   });
 
   it("selects and persists the installation workspace for proactive sends", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true, ts: "1800000000.000900" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
     const botToken = vi.fn((_context: { readonly teamId?: string }) => "xoxb-test");
     const send = vi.fn().mockResolvedValue({ id: "s" });
     const { Card, CardText } = await import("#compiled/chat/index.js");
@@ -4238,11 +4261,6 @@ describe("slackChannel().receive", () => {
   });
 
   it("posts the initial card before send and threads under its ts", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true, ts: "1800000000.000900" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
     const send = vi.fn().mockResolvedValue({ id: "s" });
 
     const { Card, CardText } = await import("#compiled/chat/index.js");
@@ -4261,20 +4279,20 @@ describe("slackChannel().receive", () => {
       mockChannelContext(send),
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toContain("chat.postMessage");
-    const body = parseSlackRequestBody(init as RequestInit) as {
-      channel: string;
-      blocks: unknown[];
-    };
+    expect(slack.calls.map((call) => call.method)).toEqual(["chat.postMessage"]);
+    const body = bodyOf(slack.calls[0]) as { channel: string; blocks: unknown[] };
     expect(body.channel).toBe("C123");
     expect(Array.isArray(body.blocks)).toBe(true);
+    // The anchor is a real top-level message in C123, and the session
+    // threads under the ts Slack gave it.
+    expect(slack.messages()).toEqual([
+      expect.objectContaining({ channel: "C123", ts: ANCHOR_TS, threadTs: undefined }),
+    ]);
 
     expect(send).toHaveBeenCalledTimes(1);
     const [continuationToken, input] = send.mock.calls[0]!;
-    expect(continuationToken).toBe("C123:1800000000.000900");
-    expect(input.state.threadTs).toBe("1800000000.000900");
+    expect(continuationToken).toBe(`C123:${ANCHOR_TS}`);
+    expect(input.state.threadTs).toBe(ANCHOR_TS);
   });
 
   it("rejects passing both threadTs and initialMessage", async () => {
@@ -4298,11 +4316,7 @@ describe("slackChannel().receive", () => {
   });
 
   it("surfaces a Slack post failure as a thrown error and does not call send", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: false, error: "not_in_channel" }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
+    slack.failNext("chat.postMessage", "not_in_channel");
     const send = vi.fn();
     const { Card, CardText } = await import("#compiled/chat/index.js");
     await expect(
@@ -4322,6 +4336,7 @@ describe("slackChannel().receive", () => {
       ),
     ).rejects.toThrow(/not_in_channel/);
     expect(send).not.toHaveBeenCalled();
+    expect(slack.messages()).toEqual([]);
   });
 
   // Pins the resumability guarantee: the continuation token minted by
@@ -4330,12 +4345,7 @@ describe("slackChannel().receive", () => {
   // schedule's anchor card would orphan the parked session and the
   // first human follow-up would silently start a fresh one.
   it("uses the same continuation token on receive and on a follow-up inbound mention", async () => {
-    const initialMessageTs = "1800000000.001234";
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true, ts: initialMessageTs }), {
-        headers: { "content-type": "application/json" },
-      }),
-    );
+    const initialMessageTs = ANCHOR_TS;
     const send = vi.fn().mockResolvedValue({ id: "s" });
     const { Card, CardText } = await import("#compiled/chat/index.js");
 
@@ -4377,6 +4387,7 @@ describe("slackChannel().receive", () => {
     });
     const req = buildSignedRequest({ body: mentionBody });
     const channel = slackChannel({
+      api: { fetch: slack.fetch },
       credentials: { botToken: "xoxb-test", signingSecret: SIGNING_SECRET },
     });
     const compiled = asCompiled(channel);
@@ -4479,20 +4490,28 @@ describe("constrainAuthorizationRequired", () => {
 describe("slackChannel() Slack API base URL", () => {
   const ORIGINAL_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
   const ORIGINAL_SLACK_API_URL = process.env.SLACK_API_URL;
-  let fetchMock: ReturnType<typeof vi.fn>;
-  let apiFetch: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
+  /** The workspace the default global transport reaches. */
+  let slack: MockSlackApi;
+  /** A configured, non-Slack base — the shape the simulator deploys as. */
+  let simulator: MockSlackApi;
 
   beforeEach(() => {
     process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
     delete process.env.SLACK_API_URL;
-    const ok = () =>
-      new Response(JSON.stringify({ ok: true, ts: "1700000001.000001" }), {
-        headers: { "content-type": "application/json" },
-      });
-    fetchMock = vi.fn(async () => ok());
-    apiFetch = vi.fn<typeof globalThis.fetch>(async () => ok());
-    vi.stubGlobal("fetch", fetchMock);
+    slack = useGlobalSlack();
+    simulator = mockSlackApi({ url: SIMULATOR_URL, users: { U01: { name: "ada" } } });
   });
+
+  /**
+   * Stubs the global `fetch`, which this block — unlike the rest of the
+   * file — has to do: what it pins is which base a call lands on when no
+   * `api.fetch` is configured.
+   */
+  function useGlobalSlack(url?: string): MockSlackApi {
+    const api = mockSlackApi(url === undefined ? {} : { url });
+    vi.stubGlobal("fetch", api.fetch);
+    return api;
+  }
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -4504,10 +4523,6 @@ describe("slackChannel() Slack API base URL", () => {
     if (ORIGINAL_SIGNING_SECRET === undefined) delete process.env.SLACK_SIGNING_SECRET;
     else process.env.SLACK_SIGNING_SECRET = ORIGINAL_SIGNING_SECRET;
   });
-
-  function urlsOf(mock: { readonly mock: { readonly calls: readonly unknown[][] } }): string[] {
-    return mock.mock.calls.map(([url]) => String(url));
-  }
 
   function buildFreeformClickRequest(): Request {
     return buildSignedInteractionRequest({
@@ -4562,66 +4577,85 @@ describe("slackChannel() Slack API base URL", () => {
       slackChannel({ credentials: { botToken: "xoxb-test" } }),
       buildFreeformClickRequest(),
     );
-    expect(urlsOf(fetchMock)).toContain("https://slack.com/api/views.open");
+    expect(slack.views()).toHaveLength(1);
 
-    fetchMock.mockClear();
     await firePost(
       slackChannel({
-        api: { url: "https://sim.example/api", fetch: apiFetch },
+        api: { url: SIMULATOR_URL, fetch: simulator.fetch },
         credentials: { botToken: "xoxb-test" },
       }),
       buildFreeformClickRequest(),
     );
 
-    expect(urlsOf(apiFetch)).toContain("https://sim.example/api/views.open");
-    expect(urlsOf(fetchMock)).not.toContain("https://slack.com/api/views.open");
+    // The simulator's fake rejects anything aimed at another base, so a
+    // leak back to slack.com is a recorded violation rather than a
+    // silently passing assertion.
+    expect(simulator.views()).toHaveLength(1);
+    expect(slack.views()).toHaveLength(1);
+    simulator.assertNoViolations();
+    slack.assertNoViolations();
   });
 
   it("opens views against SLACK_API_URL when no api.url is configured", async () => {
-    process.env.SLACK_API_URL = "http://localhost:3000/api/slack";
+    process.env.SLACK_API_URL = LOCAL_URL;
+    const local = useGlobalSlack(LOCAL_URL);
 
     await firePost(
       slackChannel({ credentials: { botToken: "xoxb-test" } }),
       buildFreeformClickRequest(),
     );
 
-    expect(urlsOf(fetchMock)).toContain("http://localhost:3000/api/slack/views.open");
+    expect(local.callsTo("views.open").map((call) => call.url)).toEqual([
+      `${LOCAL_URL}/views.open`,
+    ]);
+    local.assertNoViolations();
   });
 
   it("marks the answered freeform card through the configured base", async () => {
+    seedReviewCard(slack);
+    seedReviewCard(simulator);
+
     await firePost(
       slackChannel({ credentials: { botToken: "xoxb-test" } }),
       buildFreeformSubmissionRequest(),
     );
-    expect(urlsOf(fetchMock)).toContain("https://slack.com/api/chat.update");
+    expect(slack.message(REVIEW_CARD_TS)?.text).toBe("Answered: approved with context");
 
-    fetchMock.mockClear();
     await firePost(
       slackChannel({
-        api: { url: "https://sim.example/api", fetch: apiFetch },
+        api: { url: SIMULATOR_URL, fetch: simulator.fetch },
         credentials: { botToken: "xoxb-test" },
       }),
       buildFreeformSubmissionRequest(),
     );
 
-    expect(urlsOf(apiFetch)).toContain("https://sim.example/api/chat.update");
-    expect(urlsOf(fetchMock)).not.toContain("https://slack.com/api/chat.update");
+    // Each base marked its own copy of the card, and neither reached
+    // across to the other.
+    expect(simulator.message(REVIEW_CARD_TS)?.text).toBe("Answered: approved with context");
+    expect(slack.callsTo("chat.update")).toHaveLength(1);
+    simulator.assertNoViolations();
+    slack.assertNoViolations();
   });
 
   it("marks the answered freeform card against SLACK_API_URL", async () => {
-    process.env.SLACK_API_URL = "http://localhost:3000/api/slack/";
+    process.env.SLACK_API_URL = `${LOCAL_URL}/`;
+    const local = useGlobalSlack(LOCAL_URL);
+    seedReviewCard(local);
 
     await firePost(
       slackChannel({ credentials: { botToken: "xoxb-test" } }),
       buildFreeformSubmissionRequest(),
     );
 
-    expect(urlsOf(fetchMock)).toContain("http://localhost:3000/api/slack/chat.update");
+    expect(local.callsTo("chat.update").map((call) => call.url)).toEqual([
+      `${LOCAL_URL}/chat.update`,
+    ]);
+    local.assertNoViolations();
   });
 
   it("routes the inbound mention pipeline's own Slack calls through the configured base", async () => {
     const channel = slackChannel({
-      api: { url: "https://sim.example/api", fetch: apiFetch },
+      api: { url: SIMULATOR_URL, fetch: simulator.fetch },
       credentials: { botToken: "xoxb-test" },
       onAppMention: async (ctx) => {
         await ctx.thread.startTyping("Thinking...");
@@ -4632,9 +4666,10 @@ describe("slackChannel() Slack API base URL", () => {
 
     await firePost(channel, buildSignedRequest({ body: buildMentionBody().body }));
 
-    expect(urlsOf(apiFetch)).toContain("https://sim.example/api/assistant.threads.setStatus");
-    expect(urlsOf(apiFetch)).toContain("https://sim.example/api/users.info");
-    expect(urlsOf(apiFetch).every((url) => url.startsWith("https://sim.example/api/"))).toBe(true);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(simulator.callsTo("assistant.threads.setStatus")).toHaveLength(1);
+    expect(simulator.callsTo("users.info")).toHaveLength(1);
+    expect(simulator.calls.every((call) => call.url.startsWith(SIMULATOR_URL))).toBe(true);
+    simulator.assertNoViolations();
+    expect(slack.calls).toEqual([]);
   });
 });

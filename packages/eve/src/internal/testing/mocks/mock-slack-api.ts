@@ -63,10 +63,10 @@ export interface MockSlackApiInput {
    */
   readonly repliesPageSize?: number;
   /**
-   * Canned responses for raw Web API methods the fake has no state for,
-   * keyed by method name. The raw `ctx.slack.request(...)` escape hatch can
-   * reach any Slack method; registering one here is the deliberate opt-in
-   * that keeps every other method failing closed.
+   * Canned responses keyed by method name, taking precedence over the
+   * workspace's own behavior. The raw `ctx.slack.request(...)` escape
+   * hatch can reach any Slack method; registering one here is the
+   * deliberate opt-in that keeps every other method failing closed.
    */
   readonly methods?: Readonly<Record<string, MockSlackMethodHandler>>;
 }
@@ -137,7 +137,11 @@ export interface MockSlackApi {
    * and the workspace identity.
    */
   seedMessage(channelId: string, raw?: Readonly<Record<string, unknown>>): MockSlackMessage;
-  /** Registers or replaces a canned response for a raw Web API method. */
+  /**
+   * Registers a canned response for one Web API method, overriding
+   * whatever the workspace would answer — for an unmodelled method, or
+   * for a degenerate response a real Slack could still return.
+   */
   respondWith(method: string, handler: MockSlackMethodHandler): void;
   /**
    * Queues a Slack-level `{ ok: false, error }` for the next call to one

@@ -9,8 +9,9 @@
  */
 
 /**
- * Canned response for a raw Web API method: either a fixed Slack envelope
- * or a function of the decoded request body.
+ * Canned response for one Web API method: either a fixed Slack envelope
+ * or a function of the decoded request body. A handler takes precedence
+ * over the workspace's own behavior for that method.
  */
 export type MockSlackMethodHandler =
   | Readonly<Record<string, unknown>>
@@ -175,6 +176,14 @@ export function createMockSlackWorkspace(input: MockSlackWorkspaceInput): MockSl
    * reserved for protocol violations the transport must never produce.
    */
   function callMethod(method: string, body: Record<string, unknown>): Record<string, unknown> {
+    // A registered handler wins over the modelled behavior, so a test can
+    // pin a response the workspace would never produce on its own — an
+    // `ok: true` that omits a field, or a method the fake does not model.
+    const registered = handlers.get(method);
+    if (registered !== undefined) {
+      return { ...(typeof registered === "function" ? registered(body) : registered) };
+    }
+
     switch (method) {
       case "auth.test":
         return {
@@ -353,15 +362,10 @@ export function createMockSlackWorkspace(input: MockSlackWorkspaceInput): MockSl
         return { ok: true, user: { id: user, ...known } };
       }
 
-      default: {
-        const handler = handlers.get(method);
-        if (handler === undefined) {
-          // Fail closed: an unhandled method is a gap in the fake or an
-          // unintended call, and a blanket `ok: true` would hide both.
-          return { ok: false, error: "unknown_method" };
-        }
-        return { ...(typeof handler === "function" ? handler(body) : handler) };
-      }
+      default:
+        // Fail closed: an unhandled method is a gap in the fake or an
+        // unintended call, and a blanket `ok: true` would hide both.
+        return { ok: false, error: "unknown_method" };
     }
   }
 

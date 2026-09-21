@@ -155,6 +155,18 @@ describe("mockSlackApi", () => {
     await expect(post(slack, "emoji.list")).resolves.toEqual({ ok: true, emoji: {} });
   });
 
+  it("lets a registered handler override a method it does model", async () => {
+    const slack = mockSlackApi();
+    // Slack's own chat.postMessage always answers with a ts; overriding
+    // is how a test pins what eve does when a response is degenerate.
+    slack.respondWith("chat.postMessage", { ok: true });
+
+    await expect(post(slack, "chat.postMessage", { channel: "C01", text: "hi" })).resolves.toEqual({
+      ok: true,
+    });
+    expect(slack.messages()).toEqual([]);
+  });
+
   it("rejects a call that is not form-encoded", async () => {
     const slack = mockSlackApi();
 
