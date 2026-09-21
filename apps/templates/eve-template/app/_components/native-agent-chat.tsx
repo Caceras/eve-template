@@ -143,7 +143,7 @@ export function NativeAgentChat({
           }
         >
           <ConversationTopFade className="top-14" />
-          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 pt-20 pb-36 sm:px-6">
+          <ConversationContent className="mx-auto w-full max-w-2xl gap-6 px-4 pt-20 pb-36 sm:px-6">
             {agent.data.messages.map((message, index) =>
               showPendingThinking &&
               isPendingAssistantShell &&
@@ -173,13 +173,19 @@ export function NativeAgentChat({
         className={cn(
           "mx-auto w-full px-4 sm:px-6",
           showConversationLayout
-            ? "fixed bottom-0 left-1/2 z-20 max-w-3xl -translate-x-1/2 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-6"
-            : "flex max-w-xl flex-1 flex-col items-center justify-center gap-8 pb-[10vh]",
+            ? "fixed bottom-0 left-1/2 z-20 max-w-2xl -translate-x-1/2 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-6"
+            : "flex max-w-2xl flex-1 flex-col items-center justify-center gap-6 pb-[12vh]",
         )}
       >
         {showConversationLayout ? null : (
           <div className="flex flex-col items-center gap-3 text-center">
-            <h1 className="font-medium text-5xl tracking-tighter">{AGENT_NAME}</h1>
+            <img
+              alt="eve"
+              className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
+              draggable={false}
+              src="/eve.svg"
+            />
+            <span className="sr-only">{AGENT_NAME}</span>
           </div>
         )}
         <div className="w-full">{composer}</div>
@@ -240,7 +246,7 @@ function ErrorMessage({ message }: { readonly message: string }) {
 function ChatHeader({ canStartNewChat }: { readonly canStartNewChat: boolean }) {
   return (
     <header className="pointer-events-none fixed top-0 right-0 left-0 z-20 h-14">
-      <div className="relative mx-auto flex h-full w-full max-w-3xl items-center justify-center bg-background px-24">
+      <div className="relative mx-auto flex h-full w-full max-w-2xl items-center justify-center bg-background px-20">
         <span className="truncate text-muted-foreground text-sm">{AGENT_NAME}</span>
         {canStartNewChat ? (
           <Button
