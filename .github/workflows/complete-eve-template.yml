@@ -35,15 +35,15 @@ jobs:
       - name: Materialize complete template
         run: node /tmp/eve-template-overlay-unpacked/eve-template-overlay/scripts/materialize-eve-template.mjs "$GITHUB_WORKSPACE"
 
-      - name: Commit all generated files
+      - name: Commit template files
         shell: bash
         run: |
           set -euo pipefail
           rm -rf .eve-template-recovery
-          rm -f .github/workflows/complete-eve-template.yml
+          rm -f .github/workflows/eve-template.yml
           git config user.name "eve-template-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A
+          git add -A apps/templates/eve-template .eve-template-recovery
           git status --short
           git commit -m "fix: complete ultimate Eve template materialization"
           git push origin HEAD:main
