@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isCompiledChannel } from "#channel/compiled-channel.js";
 import { getChannelActivityPresentation } from "#channel/activity-renderer.js";
 import { createActivitySnapshot, reduceActivityBatch } from "#execution/session-activity.js";
+import { mockSlackApi } from "#internal/testing/mocks/mock-slack-api.js";
 import {
   buildSlackActivityRenderers,
   experimental_slackActivityRenderer,
@@ -36,7 +37,6 @@ function snapshot(events: Parameters<typeof reduceActivityBatch>[1]["events"]) {
 describe("Slack status activity", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
   });
 
   it("installs renderer configuration with a narrow destination", () => {
@@ -235,12 +235,10 @@ describe("Slack status activity", () => {
   });
 
   it("passes the installation team to function bot tokens", async () => {
+    const slack = mockSlackApi();
     const tokenContext = vi.fn(() => "xoxb-team");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ ok: true })),
-    );
     const renderer = buildSlackActivityRenderers({
+      api: { fetch: slack.fetch },
       botToken: tokenContext,
       renderers: [experimental_slackActivityStatus()],
     })[0]!;
@@ -258,9 +256,9 @@ describe("Slack status activity", () => {
 
   it("suppresses duplicate provider writes", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const fetchMock = vi.fn(async () => Response.json({ ok: true }));
-    vi.stubGlobal("fetch", fetchMock);
+    const slack = mockSlackApi();
     const renderer = buildSlackActivityRenderers({
+      api: { fetch: slack.fetch },
       botToken: undefined,
       renderers: [experimental_slackActivityStatus()],
     })[0]!;
@@ -277,16 +275,17 @@ describe("Slack status activity", () => {
       snapshot: active,
       state,
     });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(slack.callsTo("assistant.threads.setStatus")).toHaveLength(1);
+    expect(slack.statuses()).toEqual([
+      { channelId: "C1", threadTs: "T1", status: "Working…", loadingMessages: ["Working…"] },
+    ]);
   });
 
   it("clears transient status on disposal", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
-      Response.json({ ok: true }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const slack = mockSlackApi();
     const renderer = buildSlackActivityRenderers({
+      api: { fetch: slack.fetch },
       botToken: undefined,
       renderers: [experimental_slackActivityStatus()],
     })[0]!;
@@ -294,6 +293,9 @@ describe("Slack status activity", () => {
       destination: { channelId: "C1", threadTs: "T1" },
       state: { status: "Working…" },
     });
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body)).get("status")).toBe("");
+    expect(slack.callsTo("assistant.threads.setStatus")[0]?.body).toMatchObject({ status: "" });
+    expect(slack.statuses()).toEqual([
+      { channelId: "C1", threadTs: "T1", status: "", loadingMessages: undefined },
+    ]);
   });
 });
