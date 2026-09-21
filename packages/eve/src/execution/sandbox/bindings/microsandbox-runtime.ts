@@ -110,10 +110,14 @@ export class MicrosandboxVm {
         await this.writeMetadata(this.#metadataPath, optionsHash);
       }
       return {
-        networkPolicy: this.#networkPolicy,
+        ...(this.#networkPolicy === undefined
+          ? {}
+          : { networkPolicy: this.#networkPolicy }),
         optionsHash,
         sandboxName: this.#sandboxName,
-        stateSnapshotName: this.#stateSnapshotName,
+        ...(this.#stateSnapshotName === undefined
+          ? {}
+          : { stateSnapshotName: this.#stateSnapshotName }),
         version: MICROSANDBOX_METADATA_VERSION,
       };
     }
@@ -133,7 +137,7 @@ export class MicrosandboxVm {
       await removeSnapshotIfExists(this.#input.module, previousStateSnapshotName);
     }
     return {
-      networkPolicy: this.#networkPolicy,
+      ...(this.#networkPolicy === undefined ? {} : { networkPolicy: this.#networkPolicy }),
       optionsHash,
       sandboxName: this.#sandboxName,
       stateSnapshotName,
