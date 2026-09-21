@@ -61,11 +61,9 @@ export function AgentChatShell({
   const [viewerState, setViewerState] = useState(viewer);
   const [setupStatusState, setSetupStatusState] = useState(setupStatus);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [enabledConnections, setEnabledConnections] = useState<EnabledConnections>({
-    linear: true,
-    notion: true,
-    sentry: true,
-  });
+  const [enabledConnections, setEnabledConnections] = useState<EnabledConnections>(() =>
+    enabledConnectionsFromSetup(setupStatus),
+  );
   const cursorRef = useRef(initialNextCursor);
   const activeChatIdRef = useRef(activeChatId);
   const setupReady = setupStatusState.appReady;
@@ -215,6 +213,9 @@ export function AgentChatShell({
       readonly viewer: Viewer | null;
     }) => {
       setSetupStatusState(incomingSetupStatus);
+      setEnabledConnections((current) =>
+        reconcileEnabledConnections(current, incomingSetupStatus),
+      );
       setViewerState(incomingViewer);
       const usesBrowserStorage = incomingSetupStatus.storageMode === "browser";
       const nextChats =
@@ -507,6 +508,27 @@ function AuthTopActions({
       Sign in
     </Button>
   );
+}
+
+function enabledConnectionsFromSetup(setupStatus: SetupStatus): EnabledConnections {
+  const configured = new Set(setupStatus.configuredConnections ?? []);
+  return {
+    linear: configured.has("linear"),
+    notion: configured.has("notion"),
+    sentry: configured.has("sentry"),
+  };
+}
+
+function reconcileEnabledConnections(
+  current: EnabledConnections,
+  setupStatus: SetupStatus,
+): EnabledConnections {
+  const configured = new Set(setupStatus.configuredConnections ?? []);
+  return {
+    linear: configured.has("linear") && current.linear,
+    notion: configured.has("notion") && current.notion,
+    sentry: configured.has("sentry") && current.sentry,
+  };
 }
 
 function mergeChatHistory(incoming: readonly ChatListItem[], current: readonly ChatListItem[]) {
