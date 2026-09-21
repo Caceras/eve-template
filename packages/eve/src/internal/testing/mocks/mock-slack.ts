@@ -105,6 +105,10 @@ export interface MockSlackStub<M extends SlackApiMethod> {
    * does not satisfy the constraint fails loudly rather than falling
    * through, so a wrong-argument call is caught at the call, not by an
    * assertion someone remembered to write.
+   *
+   * The expectation is in {@link SlackApiRequest} — the wire shape — so
+   * a form-encoded number is written as the string it arrives as:
+   * `.with({ limit: "50" })`, never `.with({ limit: 50 })`.
    */
   with(expected: Partial<SlackApiRequest<M>>): MockSlackStub<M>;
   /** Answer with a Slack-level `{ ok: false, error }` envelope. */
@@ -126,8 +130,14 @@ export interface MockSlack {
    * Decoded body of one call to a method — the nth, defaulting to the
    * first. Fails naming the method when there was no such call, which
    * reads better at the assertion site than indexing into `callsTo`.
+   *
+   * Typed from {@link SlackApiContract}, so an assertion reads a field
+   * Slack actually has or does not compile. This is where the contract
+   * earns most of its keep: the stub side is a literal the author is
+   * already looking at, while the assertion side is spread across every
+   * claim the suite makes about what eve sent.
    */
-  bodyOf(method: string, index?: number): Record<string, unknown>;
+  bodyOf<M extends SlackApiMethod>(method: M, index?: number): SlackApiRequest<M>;
   /** Methods actually called, in first-call order. */
   observedMethods(): readonly string[];
   /** Declare what one method does. Unstubbed methods fail loudly. */
@@ -354,7 +364,7 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     callsTo(method) {
       return calls.filter((call) => call.method === method);
     },
-    bodyOf(method, index = 0) {
+    bodyOf<M extends SlackApiMethod>(method: M, index = 0): SlackApiRequest<M> {
       const matching = calls.filter((call) => call.method === method);
       const call = matching[index];
       if (call === undefined) {
@@ -363,7 +373,10 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
             `Observed methods: ${[...new Set(calls.map((entry) => entry.method))].join(", ") || "none"}.`,
         );
       }
-      return asRecord(call.body);
+      // The one cast the contract needs: a recorded body is `unknown`
+      // until the method name says what it is. Doing it here is what
+      // lets every assertion site read a typed field instead.
+      return asRecord(call.body) as SlackApiRequest<M>;
     },
     observedMethods() {
       return [...new Set(calls.map((call) => call.method))];

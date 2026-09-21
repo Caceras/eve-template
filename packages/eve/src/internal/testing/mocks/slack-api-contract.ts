@@ -36,6 +36,11 @@
  * `and_raise`), because in this codebase they genuinely are different:
  * one arrives as an envelope the caller inspects, the other as a thrown
  * `SlackApiError`.
+ *
+ * `request` is declared in Slack's own logical types — `limit` is a
+ * number because Slack documents a number — but the double never sees
+ * those types. It sees what came off the wire, which is what
+ * {@link SlackApiRequest} projects them to.
  */
 
 /** A Slack message as the Web API returns it inside a response. */
@@ -161,7 +166,39 @@ export interface SlackApiContract {
 /** Every Slack Web API method the channel drives. */
 export type SlackApiMethod = keyof SlackApiContract;
 
-export type SlackApiRequest<M extends SlackApiMethod> = SlackApiContract[M]["request"];
+/**
+ * One request field as it arrives, rather than as it was written.
+ *
+ * `callSlackApi` form-encodes every outbound body through
+ * `encodeSlackApiBody`, which stringifies scalars and JSON-encodes
+ * everything else; `decodeSlackApiBody` parses back only the values
+ * starting `[` or `{`. Arrays and objects therefore round-trip, and a
+ * number or boolean does not: production's `limit: 50` is read back as
+ * `"50"`, and `unfurl_links: true` as `"true"`.
+ *
+ * The two JSON-encoded methods (`views.open`, the answered-card
+ * `chat.update`) do round-trip scalars, but neither declares a number
+ * or boolean field, so one projection covers both encodings.
+ */
+type SlackWireValue<V> = V extends number | boolean ? string : V;
+
+/** A whole request as the double receives it. */
+type SlackWireRequest<T> = { [K in keyof T]: SlackWireValue<T[K]> };
+
+/**
+ * A request in the shape it reaches the double, which is the shape
+ * every stub predicate and every assertion actually reads.
+ *
+ * Deliberately not `SlackApiContract[M]["request"]`: that is the shape
+ * production *wrote*, and typing the double with it makes
+ * `.with({ limit: 50 })` a constraint no call can ever satisfy, since
+ * the body carries `"50"`. Projecting to the wire shape turns that into
+ * a compile error instead of a stub that silently never matches.
+ */
+export type SlackApiRequest<M extends SlackApiMethod> = SlackWireRequest<
+  SlackApiContract[M]["request"]
+>;
+
 export type SlackApiResponseFor<M extends SlackApiMethod> = SlackApiContract[M]["response"];
 
 /**
