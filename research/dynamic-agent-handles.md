@@ -27,6 +27,8 @@ proposed. Open decisions remain open even where the branch already chose a behav
   registrations like any other tool.
 - **Handles are callable.** A tool can pass the returned handle to `ctx.agent()`.
   Registration, advertisement, and calling need explicit boundaries.
+- **One handle, one conversation.** Repeated calls continue the same receiving
+  session, with the same semantics as successive deliveries to that session.
 
 The starting limitation is that the [existing handles][original-store] primarily
 record delegated children and their execution state. Adding discovery should make
@@ -38,7 +40,9 @@ A **destination** identifies an agent that can be addressed. A **handle** is the
 caller's reference to a registered destination. A **registry** is the session's
 collection of those entries. An **invocation** is an attempt to send work to a
 destination; a **conversation** is the receiving agent session in which work runs.
-Whether a handle becomes bound to one conversation is an open decision below.
+A handle may be registered before its conversation exists. Its initial delivery
+establishes that conversation, or uses the existing session named at registration;
+subsequent deliveries through the handle continue the same conversation.
 
 ```ts
 const handle = ctx.registerAgent({
@@ -57,7 +61,7 @@ whether its return value is an admission receipt or the completed answer.
 | Proposed operation                 | Purpose                                                                           | Decision still needed                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `registerAgent(destination)`       | Return a handle that code can use immediately and the model can subsequently see. | Identity, duplicate registration, and replacement rules.                  |
-| `agent(handle, input)`             | Address the registered destination through the ordinary calling path.             | Conversation selection, return value, and calls while work is running.    |
+| `agent(handle, input)`             | Address the registered destination through the ordinary calling path.             | Return value and authority to deliver or cancel work.                     |
 | `updateAgent(handle, description)` | Change what the model is told about a destination.                                | Whether updates may also change routing, and how stale references behave. |
 | `unregisterAgent(handle)`          | Remove the destination from subsequent advertisements and handle lookups.         | Treatment of accepted work and later re-registration.                     |
 
@@ -65,18 +69,37 @@ Static declarations supply destinations through the same registry. Their authore
 configuration still determines capabilities and credentials. A new registry should
 not require a separate calling API just because an entry came from a directory.
 
+## Agreed conversation semantics
+
+A handle is a reference to one conversation, including before that conversation
+has been established. Calling it again is another delivery to the same receiving
+session:
+
+```ts
+await ctx.agent(handle, { message: "Review this change." });
+await ctx.agent(handle, { message: "Correction: the date should be Friday." });
+```
+
+The correction continues the review conversation. Whether the receiving session
+is idle or working, delivery follows its normal session semantics. The registry
+should not introduce a separate busy/claim policy for the same operation.
+
+Registration itself does not start the conversation. If a destination is offline,
+the handle remains registered. Once bound, a failed delivery must not silently
+start a replacement conversation. A fresh conversation requires an explicit
+choice; the authoring operation for that choice remains to be designed.
+
 ## Decisions to align on
 
-1. **Destination versus conversation identity.** Does `h` continue to identify a
-   reusable destination after the first call, or become bound to one conversation?
-   How does a caller request a fresh conversation or address an existing one?
-2. **Registration identity and lifetime.** What makes two descriptors the same
-   destination? Are keys aliases or identities? What survives removal, replacement,
-   and session resume? What may an update change?
-3. **Invocation and authority.** What does `ctx.agent(h, input)` return, what does a
-   second call mean while work is running, and who can steer or cancel that work?
-   Should ordinary tools and workflows expose different completion behavior?
-4. **Commit and publication.** Which callback/checkpoint commits registration?
+1. **Registration identity and lifetime.** What makes two descriptors refer to the
+   same handle and conversation? Are keys aliases or identities? What survives
+   removal, replacement, and session resume? How does a caller explicitly request
+   a fresh conversation, and what may an update change?
+2. **Delivery result and authority.** What does `ctx.agent(h, input)` return, and
+   who can deliver, steer, or cancel work in that session? Should ordinary tools
+   and workflows expose different completion behavior? Concurrent initial calls
+   must preserve one conversation per handle; how is that established durably?
+3. **Commit and publication.** Which callback/checkpoint commits registration?
    What happens if a tool registers and then fails, or invokes before the step is
    persisted? Does an update ever wake an idle agent?
 
@@ -134,9 +157,9 @@ export async function readAgentDirectory() {
 ```
 
 An optional `sessionId` illustrates a directory advertising an existing
-conversation. Omitting it advertises an agent destination without selecting a
-conversation. How each form affects later invocations must be specified; knowing
-a session ID does not establish permission to call or cancel it.
+conversation. Omitting it defers conversation creation until the first call.
+Both forms continue one conversation on subsequent calls. Knowing a session ID
+does not establish permission to call or cancel it.
 
 ### A tool loads and registers a destination
 
@@ -254,14 +277,14 @@ what the model needs to see.
 
 The API needs to distinguish destination knowledge from invocation outcomes:
 
-| Situation                                     | Required distinction                                                                                                                       |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| No conversation exists                        | Registration still succeeds; a call must have an explicit conversation-selection rule.                                                     |
-| Destination is offline or rejects the request | The invocation fails; that does not by itself invalidate knowledge of the destination.                                                     |
-| Work is already running                       | Define whether the call steers that work, queues new work, or starts a separate invocation. A task claim is not a user-facing explanation. |
-| A response is lost after remote acceptance    | The caller cannot infer that work never started. Retry semantics need to account for duplicate delivery.                                   |
-| An existing external session is registered    | Addressability does not establish authority to reset the session or cancel another caller's work.                                          |
-| An entry is removed or replaced               | Define what stale handles and already-accepted invocations mean independently of advertisement.                                            |
+| Situation                                     | Required distinction                                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| No conversation exists                        | Registration still succeeds; the initial delivery establishes the conversation for this handle.                                                |
+| Destination is offline or rejects the request | The invocation fails; that does not by itself invalidate knowledge of the destination.                                                         |
+| Work is already running                       | Deliver to the same session using its normal delivery semantics; do not branch into another conversation or add a handle-specific busy policy. |
+| A response is lost after remote acceptance    | The caller cannot infer that work never started. Retry semantics need to account for duplicate delivery.                                       |
+| An existing external session is registered    | Addressability does not establish authority to reset the session or cancel another caller's work.                                              |
+| An entry is removed or replaced               | Define what stale handles and already-accepted invocations mean independently of advertisement.                                                |
 
 The parent/child ownership discussion belongs here as a design dependency.
 A handle identifies what is being addressed; an internal task ID may identify an
@@ -284,8 +307,10 @@ The proposal should be explainable through these observable checks:
   rules once registered.
 - An offline destination remains known after a failed call; the failure reports
   an invocation outcome rather than silently choosing a different conversation.
-- A repeated call, removal, failed callback, and restart each have a specified
-  result that follows the four decisions above.
+- Repeated calls through one handle reach the same receiving session, including
+  while that session is working. An unavailable bound session is not replaced.
+- Removal, failed callbacks, concurrent initial calls, and restart each have a
+  specified result that preserves this invariant and the decisions above.
 
 The [experimental registry][registry], [context tests][context-tests], and
 [publication tests][publication-tests] provide implementation evidence to challenge
