@@ -489,28 +489,19 @@ function AuthTopActions({
   readonly authMode: SetupStatus["authMode"];
   readonly onSignIn: () => void;
 }) {
-  const usesPassword = authMode === "password";
+  if (authMode === "local-dev") {
+    return null;
+  }
 
   return (
-    <div className="flex max-w-[calc(100vw-4rem)] items-center gap-1.5">
-      <Button
-        className="h-8 rounded-md border border-border bg-background/70 px-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60"
-        onClick={onSignIn}
-        type="button"
-        variant="outline"
-      >
-        {usesPassword ? "Sign in" : "Log In"}
-      </Button>
-      {usesPassword ? null : (
-        <Button
-          className="h-8 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:bg-foreground/90"
-          onClick={onSignIn}
-          type="button"
-        >
-          Sign Up
-        </Button>
-      )}
-    </div>
+    <Button
+      className="h-8 px-3 text-sm font-medium"
+      onClick={onSignIn}
+      type="button"
+      variant="outline"
+    >
+      Sign in
+    </Button>
   );
 }
 
