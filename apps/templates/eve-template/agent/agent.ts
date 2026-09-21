@@ -2,7 +2,7 @@ import { defineAgent } from "eve";
 
 export default defineAgent({
   description:
-    "General-purpose Eve reference agent. Keep simple work in the root; delegate deep research and review when their narrower contexts are useful.",
+    "General-purpose Ægentica agent. Keep simple work in the root; delegate deep research and review when their narrower contexts are useful.",
   model: "openai/gpt-5.6-luna-fast",
   reasoning: "high",
   compaction: {
