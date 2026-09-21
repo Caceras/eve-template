@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { viewerFromVerifiedSession } from "@/lib/session-identity";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
@@ -33,7 +34,7 @@ export default async function RootLayout({ children }: { readonly children: Reac
     process.env.NODE_ENV === "development"
       ? null
       : await auth.api.getSession({ headers: await headers() });
-  const owner = session?.user.id;
+  const owner = viewerFromVerifiedSession(session)?.key;
   return (
     <html className={cn(sans.variable, mono.variable)} lang="en">
       <head>
