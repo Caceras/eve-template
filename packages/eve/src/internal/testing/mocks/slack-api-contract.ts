@@ -1,6 +1,6 @@
 /**
- * The Slack Web API surface eve's Slack channel drives, as a typed
- * request/response map.
+ * The Slack Web API surface eve's Slack channel drives *and the tests
+ * exercise*, as a typed request/response map.
  *
  * This is the `instance_double` half of the rspec translation. A plain
  * double will happily answer a method that does not exist, or answer it
@@ -24,6 +24,12 @@
  * Slack, and no local artifact can. The runtime parity check in
  * `slack-api-contract.test.ts` narrows the gap from the other side by
  * asserting the suite actually exercises every method listed here.
+ *
+ * Scope note: the channel also issues `chat.startStream`,
+ * `chat.appendStream`, `chat.stopStream`, and `chat.delete`, which no
+ * test currently drives through the double. They are deliberately absent
+ * rather than modeled on speculation — the first test to exercise one
+ * will fail to compile until its entry is added, which is the point.
  *
  * `response` is always the success shape. Slack-level `{ ok: false }`
  * and HTTP-level failures are separate paths on the double (rspec's
@@ -60,16 +66,6 @@ export interface SlackApiContract {
     };
   };
 
-  "chat.appendStream": {
-    request: { channel: string; ts: string; markdown_text?: string };
-    response: { ok: true; ts?: string };
-  };
-
-  "chat.delete": {
-    request: { channel: string; ts: string };
-    response: { ok: true; channel?: string; ts?: string };
-  };
-
   "chat.getPermalink": {
     request: { channel: string; message_ts: string };
     response: { ok: true; channel?: string; permalink: string };
@@ -98,16 +94,6 @@ export interface SlackApiContract {
       unfurl_media?: boolean;
     };
     response: { ok: true; channel?: string; ts: string; message?: SlackRawMessage };
-  };
-
-  "chat.startStream": {
-    request: { channel: string; thread_ts?: string; markdown_text?: string };
-    response: { ok: true; channel?: string; ts: string };
-  };
-
-  "chat.stopStream": {
-    request: { channel: string; ts: string };
-    response: { ok: true; ts?: string };
   };
 
   "chat.update": {
@@ -188,13 +174,9 @@ export type SlackApiResponseFor<M extends SlackApiMethod> = SlackApiContract[M][
 const SLACK_API_METHOD_SET: { readonly [M in SlackApiMethod]: true } = {
   "assistant.threads.setStatus": true,
   "auth.test": true,
-  "chat.appendStream": true,
-  "chat.delete": true,
   "chat.getPermalink": true,
   "chat.postEphemeral": true,
   "chat.postMessage": true,
-  "chat.startStream": true,
-  "chat.stopStream": true,
   "chat.update": true,
   "conversations.info": true,
   "conversations.open": true,
