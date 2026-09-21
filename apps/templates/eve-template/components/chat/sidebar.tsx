@@ -118,7 +118,7 @@ export function ChatSidebar({
         </div>
         <button
           className={cn(
-            "flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors",
+            "flex h-9 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors md:h-8",
             newSessionActive && pathname === "/" ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
@@ -133,7 +133,7 @@ export function ChatSidebar({
         </button>
         <Link
           className={cn(
-            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
           )}
           href="/capabilities"
@@ -147,7 +147,7 @@ export function ChatSidebar({
         </Link>
         <Link
           className={cn(
-            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/native" || pathname.startsWith("/native/") ? activeRowClass : inactiveRowClass,
           )}
           href="/native"
@@ -157,11 +157,11 @@ export function ChatSidebar({
           }}
         >
           <RadioTowerIcon className="size-4" />
-          Web
+          Channels
         </Link>
         <Link
           className={cn(
-            "flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/session" ? activeRowClass : inactiveRowClass,
           )}
           href="/session"
@@ -191,7 +191,7 @@ export function ChatSidebar({
                   key={chat.id}
                 >
                   <Link
-                    className="flex h-8 min-w-0 items-center px-2 pr-8 text-sm"
+                    className="flex h-9 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
                     href={`/chat/${chat.id}`}
                     onClick={() => onNavigate?.(chat.id)}
                   >
@@ -284,7 +284,7 @@ function SidebarSignInButton({
 }) {
   return (
     <button
-      className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-10 w-full items-center justify-between rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 md:h-8"
       disabled={authDisabled}
       onClick={() => {
         onSignIn?.();
