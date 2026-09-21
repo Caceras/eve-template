@@ -49,6 +49,16 @@ describe("mockSlack strictness", () => {
 });
 
 describe("mockSlack responses", () => {
+  it("lets the last declaration for a method win", async () => {
+    const slack = mockSlack();
+    slack.allow("chat.postMessage").andRespond(() => ({ ok: true, ts: "from-respond" }));
+    slack.allow("chat.postMessage").andReturn({ ok: true, ts: "from-return" });
+
+    expect(await call(slack, "chat.postMessage", { channel: "C01" })).toMatchObject({
+      ts: "from-return",
+    });
+  });
+
   it("answers successive calls from andReturnEach in order", async () => {
     const slack = mockSlack();
     slack.allow("conversations.replies").andReturnEach([

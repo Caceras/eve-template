@@ -133,6 +133,21 @@ export interface MockSlack {
   /** Declare what one method does. Unstubbed methods fail loudly. */
   allow<M extends SlackApiMethod>(method: M): MockSlackStub<M>;
   /**
+   * Declare a method that is deliberately outside
+   * {@link SlackApiContract}.
+   *
+   * `ctx.slack.request(...)` is a documented escape hatch that can reach
+   * any Slack method, including ones the channel itself never drives, so
+   * the contract cannot cover them without growing entries for the whole
+   * Web API. This is the unverified door for exactly that case: nothing
+   * checks the method name or the response shape.
+   *
+   * Named to be conspicuous at the call site, and excluded from the
+   * contract parity check. Reach for {@link allow} unless the method
+   * under test is genuinely ad hoc.
+   */
+  allowUncheckedMethod(method: string, response: Readonly<Record<string, unknown>>): void;
+  /**
    * Queues a one-shot Slack-level `{ ok: false, error }` ahead of
    * whatever the method is stubbed to return.
    */
@@ -356,18 +371,24 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
     allow(method) {
       const state = stubFor(method);
       const stub: MockSlackStub<typeof method> = {
+        // Each of these three replaces the others: the last declaration
+        // for a method wins, rather than an earlier one shadowing it.
         andReturn(response) {
           state.responses = [response];
           state.sequence = false;
+          state.respond = undefined;
           return stub;
         },
         andReturnEach(responses) {
           state.responses = [...responses];
           state.sequence = true;
+          state.respond = undefined;
           return stub;
         },
         andRespond(respond) {
           state.respond = respond as (body: Record<string, unknown>) => unknown;
+          state.responses = [];
+          state.sequence = false;
           return stub;
         },
         with(expected) {
@@ -384,6 +405,11 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
         },
       };
       return stub;
+    },
+    allowUncheckedMethod(method, response) {
+      const state = stubFor(method);
+      state.responses = [response];
+      state.sequence = false;
     },
     failNext(method, error) {
       failNextQueue.set(method, [...(failNextQueue.get(method) ?? []), error]);
