@@ -68,7 +68,7 @@ const INCLUDED_AREAS = [
   ["Memory", "Cross-session profile memory and durable session state."],
   ["Schedules", "Heartbeat and scheduled-action scaffolds."],
   ["Hooks", "Global lifecycle and audit hooks."],
-  ["Sandbox", "Seeded workspace and Eve sandbox tooling."],
+  ["Sandbox", "Seeded workspace and Ægentica sandbox tooling."],
   ["Evals", "Smoke, HITL, state, delegation and workflow evals."],
 ] as const;
 
@@ -86,7 +86,7 @@ export function EveCapabilities() {
       const client = new Client({ host: "" });
       setInfo((await client.info()) as unknown as RuntimeInfo);
     } catch (value) {
-      setError(value instanceof Error ? value.message : "Could not inspect the Eve agent.");
+      setError(value instanceof Error ? value.message : "Could not inspect the Ægentica agent.");
     } finally {
       setLoading(false);
     }
@@ -143,7 +143,7 @@ export function EveCapabilities() {
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">Agent</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Runtime truth, included scaffolds and the official Eve surface — kept separate so
+              Runtime truth, included scaffolds and the Ægentica capability surface — kept separate so
               capabilities are visible without overstating what is active.
             </p>
           </div>
@@ -287,8 +287,8 @@ export function EveCapabilities() {
             <section>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <SectionHeading
-                  description={`${eveSurface.registryItems.length} official registry items available to add or configure in Eve ${eveSurface.eveVersion}.`}
-                  title="Eve registry"
+                  description={`${eveSurface.registryItems.length} official registry items available to add or configure in Ægentica.`}
+                  title="Capability registry"
                 />
                 <div className="relative w-full sm:w-72">
                   <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -349,7 +349,7 @@ export function EveCapabilities() {
 
             <section>
               <SectionHeading
-                description={`${eveSurface.packageExports.length} public package entrypoints exposed by the checked-out Eve package.`}
+                description={`${eveSurface.packageExports.length} public package entrypoints exposed by the underlying agent framework.`}
                 title="Package surface"
               />
               <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-4">
