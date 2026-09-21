@@ -53,7 +53,7 @@ export function EveSessionLab() {
           <p className="text-sm text-muted-foreground">Advanced</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sessions</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Inspect durable Eve sessions and perform low-level lifecycle actions without leaving the product shell.
+            Inspect durable Ægentica sessions and perform low-level lifecycle actions without leaving the product shell.
           </p>
         </div>
 
@@ -76,7 +76,7 @@ export function EveSessionLab() {
             <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.clear())} className="justify-start sm:justify-center" size="sm" variant="outline">
               <EraserIcon className="size-4" /> Clear context
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.reset({ reason: "Requested from Eve Template session lab" }))} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.reset({ reason: "Requested from Ægentica Sessions" }))} className="justify-start sm:justify-center" size="sm" variant="outline">
               <ListRestartIcon className="size-4" /> Reset
             </Button>
           </div>
