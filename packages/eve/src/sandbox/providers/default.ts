@@ -9,7 +9,7 @@ import type { VercelSandboxCreateOptions } from "#public/sandbox/vercel-sandbox.
 import { DockerSandbox } from "#sandbox/providers/docker.js";
 import { JustBashSandbox } from "#sandbox/providers/just-bash.js";
 import { MicrosandboxSandbox } from "#sandbox/providers/microsandbox.js";
-import { VercelSandbox } from "#sandbox/providers/vercel.js";
+import { createDefaultVercelEnvironment } from "#sandbox/providers/vercel.js";
 import type { SandboxEnvironment } from "#shared/sandbox-environment.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 
@@ -41,7 +41,7 @@ export function defineDefaultSandboxProvider(probes: DefaultSandboxProbes) {
     environment(options: DefaultSandboxEnvironmentOptions = {}): SandboxEnvironment<undefined> {
       if (probes.isDeployedOnVercel()) {
         return withoutOpenOptions(
-          VercelSandbox.environment(withPreparation(options.vercel, options.prepare)),
+          createDefaultVercelEnvironment(withPreparation(options.vercel, options.prepare)),
         );
       }
       if (probes.isDockerAvailable()) {

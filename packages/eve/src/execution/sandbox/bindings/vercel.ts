@@ -63,7 +63,7 @@ import type {
 } from "#execution/sandbox/bindings/vercel-sdk-types.js";
 
 export type VercelSandboxPreparedArtifact = {
-  readonly snapshotId: string;
+  readonly snapshotId?: string;
 };
 
 export type VercelSandboxSessionState = {
@@ -94,6 +94,7 @@ export interface CreateVercelSandboxInput {
   readonly loadDeleteSandboxModule?: () => Promise<VercelModule>;
   readonly loadSandboxModule?: () => Promise<VercelModule>;
   readonly prepare?: (sandbox: SandboxSession) => Promise<void> | void;
+  readonly skipEmptyPreparation?: boolean;
 }
 
 export function createVercelSandbox(
@@ -146,7 +147,7 @@ export function createVercelSandbox(
         session,
       });
     } catch (error) {
-      if (isVercelSnapshotUnavailableError(error)) {
+      if (isVercelSnapshotUnavailableError(error) && artifact.snapshotId !== undefined) {
         throw new SandboxTemplateNotProvisionedError({
           providerName: "vercel",
           templateKey: artifact.snapshotId,
@@ -167,6 +168,9 @@ export function createVercelSandbox(
 
   return {
     async prepare(context) {
+      const seedFiles = providerResourceTargetFiles(context.resources);
+      if (input.skipEmptyPreparation === true && input.prepare === undefined && seedFiles.length === 0)
+        return {};
       const templateKey = `eve-sbx-tpl-vercel-${createSandboxProviderIdentity({
         createOptions: vercelIdentityOptions(createOptions),
         prepare: input.prepare,
@@ -180,7 +184,7 @@ export function createVercelSandbox(
           loadSandboxModule,
           log: context.log,
           prepareSandbox: input.prepare,
-          seedFiles: providerResourceTargetFiles(context.resources),
+          seedFiles,
           templateKey,
         });
         return { snapshotId: outcome.template.snapshotId };
@@ -273,10 +277,13 @@ function requireVercelSessionState(state: SandboxPreparedArtifact): VercelSandbo
 function requirePreparedVercelTemplate(
   artifact: SandboxPreparedArtifact,
 ): VercelSandboxPreparedArtifact {
-  if (!isSandboxPreparedArtifactRecord(artifact) || typeof artifact.snapshotId !== "string") {
+  if (
+    !isSandboxPreparedArtifactRecord(artifact) ||
+    (artifact.snapshotId !== undefined && typeof artifact.snapshotId !== "string")
+  ) {
     throw new Error("Invalid prepared Vercel sandbox artifact.");
   }
-  return { snapshotId: artifact.snapshotId };
+  return artifact.snapshotId === undefined ? {} : { snapshotId: artifact.snapshotId };
 }
 
 interface EnsureTemplateOutcome {

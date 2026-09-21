@@ -1,6 +1,6 @@
-import { defineSelfModificationSandbox } from "../../../sandbox.js";
+import { defineSelfModificationSandbox } from "eve/self-modification/sandbox";
 import selfModification from "../../extension.js";
 
-export { defineSelfModificationSandbox } from "../../../sandbox.js";
+export { defineSelfModificationSandbox } from "eve/self-modification/sandbox";
 
 export default defineSelfModificationSandbox({ config: selfModification.config });
