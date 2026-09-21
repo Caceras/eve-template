@@ -167,8 +167,9 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
  */
 function summarizePreparedArtifact(artifact: SandboxPreparedArtifact): string {
   if (artifact === null) return "null";
+  if (typeof artifact !== "object" || Array.isArray(artifact)) return typeof artifact;
   const keys = Object.keys(artifact).sort().join(",") || "empty";
-  const snapshot = typeof artifact.snapshotId === "string" ? "present" : "absent";
+  const snapshot = typeof Reflect.get(artifact, "snapshotId") === "string" ? "present" : "absent";
   return `keys=${keys};snapshot=${snapshot}`;
 }
 
