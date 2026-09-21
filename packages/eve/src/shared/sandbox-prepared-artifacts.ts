@@ -2,12 +2,12 @@ import { z } from "#compiled/zod/index.js";
 import type { SandboxPreparedArtifact } from "#shared/sandbox-provider.js";
 
 export const SANDBOX_PREPARED_ARTIFACTS_KIND = "eve-sandbox-prepared-artifacts";
-export const SANDBOX_PREPARED_ARTIFACTS_VERSION = 1;
+export const SANDBOX_PREPARED_ARTIFACTS_VERSION = 2;
 
 export interface SandboxPreparedArtifactEntry {
   readonly artifact: SandboxPreparedArtifact;
+  readonly nodeId: string;
   readonly providerName: string;
-  readonly templateName: string;
 }
 
 export interface SandboxPreparedArtifactsManifest {
@@ -33,8 +33,8 @@ export const sandboxPreparedArtifactsManifestSchema: z.ZodType<SandboxPreparedAr
       z
         .object({
           artifact: sandboxPreparedArtifactSchema,
+          nodeId: z.string().min(1),
           providerName: z.string().min(1),
-          templateName: z.string().min(1),
         })
         .strict(),
     ),
@@ -47,11 +47,7 @@ export function createSandboxPreparedArtifactsManifest(
   entries: readonly SandboxPreparedArtifactEntry[],
 ): SandboxPreparedArtifactsManifest {
   return {
-    entries: [...entries].sort((left, right) =>
-      `${left.providerName}:${left.templateName}`.localeCompare(
-        `${right.providerName}:${right.templateName}`,
-      ),
-    ),
+    entries: [...entries].sort((left, right) => left.nodeId.localeCompare(right.nodeId)),
     kind: SANDBOX_PREPARED_ARTIFACTS_KIND,
     version: SANDBOX_PREPARED_ARTIFACTS_VERSION,
   };

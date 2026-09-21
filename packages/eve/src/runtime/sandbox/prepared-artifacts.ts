@@ -25,12 +25,8 @@ export async function writeSandboxPreparedArtifactsManifest(input: {
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   }
-  const entries = new Map(
-    existing?.entries.map((entry) => [artifactKey(entry.providerName, entry.templateName), entry]),
-  );
-  for (const entry of input.entries) {
-    entries.set(artifactKey(entry.providerName, entry.templateName), entry);
-  }
+  const entries = new Map(existing?.entries.map((entry) => [entry.nodeId, entry]));
+  for (const entry of input.entries) entries.set(entry.nodeId, entry);
   await writeFile(
     path,
     `${JSON.stringify(createSandboxPreparedArtifactsManifest([...entries.values()]), null, 2)}\n`,
@@ -39,18 +35,16 @@ export async function writeSandboxPreparedArtifactsManifest(input: {
 
 export async function loadSandboxPreparedArtifact(input: {
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+  readonly nodeId: string;
   readonly providerName: string;
-  readonly templateName: string;
 }): Promise<SandboxPreparedArtifact | undefined> {
   const manifest = await loadSandboxPreparedArtifactsManifest(input.compiledArtifactsSource);
-  const entry = manifest?.entries.find(
-    (candidate) =>
-      candidate.providerName === input.providerName &&
-      candidate.templateName === input.templateName,
-  );
-  console.info(
-    `[eve:sandbox-debug] load source=${input.compiledArtifactsSource.kind} provider=${input.providerName} template=${input.templateName} entries=${manifest?.entries.length ?? 0} match=${entry === undefined ? "absent" : summarizeArtifact(entry.artifact)}`,
-  );
+  const entry = manifest?.entries.find((candidate) => candidate.nodeId === input.nodeId);
+  if (entry !== undefined && entry.providerName !== input.providerName) {
+    throw new Error(
+      `Prepared sandbox artifact for node "${input.nodeId}" belongs to provider "${entry.providerName}", not "${input.providerName}".`,
+    );
+  }
   return entry?.artifact;
 }
 
@@ -67,15 +61,4 @@ export async function loadSandboxPreparedArtifactsManifest(
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
-}
-
-function summarizeArtifact(artifact: SandboxPreparedArtifact): string {
-  if (artifact === null) return "null";
-  if (typeof artifact !== "object" || Array.isArray(artifact)) return typeof artifact;
-  const keys = Object.keys(artifact).sort().join(",") || "empty";
-  return `keys:${keys};snapshot:${typeof Reflect.get(artifact, "snapshotId") === "string" ? "present" : "absent"}`;
-}
-
-function artifactKey(providerName: string, templateName: string): string {
-  return `${providerName}\0${templateName}`;
 }

@@ -22,18 +22,12 @@ import { resolveRuntimeAgentGraph } from "#runtime/resolve-agent-graph.js";
 import { createSandboxProviderFiles } from "#execution/sandbox/provider-files.js";
 import { createDevelopmentSandboxProviderHost } from "#execution/sandbox/provider-host-development.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
-import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import type { RuntimeRegisteredSandbox } from "#runtime/sandbox/registry.js";
 import type { SandboxPreparedArtifactEntry } from "#shared/sandbox-prepared-artifacts.js";
-import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
 import { writeSandboxPreparedArtifactsManifest } from "#runtime/sandbox/prepared-artifacts.js";
 import { materializeWorkspaceDirectory } from "#runtime/workspace/seed-files.js";
 import { toErrorMessage } from "#shared/errors.js";
-import {
-  getSandboxEnvironmentConfigurationHash,
-  getSandboxEnvironmentRuntime,
-} from "#shared/sandbox-environment.js";
-import { withSandboxTemplatePrewarmLock } from "./template-prewarm-lock.js";
+import { getSandboxEnvironmentRuntime } from "#shared/sandbox-environment.js";
 
 export interface SandboxPreparedArtifactStore {
   write(input: {
@@ -51,8 +45,8 @@ const diskPreparedArtifactStore: SandboxPreparedArtifactStore = {
 interface PrewarmTarget {
   readonly context: SandboxProviderPrepareContext;
   readonly label: string;
+  readonly nodeId: string;
   readonly provider: SandboxProviderRuntime;
-  readonly templateName: string;
 }
 
 interface NodeSandbox extends RuntimeRegisteredSandbox {
@@ -107,31 +101,20 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
   input.log?.(`eve: initializing ${formatSandboxTemplateCount(targets.length)}...`);
 
   const results = await Promise.all(
-    targets.map(async ({ context, label, provider, templateName }) => {
+    targets.map(async ({ context, label, nodeId, provider }) => {
       const logProviderProgress = (message: string) => {
         if (!shouldLogSandboxPrewarmProgress(message)) return;
         input.log?.(`eve: sandbox template "${label}" (${provider.providerName}): ${message}`);
       };
       try {
-        const result = await withSandboxTemplatePrewarmLock(
-          {
-            appRoot: input.appRoot,
-            providerName: provider.providerName,
-            templateKey: templateName,
+        const result = await dispatch({
+          context: {
+            ...context,
+            log: input.log === undefined ? undefined : logProviderProgress,
           },
-          async () =>
-            await dispatch({
-              context: {
-                ...context,
-                log: input.log === undefined ? undefined : logProviderProgress,
-              },
-              provider,
-            }),
-        );
-        input.log?.(
-          `[eve:sandbox-debug] prepared provider=${provider.providerName} template=${templateName} artifact=${summarizePreparedArtifact(result)}`,
-        );
-        return { provider, result, templateName };
+          provider,
+        });
+        return { nodeId, provider, result };
       } catch (error) {
         const prewarmError = formatPrewarmFailureForEnvironment({
           providerName: provider.providerName,
@@ -144,14 +127,11 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
       }
     }),
   );
-  const entries = results.map(({ provider, result, templateName }) => ({
+  const entries = results.map(({ nodeId, provider, result }) => ({
     artifact: result,
+    nodeId,
     providerName: provider.providerName,
-    templateName,
   }));
-  input.log?.(
-    `[eve:sandbox-debug] writing ${entries.length} prepared artifact(s) compileDirectory=${input.compileDirectoryPath}`,
-  );
   await preparedArtifactStore.write({ compileDirectoryPath: input.compileDirectoryPath, entries });
   input.log?.(`eve: initialized ${formatSandboxTemplateCount(targets.length)}.`);
 }
@@ -165,14 +145,6 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
  * Shared entrypoint for `eve dev` startup, the dev watcher, and the
  * Vercel build hook.
  */
-function summarizePreparedArtifact(artifact: SandboxPreparedArtifact): string {
-  if (artifact === null) return "null";
-  if (typeof artifact !== "object" || Array.isArray(artifact)) return typeof artifact;
-  const keys = Object.keys(artifact).sort().join(",") || "empty";
-  const snapshot = typeof Reflect.get(artifact, "snapshotId") === "string" ? "present" : "absent";
-  return `keys=${keys};snapshot=${snapshot}`;
-}
-
 export async function prewarmAppSandboxes(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource?: RuntimeCompiledArtifactsSource;
@@ -219,20 +191,7 @@ async function collectPrewarmTargets(input: {
     collectNodeSandboxes(input.graph).map(async ({ definition, nodeId, workspaceResourceRoot }) => {
       const resolvedAgentRoot = await resolveAuthoredAgentRoot(input.appRoot, nodeId);
       const sandboxRoot = join(resolvedAgentRoot, "sandbox");
-      const templatePlan = createRuntimeSandboxTemplatePlan({
-        definition,
-        workspaceResourceRoot,
-      });
       const provider = getSandboxEnvironmentRuntime(definition.environment);
-      const templateKey = await createRuntimeSandboxTemplateKey({
-        providerName: definition.environment.provider,
-        compiledArtifactsSource: input.compiledArtifactsSource,
-        configurationHash: getSandboxEnvironmentConfigurationHash(definition.environment),
-        nodeId,
-        sourceId: definition.sourceId,
-        templatePlan,
-      });
-
       const seedFiles = await loadResourceRootSeedFiles({
         compileDirectoryPath: input.compileDirectoryPath,
         workspaceResourceRoot,
@@ -249,17 +208,17 @@ async function collectPrewarmTargets(input: {
                 : `${input.compileDirectoryPath}/${workspaceResourceRoot.logicalPath}`,
             seedFiles,
           }),
+          sourceRevision: definition.revisionHash,
           storagePath: resolveSandboxCacheDirectory(input.appRoot),
         },
         label: formatLabel(nodeId),
+        nodeId,
         provider,
-        templateName: templateKey,
       });
     }),
   );
 
-  // Template keys factor in nodeId (see runtime/sandbox/keys.ts), so each
-  // node already produces a distinct templateKey; no dedup is needed.
+  // Each graph node owns one manifest entry, so no deduplication is needed.
   return targets.sort((left, right) => left.label.localeCompare(right.label));
 }
 

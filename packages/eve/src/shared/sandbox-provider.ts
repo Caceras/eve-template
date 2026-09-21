@@ -109,6 +109,7 @@ export interface SandboxProviderPrepareContext {
   readonly host: SandboxProviderHost;
   readonly log?: (message: string) => void;
   readonly resources: SandboxProviderResources;
+  readonly sourceRevision: string;
   readonly storagePath: string;
 }
 

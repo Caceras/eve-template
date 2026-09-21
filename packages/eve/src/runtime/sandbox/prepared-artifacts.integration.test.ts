@@ -25,8 +25,8 @@ describe("sandbox prepared artifacts", () => {
       entries: [
         {
           artifact: { imageReference: "eve-template:v1" },
+          nodeId: "__root__",
           providerName: "docker",
-          templateName: "template-v1",
         },
       ],
     });
@@ -34,8 +34,8 @@ describe("sandbox prepared artifacts", () => {
     await expect(
       loadSandboxPreparedArtifact({
         compiledArtifactsSource: createDiskRuntimeCompiledArtifactsSource(appRoot),
+        nodeId: "__root__",
         providerName: "docker",
-        templateName: "template-v1",
       }),
     ).resolves.toEqual({ imageReference: "eve-template:v1" });
   });
@@ -44,8 +44,8 @@ describe("sandbox prepared artifacts", () => {
     const sandboxPreparedArtifacts = createSandboxPreparedArtifactsManifest([
       {
         artifact: { snapshotId: "snap_123" },
+        nodeId: "__root__",
         providerName: "vercel",
-        templateName: "template-v1",
       },
     ]);
 
@@ -59,8 +59,8 @@ describe("sandbox prepared artifacts", () => {
         await expect(
           loadSandboxPreparedArtifact({
             compiledArtifactsSource: { kind: "bundled" },
+            nodeId: "__root__",
             providerName: "vercel",
-            templateName: "template-v1",
           }),
         ).resolves.toEqual({ snapshotId: "snap_123" });
       },

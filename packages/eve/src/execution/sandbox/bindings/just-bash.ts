@@ -62,8 +62,7 @@ export function createJustBashSandboxProvider(
     autoInstall,
     customCommands: options.customCommands,
     filesystem: options.filesystem,
-    prepare: options.prepare,
-    version: 1,
+    version: 2,
   };
 
   return {
@@ -71,6 +70,7 @@ export function createJustBashSandboxProvider(
       const templateIdentity = createSandboxProviderIdentity({
         ...environmentIdentity,
         resources: sandboxProviderResourceIdentity(context.resources),
+        sourceRevision: context.sourceRevision,
       }).slice(0, 24);
       const templateRootPath = resolveTemplateRootPath(context.storagePath, templateIdentity);
       if (await pathExists(templateRootPath)) {

@@ -43,6 +43,7 @@ export function createSandboxProviderHarness<
         readonly content: string | Uint8Array;
         readonly path: string;
       }[];
+      readonly sourceRevision?: string;
     }) {
       const artifact = await implementation.prepare({
         files: createSandboxProviderFiles(`${input.appRoot}/sandbox`),
@@ -56,6 +57,7 @@ export function createSandboxProviderHarness<
               ? undefined
               : "test-resources"),
         }),
+        sourceRevision: input.sourceRevision ?? "test-source-revision",
         storagePath: input.appRoot,
       });
       preparedArtifact = artifact;

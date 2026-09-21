@@ -187,6 +187,32 @@ describe("createVercelSandbox", () => {
     );
   });
 
+  it("reuses template identity until authored source or resources change", async () => {
+    async function prepareName(input: { resourcesKey?: string; sourceRevision: string }) {
+      const create = vi.fn(async (options: { name: string }) =>
+        createMockSandbox({ name: options.name }),
+      );
+      const provider = createTestVercelSandbox({
+        loadSandboxModule: async () =>
+          ({ Sandbox: { create, get: vi.fn().mockResolvedValue(null) } }) as never,
+      });
+      await provider.prepare({ appRoot: "/tmp/test-app-root", ...input });
+      return create.mock.calls[0]?.[0].name;
+    }
+
+    const first = await prepareName({ sourceRevision: "revision-a" });
+    const unchanged = await prepareName({ sourceRevision: "revision-a" });
+    const changedSource = await prepareName({ sourceRevision: "revision-b" });
+    const changedResources = await prepareName({
+      resourcesKey: "resources-b",
+      sourceRevision: "revision-a",
+    });
+
+    expect(unchanged).toBe(first);
+    expect(changedSource).not.toBe(first);
+    expect(changedResources).not.toBe(first);
+  });
+
   it("uses an author-supplied image for fresh Vercel sandboxes", async () => {
     const templateSandbox = createMockSandbox({ name: "template-key" });
     const sandboxModule = {
@@ -509,38 +535,6 @@ describe("createVercelSandbox", () => {
     expect(sessionArgs?.[0]).toMatchObject({
       source: { snapshotId: "template-snapshot", type: "snapshot" },
     });
-  });
-
-  it("rebuilds a cached template whose snapshot is no longer available", async () => {
-    const snapshotExpiredError = Object.assign(new Error("snapshot expired"), {
-      response: { status: 410 },
-    });
-    const staleTemplate = createMockSandbox({ name: "template", snapshotId: "expired-snapshot" });
-    const rebuiltTemplate = createMockSandbox({ name: "template" });
-    const sandboxModule = {
-      Sandbox: {
-        create: vi.fn().mockResolvedValue(rebuiltTemplate),
-        get: vi.fn().mockResolvedValue(staleTemplate),
-      },
-      Snapshot: { get: vi.fn().mockRejectedValue(snapshotExpiredError) },
-    };
-    const provider = createTestVercelSandbox({
-      loadSandboxModule: async () => sandboxModule as never,
-    });
-
-    const prepared = await provider.prepare({
-      appRoot: "/tmp/test-app-root",
-      seedFiles: [],
-    });
-
-    expect(staleTemplate.delete).not.toHaveBeenCalled();
-    expect(sandboxModule.Sandbox.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: expect.stringMatching(/^eve-sbx-tpl-vercel-[0-9a-f]{32}-[0-9a-f]{8}$/u),
-      }),
-    );
-    expect(rebuiltTemplate.snapshot).toHaveBeenCalledTimes(1);
-    expect(prepared).toEqual({ snapshotId: "template-snapshot" });
   });
 
   it("reports an unavailable prepared snapshot without mutating the build template", async () => {

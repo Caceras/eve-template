@@ -57,9 +57,9 @@ export function createMicrosandboxSandboxProvider(
       const templateKey = createSandboxProviderIdentity({
         dockerfile: dockerfile?.contentHash,
         optionsHash,
-        prepare: createOptions.prepare,
         resources: sandboxProviderResourceIdentity(context.resources),
-        version: 1,
+        sourceRevision: context.sourceRevision,
+        version: 2,
       }).slice(0, 24);
       try {
         return await prewarmMicrosandboxTemplate({

@@ -74,11 +74,12 @@ describe("prewarmAppSandboxes", () => {
       entries: [
         {
           artifact: { imageReference: "registry.example/eve@sha256:test" },
+          nodeId: "__root__",
           providerName: "microsandbox",
         },
       ],
       kind: "eve-sandbox-prepared-artifacts",
-      version: 1,
+      version: 2,
     });
   });
 

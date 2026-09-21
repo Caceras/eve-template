@@ -14,10 +14,6 @@ import type { ResolvedSandboxDefinition } from "#runtime/types.js";
 import { defineSandbox } from "#public/definitions/sandbox.js";
 import { resolveSandboxCacheDirectory } from "#internal/application/paths.js";
 
-vi.mock("#execution/sandbox/template-prewarm-lock.js", () => ({
-  withSandboxTemplatePrewarmLock: async (_input: unknown, callback: () => Promise<unknown>) =>
-    await callback(),
-}));
 const mocks = vi.hoisted(() => ({
   materializeWorkspaceDirectory: vi.fn<
     (path: string) => Promise<readonly { readonly content: Buffer; readonly path: string }[]>
@@ -72,6 +68,8 @@ describe("prewarmAppSandboxes", () => {
     expect(secondInputs).toHaveLength(1);
     expect(firstInputs[0]?.storagePath).toBe(resolveSandboxCacheDirectory(appRoot));
     expect(secondInputs[0]?.storagePath).toBe(resolveSandboxCacheDirectory(appRoot));
+    expect(firstInputs[0]?.sourceRevision).toBe("sandbox-source-hash");
+    expect(secondInputs[0]?.sourceRevision).toBe("sandbox-source-hash");
   });
 
   it.each(["docker", "microsandbox"])(

@@ -186,9 +186,9 @@ export function createDockerSandboxProvider(
       const templateKey = createSandboxProviderIdentity({
         dockerfile: dockerfile?.contentHash,
         optionsHash,
-        prepare: authoredOptions.prepare,
         resources: sandboxProviderResourceIdentity(context.resources),
-        version: 1,
+        sourceRevision: context.sourceRevision,
+        version: 2,
       }).slice(0, 24);
       const templateReferenceInput = { optionsHash, templateKey };
       const imageReference = dockerTemplateImageReference(templateReferenceInput);

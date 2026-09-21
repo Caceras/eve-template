@@ -191,17 +191,9 @@ jobs:
           }
 
           wait_for_target "$DEPLOYMENT_URL"
-          eval_status=0
           npx eve eval --strict --verbose --exclude-tag real-model \
             --url "$DEPLOYMENT_URL" \
-            --junit "$EVE_EVAL_JUNIT_DIR/${{ matrix.name }}.xml" || eval_status=$?
-          if [ "$eval_status" -ne 0 ]; then
-            echo "::group::Sandbox runtime diagnostics"
-            pnpm exec vc logs "$DEPLOYMENT_URL" --since 10m --expand "${token_args[@]}" \
-              | grep -F '[eve:sandbox-debug]' || true
-            echo "::endgroup::"
-            exit "$eval_status"
-          fi
+            --junit "$EVE_EVAL_JUNIT_DIR/${{ matrix.name }}.xml"
 
           # Redeploy-tagged evals rebuild and redeploy the fixture from inside
           # the eval body, repointing a run-scoped alias at each new

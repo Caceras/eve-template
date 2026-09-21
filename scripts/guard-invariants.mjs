@@ -1363,7 +1363,6 @@ async function checkRule44SandboxProviders() {
   const forbidden = [
     "#execution/sandbox/ensure.js",
     "#execution/sandbox/prewarm.js",
-    "#runtime/sandbox/keys.js",
     "#runtime/sandbox/registry.js",
     "#sandbox/state.js",
   ];

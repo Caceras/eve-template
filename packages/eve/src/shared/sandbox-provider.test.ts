@@ -67,6 +67,7 @@ describe("defineSandboxProvider", () => {
         resolveProjectPath: (path) => path,
       },
       resources: { source: { kind: "none" } },
+      sourceRevision: "test-source-revision",
       storagePath: "/tmp/test",
     });
     expect(artifact).toEqual({ templateId: "node:24" });

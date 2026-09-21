@@ -2,13 +2,6 @@ import type { CompiledWorkspaceResourceRoot } from "#compiler/manifest.js";
 import type { ResolvedSandboxDefinition } from "#runtime/types.js";
 
 /**
- * Stable internal source id for the framework-owned default sandbox.
- *
- * Used by the runtime template/session key derivation and by prewarm
- * to distinguish the framework-owned default sandbox from per-node authored
- * overrides.
- */
-/**
  * Resolved sandbox tracked by the runtime-owned registry.
  *
  * The sandbox does not generate model-visible tools automatically. The

@@ -10,13 +10,10 @@ import {
   getRuntimeCompiledArtifactsSandboxAppRoot,
   type RuntimeCompiledArtifactsSource,
 } from "#runtime/compiled-artifacts-source.js";
-import { createRuntimeSandboxTemplateKey } from "#runtime/sandbox/keys.js";
 import { loadSandboxPreparedArtifact } from "#runtime/sandbox/prepared-artifacts.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
-import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
 import type { SandboxAccess, SandboxSessionState, SandboxState } from "#sandbox/state.js";
 import {
-  getSandboxEnvironmentConfigurationHash,
   getSandboxEnvironmentRuntime,
   runWithSandboxConstructorRuntime,
 } from "#shared/sandbox-environment.js";
@@ -69,7 +66,6 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     provider: SandboxProviderRuntime,
     options: object | undefined,
     environment: object,
-    environmentConfigurationHash: string,
     session: SandboxProviderSessionContext["session"],
   ): Promise<RuntimeSandboxSession> {
     if (opening !== undefined) throw new Error("A sandbox definition can open only one sandbox.");
@@ -85,25 +81,16 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       throw new Error(`Sandbox "${definition.logicalPath}" is already initialized.`);
     }
 
-    const workspaceResourceRoot =
-      inherited?.workspaceResourceRoot ?? registered.workspaceResourceRoot;
-    const templateKey = await createRuntimeSandboxTemplateKey({
-      compiledArtifactsSource: input.compiledArtifactsSource,
-      configurationHash: environmentConfigurationHash,
-      nodeId: inherited?.nodeId ?? input.nodeId,
-      providerName: provider.providerName,
-      sourceId: definition.sourceId,
-      templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
-    });
+    const artifactNodeId = inherited?.nodeId ?? input.nodeId;
     const artifact = await loadSandboxPreparedArtifact({
       compiledArtifactsSource: input.compiledArtifactsSource,
+      nodeId: artifactNodeId,
       providerName: provider.providerName,
-      templateName: templateKey,
     });
     if (artifact === undefined) {
       throw new SandboxTemplateNotProvisionedError({
         providerName: provider.providerName,
-        templateKey,
+        templateKey: artifactNodeId,
       });
     }
 
@@ -156,25 +143,16 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
       );
     }
     const inherited = registered.inheritance;
-    const workspaceResourceRoot =
-      inherited?.workspaceResourceRoot ?? registered.workspaceResourceRoot;
-    const templateKey = await createRuntimeSandboxTemplateKey({
-      compiledArtifactsSource: input.compiledArtifactsSource,
-      configurationHash: getSandboxEnvironmentConfigurationHash(definition.environment),
-      nodeId: inherited?.nodeId ?? input.nodeId,
-      providerName: provider.providerName,
-      sourceId: definition.sourceId,
-      templatePlan: createRuntimeSandboxTemplatePlan({ definition, workspaceResourceRoot }),
-    });
+    const artifactNodeId = inherited?.nodeId ?? input.nodeId;
     const artifact = await loadSandboxPreparedArtifact({
       compiledArtifactsSource: input.compiledArtifactsSource,
+      nodeId: artifactNodeId,
       providerName: provider.providerName,
-      templateName: templateKey,
     });
     if (artifact === undefined) {
       throw new SandboxTemplateNotProvisionedError({
         providerName: provider.providerName,
-        templateKey,
+        templateKey: artifactNodeId,
       });
     }
     const context: SandboxProviderSessionContext = {
@@ -218,20 +196,18 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
     }
 
     if (inherited !== undefined) {
-      const configurationHash = getSandboxEnvironmentConfigurationHash(definition.environment);
       await open(
         getSandboxEnvironmentRuntime(definition.environment),
         undefined,
         definition.environment,
-        configurationHash,
         session,
       );
     } else {
       try {
         const selected = await runWithSandboxConstructorRuntime(
           {
-            open: ({ environment, environmentConfigurationHash, options, provider }) =>
-              open(provider, options, environment, environmentConfigurationHash, session),
+            open: ({ environment, options, provider }) =>
+              open(provider, options, environment, session),
           },
           async () => definition.selector({ session }),
         );
