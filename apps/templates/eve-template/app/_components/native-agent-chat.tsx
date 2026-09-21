@@ -114,7 +114,7 @@ export function NativeAgentChat({
       <PromptInputTextarea
         disabled={isResuming}
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
-        placeholder="Send a message…"
+        placeholder="Message eve"
       />
       <ComposerAction
         hasInputText={hasInputText}
@@ -143,7 +143,7 @@ export function NativeAgentChat({
           }
         >
           <ConversationTopFade className="top-14" />
-          <ConversationContent className="mx-auto w-full max-w-2xl gap-6 px-4 pt-20 pb-36 sm:px-6">
+          <ConversationContent className="mx-auto w-full max-w-2xl gap-5 px-4 pb-36 pt-20 sm:gap-6 sm:px-6">
             {agent.data.messages.map((message, index) =>
               showPendingThinking &&
               isPendingAssistantShell &&
@@ -173,8 +173,8 @@ export function NativeAgentChat({
         className={cn(
           "mx-auto w-full px-4 sm:px-6",
           showConversationLayout
-            ? "fixed bottom-0 left-1/2 z-20 max-w-2xl -translate-x-1/2 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-6"
-            : "flex max-w-2xl flex-1 flex-col items-center justify-center gap-6 pb-[12vh]",
+            ? "fixed bottom-0 left-1/2 z-20 max-w-2xl -translate-x-1/2 bg-gradient-to-t from-background via-background/95 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-5"
+            : "flex max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-3 pb-[10vh] sm:px-6",
         )}
       >
         {showConversationLayout ? null : (
@@ -188,7 +188,7 @@ export function NativeAgentChat({
             <span className="sr-only">{AGENT_NAME}</span>
           </div>
         )}
-        <div className="w-full">{composer}</div>
+        <div className="w-full [&_[data-slot=input-group]]:rounded-[20px] [&_[data-slot=input-group]]:border-black/[0.06] [&_[data-slot=input-group]]:bg-white/92 [&_[data-slot=input-group]]:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] [&_[data-slot=input-group]]:backdrop-blur-xl dark:[&_[data-slot=input-group]]:border-white/[0.08] dark:[&_[data-slot=input-group]]:bg-white/[0.06]">{composer}</div>
       </div>
     </main>
   );
@@ -251,7 +251,7 @@ function ChatHeader({ canStartNewChat }: { readonly canStartNewChat: boolean }) 
         {canStartNewChat ? (
           <Button
             aria-label="Start a new chat"
-            className="pointer-events-auto fixed top-3 right-6 pr-4"
+            className="pointer-events-auto fixed right-3 top-[max(0.5rem,env(safe-area-inset-top))] pr-3 sm:right-5"
             onClick={() => window.location.assign("/native")}
             size="sm"
             type="button"
