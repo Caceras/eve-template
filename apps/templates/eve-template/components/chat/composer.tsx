@@ -25,6 +25,7 @@ export function ChatComposer({
   isPreparing = false,
   maxLength = MAX_CHAT_MESSAGE_CHARS,
   onChange,
+  onStop,
   onSubmit,
   placeholder = "Ask eve anything...",
   value,
@@ -91,7 +92,7 @@ export function ChatComposer({
   const form = (
     <form
       className={cn(
-        "min-w-0 rounded-[14px] border border-border/80 bg-card/95 shadow-sm transition-colors focus-within:border-border focus-within:ring-[1px] focus-within:ring-foreground/5 dark:bg-muted/45 dark:focus-within:ring-white/5",
+        "min-w-0 rounded-[20px] border border-black/[0.06] bg-white/92 shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-black/[0.10] focus-within:bg-white focus-within:shadow-[0_14px_50px_rgba(0,0,0,0.11),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.08]",
         className,
       )}
       data-chat-composer
@@ -102,7 +103,7 @@ export function ChatComposer({
       </label>
       <textarea
         autoFocus={autoFocus}
-        className="max-h-32 min-h-12 w-full resize-none bg-transparent px-3 pt-3 pb-1 text-base leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
+        className="max-h-40 min-h-[54px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:px-5 sm:pt-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
         data-chat-composer-input
         disabled={textareaDisabled}
         id={composerId}
@@ -114,25 +115,25 @@ export function ChatComposer({
         rows={2}
         value={value}
       />
-      <div className="flex min-h-9 items-center justify-between gap-2 px-3 pt-1 pb-2 sm:gap-3 sm:px-4">
-        <div className="-ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-2.5 pt-1 sm:gap-3 sm:px-4 sm:pb-3">
+        <div className="-ml-1 flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {footerStart ?? <span className="block h-8" />}
         </div>
         <div className="flex shrink-0 items-center">
           {isBusy ? (
             <Button
-              aria-label="Response in progress"
-              className="size-6 cursor-default rounded-md bg-foreground/15 text-foreground/55 shadow-none hover:bg-foreground/15 disabled:cursor-default disabled:pointer-events-auto disabled:opacity-100"
-              disabled
-              size="icon-xs"
+              aria-label="Stop response"
+              className="size-8 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/85 sm:size-9"
+              onClick={onStop}
+              size="icon-sm"
               type="button"
             >
-              <SquareIcon className="size-2.5 fill-current" />
+              <SquareIcon className="size-3 fill-current" />
             </Button>
           ) : isPreparing ? (
             <Button
               aria-label="Preparing chat"
-              className="size-6 rounded-md bg-foreground/75 text-background"
+              className="size-8 rounded-full bg-foreground/75 text-background sm:size-9"
               disabled
               size="icon-xs"
               type="button"
@@ -142,12 +143,12 @@ export function ChatComposer({
           ) : (
             <Button
               aria-label="Send message"
-              className="size-6 cursor-pointer rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:cursor-not-allowed disabled:pointer-events-auto disabled:opacity-30"
+              className="size-8 cursor-pointer rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] disabled:cursor-not-allowed disabled:pointer-events-auto disabled:opacity-25 sm:size-9"
               disabled={disabled || trimmedValue.length === 0 || isOverMaxLength}
               size="icon-xs"
               type="submit"
             >
-              <ArrowUpIcon className="size-3.5" />
+              <ArrowUpIcon className="size-4" />
             </Button>
           )}
         </div>
