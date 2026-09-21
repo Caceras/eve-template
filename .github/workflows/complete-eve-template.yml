@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - ".eve-template-recovery/**"
       - ".github/workflows/complete-eve-template.yml"
 
 permissions:
@@ -22,8 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          : > /tmp/eve-template-overlay.b64
-          for part in 00 01 02 03 04 05; do
+          cat .eve-template-recovery/overlay.part.00 > /tmp/eve-template-overlay.b64
+          for part in 01 02 03 04 05; do
             git show 3edfc0ef3dac42af5ff0c137fdddb6b328c6c64f:.eve-template-bootstrap/overlay.part.$part >> /tmp/eve-template-overlay.b64
           done
           base64 --decode /tmp/eve-template-overlay.b64 > /tmp/eve-template-overlay.zip
@@ -38,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .eve-template-recovery
           rm -f .github/workflows/complete-eve-template.yml
           git config user.name "eve-template-bot"
           git config user.email "actions@users.noreply.github.com"
