@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Card, CardText } from "#compiled/chat/index.js";
 import { mockSlack, type MockSlack } from "#internal/testing/mocks/mock-slack.js";
+import type {
+  SlackApiMethod,
+  SlackApiResponseFor,
+} from "#internal/testing/mocks/slack-api-contract.js";
 import { buildSlackBinding, buildSlackWorkspaceHandle } from "#public/channels/slack/api.js";
 import {
   callSlackApi,
@@ -27,11 +31,6 @@ function allowBindingCalls(slack: MockSlack): void {
 }
 
 /**
- * Declares Slack's three-leg external upload handshake, allocating the
- * given file ids in order. Completion echoes back the files it was sent,
- * which is what production reads the returned id out of.
- */
-/**
  * Declares what `conversations.replies` returns for this thread. The
  * messages are the raw Slack payloads the parser under test reads.
  */
@@ -39,6 +38,11 @@ function allowReplies(slack: MockSlack, messages: readonly Record<string, unknow
   slack.allow("conversations.replies").andReturn({ ok: true, messages });
 }
 
+/**
+ * Declares Slack's three-leg external upload handshake, allocating the
+ * given file ids in order. Completion echoes back the files it was sent,
+ * which is what production reads the returned id out of.
+ */
 function allowUpload(slack: MockSlack, fileIds: readonly string[] = ["F1"]): void {
   const pending = [...fileIds];
   slack.allow("files.getUploadURLExternal").andRespond(() => {
@@ -57,16 +61,21 @@ describe("callSlackApi encoding", () => {
   // partial-JSON endpoints don't silently break again.
   it("sends every Slack API call as application/x-www-form-urlencoded", async () => {
     const slack = mockSlack();
-    const operations = [
-      "conversations.replies",
-      "chat.postMessage",
-      "chat.postEphemeral",
-      "files.getUploadURLExternal",
-      "files.completeUploadExternal",
-      "assistant.threads.setStatus",
-    ] as const;
+    // Each answers with the shape Slack really returns rather than a
+    // bare `{ ok: true }`. These are all contract methods, so declaring
+    // them through the unchecked door would trade the response-shape
+    // check for a convenience the contract can supply itself.
+    const responses = {
+      "assistant.threads.setStatus": { ok: true },
+      "chat.postEphemeral": { ok: true, message_ts: "1700.2" },
+      "chat.postMessage": { ok: true, ts: "1700.1" },
+      "conversations.replies": { ok: true, messages: [] },
+      "files.completeUploadExternal": { ok: true, files: [{ id: "F1" }] },
+      "files.getUploadURLExternal": { ok: true, file_id: "F1", upload_url: "https://upload/F1" },
+    } satisfies { [M in SlackApiMethod]?: SlackApiResponseFor<M> };
+    const operations = Object.keys(responses) as (keyof typeof responses)[];
     for (const operation of operations) {
-      slack.allowUncheckedMethod(operation, { ok: true });
+      slack.allow(operation).andReturn(responses[operation]);
     }
 
     for (const operation of operations) {
@@ -82,7 +91,7 @@ describe("callSlackApi encoding", () => {
     for (const call of slack.calls) {
       expect(call.contentType).toBe("application/x-www-form-urlencoded");
     }
-    // The fake rejects an unencoded or unsigned call outright, so a
+    // The double rejects an unencoded or unsigned call outright, so a
     // regression surfaces here even for a method added later.
     slack.assertNoViolations();
   });
@@ -120,18 +129,13 @@ describe("SlackHandle.uploadFiles", () => {
       "files.completeUploadExternal",
     ]);
 
-    const getUrlBody = slack.calls[0]!.body as { filename: string; length: string };
+    const getUrlBody = slack.bodyOf("files.getUploadURLExternal");
     expect(getUrlBody.filename).toBe("report.csv");
     expect(getUrlBody.length).toBe(String(bytes.byteLength));
 
     expect(slack.calls[1]!.contentType).toBe("application/octet-stream");
 
-    const completeBody = slack.calls[2]!.body as {
-      channel_id: string;
-      thread_ts: string;
-      initial_comment: string;
-      files: { id: string; title: string }[];
-    };
+    const completeBody = slack.bodyOf("files.completeUploadExternal");
     expect(completeBody.channel_id).toBe("C01");
     expect(completeBody.thread_ts).toBe("1.0");
     expect(completeBody.initial_comment).toBe("*Report*");
@@ -247,21 +251,18 @@ describe("SlackThread.post with files", () => {
       files: [{ data: Buffer.from([1, 2]), filename: "report.csv", mimeType: "text/csv" }],
     });
 
-    const post = slack.callsTo("chat.postMessage")[0];
-    expect(post).toBeDefined();
-    expect((post!.body as { markdown_text: string; thread_ts: string }).markdown_text).toContain(
-      "| Metric | Value |",
-    );
-    expect((post!.body as { markdown_text: string; thread_ts: string }).thread_ts).toBe("1.0");
+    const post = slack.bodyOf("chat.postMessage");
+    expect(post.markdown_text).toContain("| Metric | Value |");
+    expect(post.thread_ts).toBe("1.0");
 
     // The returned id has to be the message ts, not anything from the
     // upload that followed it.
     expect(posted.id).toBe("1700.1");
 
-    const complete = slack.callsTo("files.completeUploadExternal")[0]!;
-    expect((complete.body as { initial_comment?: string }).initial_comment).toBeUndefined();
-    expect((complete.body as { channel_id: string; thread_ts: string }).channel_id).toBe("C01");
-    expect((complete.body as { channel_id: string; thread_ts: string }).thread_ts).toBe("1.0");
+    const complete = slack.bodyOf("files.completeUploadExternal");
+    expect(complete.initial_comment).toBeUndefined();
+    expect(complete.channel_id).toBe("C01");
+    expect(complete.thread_ts).toBe("1.0");
   });
 
   it("{ text, files } keeps a single Slack upload comment", async () => {
@@ -305,15 +306,12 @@ describe("SlackThread.post with files", () => {
       files: [{ data: Buffer.from([1]), filename: "report.csv", mimeType: "text/csv" }],
     });
 
-    const post = slack.callsTo("chat.postMessage")[0];
-    expect(post).toBeDefined();
-    expect((post!.body as { blocks: unknown[] }).blocks).toBeDefined();
+    expect(slack.bodyOf("chat.postMessage").blocks).toBeDefined();
 
-    const complete = slack.callsTo("files.completeUploadExternal")[0];
-    expect(complete).toBeDefined();
-    expect((complete!.body as { initial_comment?: string }).initial_comment).toBeUndefined();
-    expect((complete!.body as { channel_id: string; thread_ts: string }).channel_id).toBe("C01");
-    expect((complete!.body as { channel_id: string; thread_ts: string }).thread_ts).toBe("1.0");
+    const complete = slack.bodyOf("files.completeUploadExternal");
+    expect(complete.initial_comment).toBeUndefined();
+    expect(complete.channel_id).toBe("C01");
+    expect(complete.thread_ts).toBe("1.0");
   });
 });
 
@@ -327,8 +325,8 @@ describe("SlackThread.post with files", () => {
  * `{ text, files }` branch instead returns `raw.files[0].id` — a file id
  * from a different Slack namespace — so a caller that updates the
  * message it just posted addresses a file that no `chat.update` can
- * reach. The old canned mocks hid this because every response carried
- * the same `ts`.
+ * reach. Seeing it at all takes a double whose message `ts` and file
+ * ids are distinguishable, which is what the stubs below declare.
  */
 describe("SlackThread.post id namespace", () => {
   let slack: MockSlack;
@@ -361,19 +359,14 @@ describe("SlackThread.post id namespace", () => {
       files: [{ data: Buffer.from([3]), filename: "card.csv", mimeType: "text/csv" }],
     });
 
-    // Seeding the two namespaces with distinguishable values is what
-    // makes the bug visible at all; the old canned mocks hid it by
-    // answering every call with the same ts.
-    //
     // The sibling branches honor the contract: their id is the message
     // ts Slack returned, so a follow-up chat.update would land.
     expect(fromMarkdown.id).toBe("1700.1");
     expect(fromCard.id).toBe("1700.1");
 
-    // The { text, files } branch does not: it hands back a file id, from
-    // a namespace no chat.update can address.
+    // The { text, files } branch does not: it hands back the first
+    // staged file id, from a namespace no chat.update can address.
     expect(fromText.id).toBe("F1");
-    expect(fromText.id).not.toBe("1700.1");
   });
 });
 
@@ -399,12 +392,11 @@ describe("Slack outbound text", () => {
     await thread.post({ markdown: `bump @scope/package and ping ${mention}` });
     await thread.post({ text: "email @support or ping <@U012ABC456>" });
 
-    const posts = slack.callsTo("chat.postMessage");
-    expect(posts).toHaveLength(2);
-    expect(posts[0]!.body).toMatchObject({
+    expect(slack.callsTo("chat.postMessage")).toHaveLength(2);
+    expect(slack.bodyOf("chat.postMessage", 0)).toMatchObject({
       markdown_text: "bump @scope/package and ping <@U012ABC456>",
     });
-    expect(posts[1]!.body).toMatchObject({
+    expect(slack.bodyOf("chat.postMessage", 1)).toMatchObject({
       text: "email @support or ping <@U012ABC456>",
     });
   });
@@ -424,7 +416,7 @@ describe("Slack outbound text", () => {
       files: [{ data: Buffer.from([1]), filename: "report.csv", mimeType: "text/csv" }],
     });
 
-    expect(slack.callsTo("files.completeUploadExternal")[0]?.body).toMatchObject({
+    expect(slack.bodyOf("files.completeUploadExternal")).toMatchObject({
       initial_comment: "report for @scope/package and <@U012ABC456>",
     });
   });
@@ -867,9 +859,7 @@ describe("SlackThread.postEphemeral", () => {
 
     await thread.postEphemeral("U99", { text: "psst" });
 
-    const call = slack.callsTo("chat.postEphemeral")[0];
-    expect(call).toBeDefined();
-    const body = call!.body as { user: string; channel: string; thread_ts: string; text: string };
+    const body = slack.bodyOf("chat.postEphemeral");
     expect(body.user).toBe("U99");
     expect(body.channel).toBe("C01");
     expect(body.thread_ts).toBe("1.0");
@@ -896,14 +886,10 @@ describe("SlackThread.postDirectMessage", () => {
 
     const posted = await thread.postDirectMessage("U99", { text: "for your eyes only" });
 
-    const open = slack.callsTo("conversations.open")[0];
-    expect(open).toBeDefined();
-    expect((open!.body as { users: string }).users).toBe("U99");
+    expect(slack.bodyOf("conversations.open").users).toBe("U99");
 
     const imChannelId = "D99";
-    const post = slack.callsTo("chat.postMessage")[0];
-    expect(post).toBeDefined();
-    const body = post!.body as { channel: string; thread_ts?: string; text: string };
+    const body = slack.bodyOf("chat.postMessage");
     expect(body.channel).toBe(imChannelId);
     expect(body.thread_ts).toBeUndefined();
     expect(body.text).toBe("for your eyes only");
@@ -953,8 +939,7 @@ describe("auto-anchor on first post", () => {
 
     // The first post itself lands at the channel root (no thread_ts in body)
     // because the anchor is set AFTER Slack assigns the ts.
-    const firstCall = slack.callsTo("chat.postMessage")[0]!;
-    expect((firstCall.body as { thread_ts?: string }).thread_ts).toBeUndefined();
+    expect(slack.bodyOf("chat.postMessage").thread_ts).toBeUndefined();
   });
 
   it("subsequent posts thread under the anchored ts", async () => {
@@ -970,11 +955,10 @@ describe("auto-anchor on first post", () => {
     await thread.post("second");
     await thread.post("third");
 
-    const postCalls = slack.callsTo("chat.postMessage");
-    expect(postCalls).toHaveLength(3);
-    expect((postCalls[0]!.body as { thread_ts?: string }).thread_ts).toBeUndefined();
-    expect((postCalls[1]!.body as { thread_ts: string }).thread_ts).toBe(first.id);
-    expect((postCalls[2]!.body as { thread_ts: string }).thread_ts).toBe(first.id);
+    expect(slack.callsTo("chat.postMessage")).toHaveLength(3);
+    expect(slack.bodyOf("chat.postMessage", 0).thread_ts).toBeUndefined();
+    expect(slack.bodyOf("chat.postMessage", 1).thread_ts).toBe(first.id);
+    expect(slack.bodyOf("chat.postMessage", 2).thread_ts).toBe(first.id);
   });
 
   it("does not anchor when the binding already has a threadTs", async () => {
@@ -1038,8 +1022,7 @@ describe("auto-anchor on first post", () => {
     expect(anchors).toEqual([posted.id]);
     expect(binding.slack.threadTs).toBe(posted.id);
 
-    const post = slack.callsTo("chat.postMessage")[0]!;
-    expect((post.body as { thread_ts?: string }).thread_ts).toBeUndefined();
+    expect(slack.bodyOf("chat.postMessage").thread_ts).toBeUndefined();
 
     // The upload hangs off the anchor the post just created.
     expect(slack.bodyOf("files.completeUploadExternal")).toMatchObject({ thread_ts: posted.id });
@@ -1107,7 +1090,7 @@ describe("auto-anchor on first post", () => {
 
     await thread.startTyping("**Considering turbo tasks**");
 
-    expect(slack.callsTo("assistant.threads.setStatus")[0]?.body).toMatchObject({
+    expect(slack.bodyOf("assistant.threads.setStatus")).toMatchObject({
       status: "Considering turbo tasks",
       loading_messages: ["Considering turbo tasks"],
     });
@@ -1205,8 +1188,8 @@ describe("Slack Web API base URL", () => {
   });
 
   it("encodes the JSON-only surfaces as JSON and signs them with the bot token", async () => {
-    // Asserts the exact transport headers rather than Slack semantics, so
-    // it reads the raw `init` instead of the workspace fake.
+    // Asserts the exact transport headers rather than Slack semantics,
+    // so it reads the raw `init` instead of going through the double.
     const apiFetch = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({ ok: true }),
     );
@@ -1309,8 +1292,8 @@ describe("Slack Web API base URL", () => {
     await binding.thread.startTyping("Thinking...");
     await binding.slack.request("auth.test", {});
 
-    // The fake answers only on its own base, so landing these calls at all
-    // is itself the assertion that they went to Slack's host.
+    // The double answers only on its own base, so landing these calls at
+    // all is itself the assertion that they went to Slack's host.
     expect(slackHost.calls.map((call) => call.url)).toEqual([
       "https://slack.com/api/chat.postMessage",
       "https://slack.com/api/assistant.threads.setStatus",
@@ -1345,8 +1328,8 @@ describe("Slack Web API base URL", () => {
       "https://sim.example/api/auth.test",
     ]);
     // The refresh parsed the replies the simulator served. That the "hi"
-    // just posted would also come back is a fact about Slack, which the
-    // old workspace fake asserted about itself; it proves nothing here.
+    // just posted would also come back is a fact about Slack, not about
+    // eve, so this asserts only what the double was told to return.
     expect(binding.thread.recentMessages.map((message) => message.text)).toEqual(["root"]);
   });
 
