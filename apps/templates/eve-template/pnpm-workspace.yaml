@@ -11,3 +11,5 @@ minimumReleaseAgeExclude:
 
 allowBuilds:
   esbuild: true
+  "@mongodb-js/zstd": true
+  node-liblzma: true
