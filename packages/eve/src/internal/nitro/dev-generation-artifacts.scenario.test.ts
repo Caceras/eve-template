@@ -294,7 +294,7 @@ describe("development generation artifacts", () => {
       const sandbox = modules[child.agent.sandbox.sourceId] as {
         defineSelfModificationSandbox(): Function;
       };
-      const selector = sandbox.defineSelfModificationSandbox();
+      const selector = await sandbox.defineSelfModificationSandbox();
       expect(selector).toBeTypeOf("function");
       expect("backend" in selector).toBe(false);
     } finally {
