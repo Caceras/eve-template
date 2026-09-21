@@ -32,9 +32,9 @@ export function SignInModal({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-[360px]">
+      <DialogContent className="gap-5 rounded-2xl border-black/[0.06] p-5 shadow-2xl sm:max-w-[360px] sm:p-6 dark:border-white/[0.08]">
         <DialogHeader className="items-center text-center sm:text-center">
-          <div className="mb-2 flex size-10 items-center justify-center rounded-full border border-border bg-muted">
+          <div className="mb-1 flex size-10 items-center justify-center rounded-full border border-border/70 bg-muted/60">
             {usesPassword ? (
               <LockKeyholeIcon className="size-4 text-foreground" />
             ) : (
@@ -46,7 +46,7 @@ export function SignInModal({
           </DialogTitle>
           <DialogDescription>
             {usesPassword
-              ? "Enter your password to continue to eve."
+              ? "Enter the password for this agent."
               : "Use your Vercel account to continue."}
           </DialogDescription>
         </DialogHeader>
