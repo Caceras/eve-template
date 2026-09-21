@@ -8,8 +8,11 @@ last_updated: "2026-09-21"
 
 Generalize the existing handle store so ordinary tools can register agent destinations, invoke them through `ctx.agent(handle)`, and make them visible to the model through the same advertisement mechanism as static agents.
 
-This is a proposed public contract, not an implemented API. Search is a future
-consumer of the mechanism and is outside this proposal.
+This is a proposed public contract, not an implemented public API. A
+[runnable research prototype](./dynamic-agent-handles-prototype/README.md)
+exercises external-directory loading at startup, ordinary tools registering and
+updating handles, and immediate invocation through a registered handle. Search
+ranking remains outside this proposal.
 
 ## Authoring model
 
@@ -161,9 +164,15 @@ invocations preserving registration; removal of the last entry; and
 compaction/resume restoring the advertised set. Check persisted state and actual
 model requests, not only API return values.
 
-Source baseline: `vercel/eve` commit
-`b333e7deace4831b58797639c4aed20649e4a0ae` (September 20). Source was inspected;
-no runtime prototype has been implemented or tested for this proposal.
+The research prototype has ten passing contract tests using real `defineTool`
+callbacks and the existing advertisement renderer. Directory reads use HTTP;
+agent dispatch and session execution are substitutes. Its captured requests and
+JSON snapshots do not prove production durability or model behavior. See its
+[policies and limitations](./dynamic-agent-handles-prototype/README.md#concrete-policies-to-evaluate).
+
+Source references below use `vercel/eve` commit
+`b333e7deace4831b58797639c4aed20649e4a0ae` (September 20); the prototype imports
+source from this branch, based on `d88aedeef375c654a04da7e81bb06e7098478306`.
 No issue is linked yet.
 
 [static]: https://github.com/vercel/eve/blob/b333e7deace4831b58797639c4aed20649e4a0ae/packages/eve/src/runtime/subagents/registry.ts#L64-L127
