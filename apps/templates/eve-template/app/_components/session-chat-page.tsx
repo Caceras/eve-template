@@ -385,8 +385,8 @@ export function SessionChatPage({
         pendingUserMessage={pendingUserMessage}
       />
 
-      <div className="shrink-0 bg-gradient-to-t from-background via-background/95 to-transparent px-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:pb-5 sm:pt-4">
-        <div className="mx-auto w-full max-w-2xl px-3 sm:px-6">
+      <div className="shrink-0 bg-gradient-to-t from-background via-background/96 to-transparent px-0 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-4 sm:pb-5 sm:pt-4">
+        <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">
           <ChatComposer
             disabled={composerDisabled}
             disabledReason={composerDisabledReason}
@@ -395,7 +395,7 @@ export function SessionChatPage({
             onChange={setDraft}
             onStop={handleComposerStop}
             onSubmit={handleComposerSubmit}
-            placeholder="Message eve"
+            placeholder="Message Ægentica"
             value={draft}
           />
         </div>
@@ -455,7 +455,7 @@ function getSessionComposerDisabledReason({
   }
 
   if (controllerStatus.isBusy) {
-    return "eve is responding.";
+    return "Ægentica is responding.";
   }
 
   return undefined;

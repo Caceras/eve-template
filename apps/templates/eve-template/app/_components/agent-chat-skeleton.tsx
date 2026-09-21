@@ -39,7 +39,7 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
           </div>
           <div className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
             <RadioTowerIcon className="size-4" />
-            Web
+            Channels
           </div>
           <div className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
             <ListRestartIcon className="size-4" />
@@ -138,20 +138,20 @@ function ConversationSkeleton() {
 function StaticComposerFallback() {
   return (
     <div
-      className="min-w-0 rounded-[20px] border border-black/[0.06] bg-white/92 shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.06]"
+      className="min-w-0 rounded-[24px] border border-black/[0.055] bg-white/94 shadow-[0_12px_44px_rgba(0,0,0,0.075),0_1px_2px_rgba(0,0,0,0.035)] dark:border-white/[0.08] dark:bg-white/[0.065]"
       data-chat-composer
     >
-      <div className="min-h-[58px] px-4 pb-1 pt-4 text-[15px] leading-6 text-muted-foreground/45 sm:px-5 dark:text-muted-foreground/60">
+      <div className="min-h-[62px] px-4 pb-2 pt-4 text-[16px] leading-6 text-muted-foreground/45 sm:min-h-[60px] sm:px-5 md:text-[15px] dark:text-muted-foreground/60">
         Message Ægentica
       </div>
-      <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:px-4">
+      <div className="flex min-h-12 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:px-4">
         <div className="-ml-2 flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/80 dark:text-muted-foreground/50">
             <HammerIcon className="size-4 shrink-0" />
           </span>
         </div>
         <div className="flex shrink-0 items-center">
-          <span className="inline-flex size-8 items-center justify-center rounded-full bg-foreground/55 text-background sm:size-9">
+          <span className="inline-flex size-9 items-center justify-center rounded-full bg-foreground/55 text-background">
             <ArrowUpIcon className="size-3.5" />
           </span>
         </div>

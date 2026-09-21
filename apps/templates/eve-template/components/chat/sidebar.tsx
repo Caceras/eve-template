@@ -2,7 +2,8 @@
 
 import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
@@ -50,16 +51,9 @@ export function ChatSidebar({
   readonly viewer: Viewer | null;
 }) {
   const authDisabled = !setupStatus.appReady;
-  const [pathname, setPathname] = useState("/");
+  const pathname = usePathname();
   const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const syncPathname = () => setPathname(window.location.pathname || "/");
-    syncPathname();
-    window.addEventListener("popstate", syncPathname);
-    return () => window.removeEventListener("popstate", syncPathname);
-  }, []);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -125,6 +119,7 @@ export function ChatSidebar({
             onNewChat();
             onNavigate?.(null);
           }}
+          aria-current={newSessionActive ? "page" : undefined}
           type="button"
         >
           <PlusIcon className="size-4" />
@@ -135,9 +130,9 @@ export function ChatSidebar({
             "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
           )}
+          aria-current={pathname === "/capabilities" ? "page" : undefined}
           href="/capabilities"
           onClick={() => {
-            setPathname("/capabilities");
             onNavigate?.();
           }}
         >
@@ -149,9 +144,9 @@ export function ChatSidebar({
             "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/native" || pathname.startsWith("/native/") ? activeRowClass : inactiveRowClass,
           )}
+          aria-current={pathname === "/native" || pathname.startsWith("/native/") ? "page" : undefined}
           href="/native"
           onClick={() => {
-            setPathname("/native");
             onNavigate?.();
           }}
         >
@@ -163,9 +158,9 @@ export function ChatSidebar({
             "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/session" ? activeRowClass : inactiveRowClass,
           )}
+          aria-current={pathname === "/session" ? "page" : undefined}
           href="/session"
           onClick={() => {
-            setPathname("/session");
             onNavigate?.();
           }}
         >
@@ -191,9 +186,9 @@ export function ChatSidebar({
                 >
                   <Link
                     className="flex h-9 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
+                    aria-current={active ? "page" : undefined}
                     href={`/chat/${chat.id}`}
                     onClick={() => {
-                      setPathname(`/chat/${chat.id}`);
                       onNavigate?.(chat.id);
                     }}
                   >

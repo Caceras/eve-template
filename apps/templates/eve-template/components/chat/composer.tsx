@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   type FormEvent,
   type KeyboardEvent,
@@ -14,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getChatMessageLength, MAX_CHAT_MESSAGE_CHARS } from "@/lib/chat/limits";
 import { cn } from "@/lib/utils";
+
+const MAX_TEXTAREA_HEIGHT = 168;
 
 export function ChatComposer({
   autoFocus = true,
@@ -50,6 +53,16 @@ export function ChatComposer({
   const trimmedValue = value.trim();
   const isOverMaxLength = getChatMessageLength(trimmedValue) > maxLength;
 
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+    const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+  }, [value]);
+
   useEffect(() => {
     if (!autoFocus || textareaDisabled) {
       return;
@@ -81,6 +94,10 @@ export function ChatComposer({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.nativeEvent.isComposing) {
+        return;
+      }
+
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         submitValue();
@@ -92,7 +109,7 @@ export function ChatComposer({
   const form = (
     <form
       className={cn(
-        "min-w-0 rounded-[20px] border border-black/[0.06] bg-white/92 shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-black/[0.10] focus-within:bg-white focus-within:shadow-[0_14px_50px_rgba(0,0,0,0.11),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.08]",
+        "min-w-0 rounded-[24px] border border-black/[0.055] bg-white/94 shadow-[0_12px_44px_rgba(0,0,0,0.075),0_1px_2px_rgba(0,0,0,0.035)] backdrop-blur-2xl transition-[border-color,box-shadow,background-color,transform] duration-200 focus-within:border-black/[0.11] focus-within:bg-white focus-within:shadow-[0_16px_56px_rgba(0,0,0,0.105),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.065] dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.09]",
         className,
       )}
       data-chat-composer
@@ -103,7 +120,7 @@ export function ChatComposer({
       </label>
       <textarea
         autoFocus={autoFocus}
-        className="max-h-40 min-h-[54px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:px-5 sm:pt-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
+        className="min-h-[62px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[60px] sm:px-5 sm:pt-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
         data-chat-composer-input
         disabled={textareaDisabled}
         id={composerId}
@@ -112,10 +129,10 @@ export function ChatComposer({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         ref={textareaRef}
-        rows={2}
+        rows={1}
         value={value}
       />
-      <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-2.5 pt-1 sm:gap-3 sm:px-4 sm:pb-3">
+      <div className="flex min-h-12 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:gap-3 sm:px-4 sm:pb-3">
         <div className="-ml-1 flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {footerStart ?? <span className="block h-8" />}
         </div>
@@ -123,7 +140,7 @@ export function ChatComposer({
           {isBusy ? (
             <Button
               aria-label="Stop response"
-              className="size-8 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/85 sm:size-9"
+              className="size-9 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/85"
               onClick={onStop}
               size="icon-sm"
               type="button"
@@ -133,7 +150,7 @@ export function ChatComposer({
           ) : isPreparing ? (
             <Button
               aria-label="Preparing chat"
-              className="size-8 rounded-full bg-foreground/75 text-background sm:size-9"
+              className="size-9 rounded-full bg-foreground/75 text-background"
               disabled
               size="icon-xs"
               type="button"
@@ -143,7 +160,7 @@ export function ChatComposer({
           ) : (
             <Button
               aria-label="Send message"
-              className="size-8 cursor-pointer rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] disabled:cursor-not-allowed disabled:pointer-events-auto disabled:opacity-25 sm:size-9"
+              className="size-9 cursor-pointer rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-25"
               disabled={disabled || trimmedValue.length === 0 || isOverMaxLength}
               size="icon-xs"
               type="submit"
