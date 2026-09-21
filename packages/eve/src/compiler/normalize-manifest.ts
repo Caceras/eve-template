@@ -1,4 +1,5 @@
 import type { AgentSourceManifest } from "#discover/manifest.js";
+import { stripLogicalPathExtension } from "#discover/filesystem.js";
 import {
   type CompiledAgentDefinition,
   type CompiledAgentManifest,
@@ -101,6 +102,7 @@ import {
 import {
   frameworkAgentSourceRegistry,
   memoryWrapperTemplate,
+  scheduleCollectionWrapperTemplate,
 } from "#framework/sources/registry.js";
 
 export interface CompileAgentManifestOptions {
@@ -413,10 +415,35 @@ class AgentGraphCompiler {
           template: memoryWrapperTemplate,
         });
       });
+    const scheduleCollectionWrapperCandidates = [...projected.candidates, ...applicationCandidates]
+      .filter(
+        (candidate): candidate is AgentModuleCandidate =>
+          candidate.backing.kind !== "resource" &&
+          canonicalSourceSlot(candidate.logicalPath).startsWith("schedules/"),
+      )
+      .map((candidate) => {
+        const collection = stripLogicalPathExtension(candidate.logicalPath).slice(
+          "schedules/".length,
+        );
+        return instantiateProgrammaticTemplate({
+          anchor: candidate,
+          dependencies: { collection: candidate },
+          logicalPath: `tools/${collection}__schedules.ts`,
+          owner: { feature: "schedule-collection", kind: "framework" },
+          parameters: {
+            application: input.manifest.agentId,
+            collection,
+            collectionExportName: candidate.exportName ?? "default",
+            collectionLogicalPath: candidate.logicalPath,
+          },
+          template: scheduleCollectionWrapperTemplate,
+        });
+      });
     const orderedCandidates: AgentSourceCandidate[] = [
       ...frameworkCandidates,
       ...projected.candidates,
       ...memoryWrapperCandidates,
+      ...scheduleCollectionWrapperCandidates,
       ...applicationCandidates,
     ];
     const composed = composeAgentModuleCandidates(orderedCandidates);
