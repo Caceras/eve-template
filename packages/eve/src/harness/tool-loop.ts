@@ -822,7 +822,20 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
         coordinated.stepInput === undefined
           ? session
           : queueDeferredStepInput(session, coordinated.stepInput);
-      return { next: runStep, session: continuedSession };
+      const pendingInputEvent = getPendingInputBatches(session.state).at(-1)?.event;
+      const continuationEvent = pendingCoordination?.event ?? pendingInputEvent;
+      const coordinationEmissionState =
+        continuationEvent === undefined
+          ? emissionState
+          : {
+              ...emissionState,
+              turnId: continuationEvent.turnId,
+              sessionStarted: true,
+            };
+      return {
+        next: runStep,
+        session: setHarnessEmissionState(continuedSession, advanceStep(coordinationEmissionState)),
+      };
     }
     if (coordinated.challenges.length > 0) {
       if (emit) {
@@ -1036,7 +1049,16 @@ export function createToolLoopHarness(config: ToolLoopHarnessConfig): StepFn {
 
     let instructionMessages: UserModelMessage[] = [];
     let memoryCommit: ReturnType<typeof drainMemoryCommit> = undefined;
-    if (emit && hasStepInput(input)) {
+    if (
+      input === undefined &&
+      pending.resolvedInputs !== undefined &&
+      pending.resolvedInputs.length > 0 &&
+      hasStepInput(coordinated.stepInput) &&
+      emissionState.turnId !== ""
+    ) {
+      emissionState = { ...emissionState, stepIndex: 0, turnId: "" };
+    }
+    if (emit && (hasStepInput(effectiveStepInput) || hasStepInput(coordinated.stepInput))) {
       if (store !== undefined) {
         prepareDynamicInstructionPreamble(
           store,
