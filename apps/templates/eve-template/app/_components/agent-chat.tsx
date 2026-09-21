@@ -649,6 +649,7 @@ export function AgentChatSession({
           clientContext: createConnectionClientContext(
             enabledConnections,
             setupStatus.connectionsAvailable,
+            setupStatus.configuredConnections,
           ),
         });
       } catch (error) {
@@ -1479,12 +1480,15 @@ const CONNECTION_LABELS = {
 function createConnectionClientContext(
   enabledConnections: EnabledConnections,
   connectionsAvailable: boolean,
+  configuredConnections: SetupStatus["configuredConnections"],
 ) {
   if (!connectionsAvailable) {
     return "No external connections are configured. Do not search or call connection tools.";
   }
 
-  const entries = Object.entries(CONNECTION_LABELS) as [keyof EnabledConnections, string][];
+  const configured = new Set(configuredConnections ?? []);
+  const entries = (Object.entries(CONNECTION_LABELS) as [keyof EnabledConnections, string][])
+    .filter(([connection]) => configured.has(connection));
   const enabled = entries
     .filter(([connection]) => enabledConnections[connection])
     .map(([, label]) => label);
@@ -1495,7 +1499,7 @@ function createConnectionClientContext(
   if (enabled.length > 0) {
     const disabledContext =
       disabled.length > 0
-        ? ` Do not use disabled connections unless the user enables them first: ${disabled.join(", ")}.`
+        ? ` Do not use disabled configured connections unless the user enables them first: ${disabled.join(", ")}.`
         : "";
 
     return `The user has enabled these external connections for this turn: ${enabled.join(", ")}. Use an enabled connection when it is relevant to the user's request.${disabledContext}`;
