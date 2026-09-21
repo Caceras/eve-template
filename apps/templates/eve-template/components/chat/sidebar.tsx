@@ -157,7 +157,7 @@ export function ChatSidebar({
           }}
         >
           <RadioTowerIcon className="size-4" />
-          Web channel
+          Channels
         </Link>
         <Link
           className={cn(
