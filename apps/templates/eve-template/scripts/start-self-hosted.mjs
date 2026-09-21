@@ -29,18 +29,22 @@ function spawnChild(name, args, env) {
 
 async function waitForEve() {
   const deadline = Date.now() + 60_000;
-  const url = `http://127.0.0.1:${evePort}/eve/v1/info`;
+  const url = `http://127.0.0.1:${evePort}/eve/v1/health`;
+  let lastFailure = "no response";
 
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
       if (response.ok) return;
-    } catch {}
+      lastFailure = `HTTP ${response.status}`;
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
 
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  throw new Error(`eve did not become ready at ${url} within 60s`);
+  throw new Error(`eve did not become ready at ${url} within 60s (${lastFailure})`);
 }
 
 async function shutdown(exitCode = 0) {
