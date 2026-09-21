@@ -1,5 +1,4 @@
 import { ArrowUpIcon, BlocksIcon, HammerIcon, ListRestartIcon, MenuIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon } from "lucide-react";
-import { VercelIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const activeRowClass = "bg-muted/50 text-foreground";
@@ -19,7 +18,7 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
         <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex size-8 items-center justify-center rounded-md">
-              <VercelIcon className="size-3.5 text-foreground" />
+              <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/eve.svg" />
             </div>
             <div className="flex size-8 items-center justify-center rounded-md text-muted-foreground/55">
               <PanelLeftIcon className="size-4" />
@@ -64,7 +63,7 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
       </aside>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between px-2 py-2 md:px-3">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between px-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-3">
           <div className="pointer-events-auto flex items-center gap-1">
             <div className="flex size-8 items-center justify-center rounded-md text-muted-foreground md:hidden">
               <MenuIcon className="size-4" />
