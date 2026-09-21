@@ -10,8 +10,10 @@ import {
 export default defineEval({
   description:
     "Two unanswered questions cannot swallow a tool reply even when no approval remains.",
+  tags: ["hitl", "continuation", "regression", "user-message", "question"],
   timeoutMs: 60_000,
   async test(t) {
+    // Given two questions remain unanswered after the only approval is cancelled.
     const first = await t.send("Prepare change A.", scriptedSession);
     const approval = requestFrom(first, "change-a");
     const session = first.session;
@@ -29,7 +31,10 @@ export default defineEval({
       data: { status: "completed", result: { toolName: "change-a" } },
     });
 
+    // When the user asks to read the draft.
     const live = await session.start("Read the draft status.");
+
+    // Then the read gets a completed reply and neither question is silently answered.
     await expectToolResult(t, live, "read-draft");
     await expectReply(t, live, "Draft status: ready.");
     session.eventsSatisfy("Neither unanswered question was silently resolved", (events) =>

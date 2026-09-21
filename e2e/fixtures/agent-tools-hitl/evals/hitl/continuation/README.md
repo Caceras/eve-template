@@ -8,6 +8,12 @@ These sessions explicitly select the scripted model with a fixture-only header. 
 
 Start with [`read.eval.ts`](./read.eval.ts): prepare a change, leave its approval pending, ask for a draft status, require the answer, then approve the original change. Every other regression follows that same conversation shape.
 
+## Scenario syntax and classification
+
+Each test body uses **Given / When / Then**: the actual pending state, the accepted user input, and the observable outcome. `defineEval.description` names the scenario. Native `tags` classify it by role (`regression` or `control`), triggering input (`user-message` or `input-response`), and behavior (`tool-result`, `tool-error`, `validation`, `workflow`, `provider-result`, `background-task`, `approval`, `authorization`, `question`, `partial-approval`, `stale-response`, `budget`, or `text-reply`). Every case also carries `hitl` and `continuation`.
+
+The tags are filters, not expected verdicts: every case must pass after the runtime is fixed. In CI, `eve eval --tag regression`, `--tag control`, or `--tag partial-approval` selects the corresponding conversations. The body remains ordinary executable `defineEval` code; there is no separate scenario runner or generated assertion table.
+
 ## What makes a passing answer
 
 [`expectReply`](./helpers.ts) requires both `message.completed` with the expected answer and `turn.completed`, attributed to the same turn. A tool result, an unrelated reply, or a completion event without an answer cannot pass. Approval-response cases verify resolution of the saved request and use the resumed `turn.started` ID; new messages use their own `message.received` ID. An input request may itself close a runtime turn, so `turn.completed` alone is never proof of an answer.
