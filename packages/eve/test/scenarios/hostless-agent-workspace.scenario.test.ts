@@ -25,7 +25,7 @@ describe("hostless agent workspace", () => {
             projectId: "prj_eve_collection_scenario",
             projectName: "hostless-agent-workspace",
             settings: {
-              buildCommand: "pnpm exec eve build",
+              buildCommand: "pnpm exec eve build --skip-sandbox-prewarm",
               framework: null,
               outputDirectory: null,
               rootDirectory: null,
@@ -46,11 +46,8 @@ describe("hostless agent workspace", () => {
         "vercel",
         "build",
         "--yes",
-        "--build-env",
-        "EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM=1",
       ],
       cwd: app.appRoot,
-      env: { ...process.env, EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM: "1" },
     });
 
     const outputRoot = join(app.appRoot, ".vercel", "output");

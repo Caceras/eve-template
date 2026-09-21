@@ -50,13 +50,15 @@ export function registerBuildCommand(input: {
 
       const projectContext = await input.applicationContext.resolveAgent();
       if (projectContext.kind === "workspace") {
-        if (options.profile !== undefined || options.skipSandboxPrewarm === true) {
+        if (options.profile !== undefined) {
           throw new Error(
-            "Workspace builds do not support --profile or --skip-sandbox-prewarm. Run those options from an individual agent directory.",
+            "Workspace builds do not support --profile. Run it from an individual agent directory.",
           );
         }
         const { buildAgentWorkspace } = await import("#internal/vercel/build-agent-workspace.js");
-        const outputDir = await buildAgentWorkspace(projectContext.workspace);
+        const outputDir = await buildAgentWorkspace(projectContext.workspace, {
+          skipSandboxPrewarm: options.skipSandboxPrewarm,
+        });
         input.logger.log(
           renderCliTaggedLine(theme, {
             message: `built output at ${outputDir}`,
@@ -81,9 +83,7 @@ export function registerBuildCommand(input: {
         readonly workspaceMember: boolean;
       } = {
         publicRoutePrefix: normalizePublicRoutePrefix(process.env[EVE_PUBLIC_ROUTE_PREFIX_ENV]),
-        skipVercelSandboxPrewarm:
-          options.skipSandboxPrewarm === true ||
-          process.env.EVE_INTERNAL_SKIP_VERCEL_SANDBOX_PREWARM === "1",
+        skipVercelSandboxPrewarm: options.skipSandboxPrewarm === true,
         vercelServiceOutput: resolveInternalVercelServiceOutput(input.applicationContext.root),
         workspaceMember:
           projectContext.kind === "workspace-member" ||
