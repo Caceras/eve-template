@@ -101,13 +101,11 @@ export function EveCapabilities() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
               <BlocksIcon className={iconClass} />
-              Eve reference surface
+              Agent
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Capabilities</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Agent</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Runtime truth comes from Eve agent-info v4. The catalog below comes directly from the
-              checked-out official Eve registry. This page intentionally does not maintain a second
-              capability model.
+              See what this agent is running now, what this repo already includes, and what the official Eve ecosystem can add. These scopes are kept separate so available capabilities are never mistaken for active ones.
             </p>
           </div>
           <Button disabled={loading} onClick={() => void load()} size="sm" variant="outline">
@@ -126,12 +124,13 @@ export function EveCapabilities() {
           </div>
         ) : null}
 
+        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Active</div>
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             icon={<BotIcon className={iconClass} />}
-            label="Agent"
+            label="Runtime"
             value={info?.agent?.name ?? (loading ? "Loading…" : "Unavailable")}
-            detail={info?.agent?.model?.id ?? "Model resolved by Eve"}
+            detail={info?.agent?.model?.id ?? "Live compiled agent"}
           />
           <SummaryCard
             icon={<WrenchIcon className={iconClass} />}
@@ -153,7 +152,12 @@ export function EveCapabilities() {
           />
         </section>
 
-        <section className="mt-6 grid gap-3 lg:grid-cols-2">
+        <section className="mt-6">
+          <div className="mb-3">
+            <p className="text-sm font-medium">Active capabilities</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Reported by the live compiled Eve agent for this runtime.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
           <CapabilityGroup title="Tools" icon={<WrenchIcon className={iconClass} />} entries={pairEntries(info?.tools)} />
           <CapabilityGroup title="Skills" icon={<SparklesIcon className={iconClass} />} entries={pairEntries(info?.skills)} />
           <CapabilityGroup title="Instructions" icon={<BrainIcon className={iconClass} />} entries={pairEntries(info?.instructions)} />
@@ -168,6 +172,39 @@ export function EveCapabilities() {
           <CapabilityGroup title="Workspace" icon={<FolderCogIcon className={iconClass} />} entries={info?.workspace?.rootEntries ?? []} />
           <CapabilityGroup title="Composition: disabled" icon={<ShieldCheckIcon className={iconClass} />} entries={info?.composition?.disabled ?? []} />
           <CapabilityGroup title="Composition: shadowed" icon={<FolderCogIcon className={iconClass} />} entries={info?.composition?.shadowed ?? []} />
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-lg border bg-card">
+          <div className="border-b p-4">
+            <div className="flex items-center gap-2 font-medium">
+              <BlocksIcon className={iconClass} />
+              Included in this repo
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Working scaffolds and examples already present in this template. Some are caller-gated, optional, or only active after credentials are configured.
+            </p>
+          </div>
+          <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ["Tools", "typed, dynamic, approvals, filesystem, search, workflow"],
+              ["Skills", "flat, packaged and dynamic skills"],
+              ["Workflows", "blocking, background and runtime-generated"],
+              ["Subagents", "visible, hidden and conditional child agents"],
+              ["Connections", "MCP, OpenAPI and dynamic connection examples"],
+              ["Channels", "HTTP, Slack, MCP and custom channel scaffolds"],
+              ["Memory", "cross-session profile memory and session state"],
+              ["Schedules", "heartbeat scheduling scaffold"],
+              ["Hooks", "global lifecycle audit hook"],
+              ["Sandbox", "seeded workspace plus Eve sandbox tools"],
+              ["Evals", "smoke, HITL, state, delegation and workflow evals"],
+            ].map(([title, detail]) => (
+              <div className="bg-background p-4" key={title}>
+                <p className="text-sm font-medium">{title}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="mt-6 rounded-lg border bg-card">
@@ -175,10 +212,10 @@ export function EveCapabilities() {
             <div>
               <div className="flex items-center gap-2 font-medium">
                 <HardDriveIcon className={iconClass} />
-                Official Eve registry
+                Available from Eve
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                {eveSurface.registryItems.length} integrations from the checked-out Eve source · Eve {eveSurface.eveVersion}
+                {eveSurface.registryItems.length} official registry items available to add or configure · Eve {eveSurface.eveVersion}
               </p>
             </div>
             <Input
@@ -218,10 +255,10 @@ export function EveCapabilities() {
         <section className="mt-6 rounded-lg border bg-card">
           <div className="border-b p-4">
             <div className="flex items-center gap-2 font-medium">
-              <BlocksIcon className={iconClass} /> Public Eve package surface
+              <BlocksIcon className={iconClass} /> Available package surface
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {eveSurface.packageExports.length} exported package entrypoints from the checked-out Eve package.
+              {eveSurface.packageExports.length} public package entrypoints exposed by the checked-out Eve package.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 p-4">
@@ -233,7 +270,7 @@ export function EveCapabilities() {
 
         <section className="mt-6 rounded-lg border bg-card p-4 text-sm">
           <div className="flex items-center gap-2 font-medium">
-            <ShieldCheckIcon className={iconClass} /> Runtime metadata
+            <ShieldCheckIcon className={iconClass} /> Diagnostics
           </div>
           <div className="mt-3 grid gap-2 text-muted-foreground sm:grid-cols-3">
             <p>Agent-info: v{info?.version ?? "—"}</p>
