@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createActivitySnapshot, reduceActivityBatch } from "#execution/session-activity.js";
-import { mockSlack } from "#internal/testing/mocks/mock-slack.js";
+import { mockSlack, type MockSlack } from "#internal/testing/mocks/mock-slack.js";
 import {
   activityMessages,
   buildSlackActivityRenderers,
@@ -9,6 +9,27 @@ import {
   experimental_slackActivityStatus,
   selectSlackActivityStatus,
 } from "#public/channels/slack/activity.js";
+
+/** Every double this file creates, swept for violations after each test. */
+const doubles: MockSlack[] = [];
+
+/**
+ * A double registered for the {@link afterEach} sweep below.
+ *
+ * These are renderer paths, and renderers swallow transport errors so a
+ * failed status update never fails the turn. Without the sweep an
+ * unstubbed or malformed call reads as a render that did not happen,
+ * which is the hardest kind of failure to diagnose here.
+ */
+function slackDouble(): MockSlack {
+  const slack = mockSlack();
+  doubles.push(slack);
+  return slack;
+}
+
+afterEach(() => {
+  for (const slack of doubles.splice(0)) slack.assertNoViolations();
+});
 
 const root = {
   id: "work:root:turn",
@@ -221,7 +242,7 @@ describe("Slack activity activity", () => {
   });
 
   it("creates a metadata-tagged message and updates it in place", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     slack.allow("conversations.replies").andReturn({ ok: true, messages: [] });
     slack.allow("chat.postMessage").andReturn({ ok: true, channel: "C1", ts: "1700.1" });
     slack.allow("chat.update").andReturn({ ok: true, channel: "C1", ts: "1700.1" });
@@ -275,9 +296,8 @@ describe("Slack activity activity", () => {
   });
 
   it("recreates a deleted activity message", async () => {
-    const slack = mockSlack();
-    // Slack reporting the remembered ts as gone is the precondition; the
-    // old fake produced it incidentally by never having stored it.
+    const slack = slackDouble();
+    // Slack reporting the remembered ts as gone is the precondition.
     slack.allow("chat.update").andFail("message_not_found");
     slack.allow("chat.postMessage").andReturn({ ok: true, channel: "C1", ts: "1700.2" });
     const renderer = buildSlackActivityRenderers({
@@ -300,7 +320,7 @@ describe("Slack activity activity", () => {
   });
 
   it("passes the installation team to activity message token resolution", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     slack.allow("conversations.replies").andReturn({ ok: true, messages: [] });
     slack.allow("chat.postMessage").andReturn({ ok: true, channel: "C1", ts: "1700.1" });
     const tokenContext = vi.fn(() => "xoxb-team");
@@ -320,7 +340,7 @@ describe("Slack activity activity", () => {
   });
 
   it("recovers provider identity from message metadata", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     const activityMessage = {
       metadata: { event_payload: { root_turn_id: "turn" }, event_type: "eve_progress" },
       text: "old",
@@ -354,7 +374,7 @@ describe("Slack activity activity", () => {
   });
 
   it("paginates metadata recovery until a matching activity message is found", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     const activityMessage = {
       metadata: { event_payload: { root_turn_id: "turn" }, event_type: "eve_progress" },
       text: "old",
@@ -399,7 +419,7 @@ describe("Slack activity activity", () => {
   });
 
   it("stops recovery when Slack repeats a cursor", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     // Slack handing back the same cursor forever. Only two pages are
     // declared, so a third fetch fails loudly instead of spinning.
     const looped = {

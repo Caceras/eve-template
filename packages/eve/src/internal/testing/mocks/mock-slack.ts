@@ -95,6 +95,20 @@ export interface MockSlackStub<M extends SlackApiMethod> {
    * loop that calls more times than the test declared is caught.
    */
   andReturnEach(responses: readonly SlackApiResponseFor<M>[]): MockSlackStub<M>;
+  /**
+   * Answer with a response the contract does not describe, for pinning
+   * what eve does when Slack breaks its own shape — a `chat.postMessage`
+   * that comes back with no `ts`, say.
+   *
+   * Named to be conspicuous at the call site. `andReturn(… as never)`
+   * does the same thing while reading like an ordinary stub, and
+   * switches off shape checking for the whole object rather than
+   * saying that this one response is deliberately off-contract.
+   * Loosening the contract instead would be worse still: making `ts`
+   * optional to serve one test drops the requirement from every honest
+   * stub of that method.
+   */
+  andReturnRaw(response: Readonly<Record<string, unknown>>): MockSlackStub<M>;
   /** Compute the response from the decoded request body. */
   andRespond(respond: (body: SlackApiRequest<M>) => SlackApiResponseFor<M>): MockSlackStub<M>;
   /**
@@ -445,6 +459,11 @@ export function mockSlack(options: MockSlackOptions = {}): MockSlack {
           clearAnswer(state);
           state.responses = [...responses];
           state.sequence = true;
+          return stub;
+        },
+        andReturnRaw(response) {
+          clearAnswer(state);
+          state.responses = [response];
           return stub;
         },
         andRespond(respond) {

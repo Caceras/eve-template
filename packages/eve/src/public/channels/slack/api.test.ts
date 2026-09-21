@@ -47,7 +47,11 @@ function allowUpload(slack: MockSlack, fileIds: readonly string[] = ["F1"]): voi
   const pending = [...fileIds];
   slack.allow("files.getUploadURLExternal").andRespond(() => {
     const id = pending.shift();
-    if (id === undefined) throw new Error("allowUpload: more files uploaded than ids declared");
+    // A violation rather than a bare throw, so it survives the paths
+    // that swallow a rejected fetch.
+    if (id === undefined) {
+      slack.reject("more files were uploaded than allowUpload declared ids for");
+    }
     return { ok: true, upload_url: slack.uploadUrl(id), file_id: id };
   });
   slack

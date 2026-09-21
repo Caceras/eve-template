@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isCompiledChannel } from "#channel/compiled-channel.js";
 import { getChannelActivityPresentation } from "#channel/activity-renderer.js";
 import { createActivitySnapshot, reduceActivityBatch } from "#execution/session-activity.js";
-import { mockSlack } from "#internal/testing/mocks/mock-slack.js";
+import { mockSlack, type MockSlack } from "#internal/testing/mocks/mock-slack.js";
 import {
   buildSlackActivityRenderers,
   experimental_slackActivityRenderer,
@@ -11,6 +11,27 @@ import {
   experimental_slackActivityStatus,
 } from "#public/channels/slack/activity.js";
 import { slackChannel } from "#public/channels/slack/slackChannel.js";
+
+/** Every double this file creates, swept for violations after each test. */
+const doubles: MockSlack[] = [];
+
+/**
+ * A double registered for the {@link afterEach} sweep below.
+ *
+ * These are renderer paths, and renderers swallow transport errors so a
+ * failed status update never fails the turn. Without the sweep an
+ * unstubbed or malformed call reads as a render that did not happen,
+ * which is the hardest kind of failure to diagnose here.
+ */
+function slackDouble(): MockSlack {
+  const slack = mockSlack();
+  doubles.push(slack);
+  return slack;
+}
+
+afterEach(() => {
+  for (const slack of doubles.splice(0)) slack.assertNoViolations();
+});
 
 const root = {
   id: "work:root:turn",
@@ -235,7 +256,7 @@ describe("Slack status activity", () => {
   });
 
   it("passes the installation team to function bot tokens", async () => {
-    const slack = mockSlack();
+    const slack = slackDouble();
     slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const tokenContext = vi.fn(() => "xoxb-team");
     const renderer = buildSlackActivityRenderers({
@@ -257,7 +278,7 @@ describe("Slack status activity", () => {
 
   it("suppresses duplicate provider writes", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const slack = mockSlack();
+    const slack = slackDouble();
     slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const renderer = buildSlackActivityRenderers({
       api: { fetch: slack.fetch },
@@ -288,7 +309,7 @@ describe("Slack status activity", () => {
 
   it("clears transient status on disposal", async () => {
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
-    const slack = mockSlack();
+    const slack = slackDouble();
     slack.allow("assistant.threads.setStatus").andReturn({ ok: true });
     const renderer = buildSlackActivityRenderers({
       api: { fetch: slack.fetch },
