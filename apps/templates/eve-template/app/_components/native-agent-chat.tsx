@@ -114,7 +114,7 @@ export function NativeAgentChat({
       <PromptInputTextarea
         disabled={isResuming}
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
-        placeholder="Message eve"
+        placeholder="Message Ægentica"
       />
       <ComposerAction
         hasInputText={hasInputText}
@@ -180,10 +180,10 @@ export function NativeAgentChat({
         {showConversationLayout ? null : (
           <div className="flex flex-col items-center gap-3 text-center">
             <img
-              alt="eve"
+              alt="Ægentica"
               className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
               draggable={false}
-              src="/eve.svg"
+              src="/aegentica.svg"
             />
             <span className="sr-only">{AGENT_NAME}</span>
           </div>
