@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { EveImageMark } from "./_components/eve-image-mark";
+import { AegenticaImageMark } from "./_components/aegentica-image-mark";
 
 export const size = {
   width: 180,
@@ -20,7 +20,7 @@ export default function AppleIcon() {
         width: "100%",
       }}
     >
-      <EveImageMark size={122} />
+      <AegenticaImageMark size={122} />
     </div>,
     size,
   );
