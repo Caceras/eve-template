@@ -583,3 +583,80 @@ it("continues after responder-authorized approval of the older batch", async () 
   expect(f.pending().map((request) => request.action.toolName)).toEqual(["gateB"]);
   expect(result.settledTurn?.output).toBe("FINAL");
 });
+
+it("parks on a new question while retaining a partial approval [control]", async () => {
+  const f = fixture("partial-approval-new-question");
+  // Given A and B need approval together, and only A has been answered.
+  await f.gate("gateA", "gateB");
+  await f.drive(f.respond("gateA"));
+
+  // When the next user message causes the model to ask a question.
+  f.script.push(calls("question"));
+  const result = await f.step({ message: "Ask which color to use." });
+
+  // Then the new question parks immediately, and A's answer is still remembered.
+  expect(result.next).toBeNull();
+  expect(f.pending().map((request) => request.kind)).toEqual([
+    "tool-approval",
+    "tool-approval",
+    "question",
+  ]);
+  expect(f.executions).toHaveLength(0);
+  f.script.push("Approved.");
+  await f.drive(f.respond("gateB"));
+  expect(f.executions).toEqual(["gateA", "gateB"]);
+  expect(f.pending().map((request) => request.kind)).toEqual(["question"]);
+});
+
+it("resumes a complete batch while another batch has only a partial approval [control]", async () => {
+  const f = fixture("complete-and-partial-approvals");
+  // Given A and B need approval together, and a second independent B is pending.
+  await f.gate("gateA", "gateB");
+  const approvalA = f.respond("gateA");
+  const approvalB = f.respond("gateB");
+  f.script.push(calls("gateB"));
+  await f.drive({ message: "Prepare another independent B." });
+  const independentB = f.pending().at(-1)!;
+
+  // When one delivery answers A and the independent B.
+  f.script.push("Independent B approved.");
+  const result = await f.drive({
+    inputResponses: [
+      ...approvalA.inputResponses!,
+      { requestId: independentB.requestId, optionId: "approve" },
+    ],
+  });
+
+  // Then only the complete batch executes and replies, without another model call.
+  expect(result.settledTurn?.output).toBe("Independent B approved.");
+  expect(f.executions).toEqual(["gateB"]);
+  expect(f.pending()).toHaveLength(2);
+  f.script.push("Both approved.");
+  await f.drive(approvalB);
+  expect(f.executions).toEqual(["gateB", "gateA", "gateB"]);
+  expect(f.pending()).toHaveLength(0);
+});
+
+it("answers a queued question after an approval while another approval stays pending", async () => {
+  const f = fixture("approval-then-question-with-sibling");
+  // Given independent approvals A and B, followed by a question.
+  await f.gate("gateA");
+  f.script.push(calls("gateB"));
+  await f.drive({ message: "Prepare B." });
+  f.script.push(calls("question"));
+  await f.drive({ message: "Ask which color." });
+
+  // When one delivery answers A and the question, leaving B unanswered.
+  f.script.push("A approved.", "Color answered.");
+  const result = await f.drive({
+    inputResponses: [
+      ...f.respond("gateA").inputResponses!,
+      ...f.respond("question", "red").inputResponses!,
+    ],
+  });
+
+  // Then both answers are processed and B alone stays pending.
+  expect(result.settledTurn?.output).toBe("Color answered.");
+  expect(f.executions).toEqual(["gateA"]);
+  expect(f.pending().map((request) => request.action.toolName)).toEqual(["gateB"]);
+});
