@@ -332,7 +332,7 @@ export function EveCapabilities() {
                               </p>
                             </div>
                             <code className="truncate text-[11px] text-muted-foreground sm:max-w-56">
-                              eve add {item.name}
+                              Add {item.name}
                             </code>
                           </div>
                         ))}
