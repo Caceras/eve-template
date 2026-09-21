@@ -2,8 +2,7 @@
 
 import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { VercelIcon } from "@/components/icons";
@@ -53,8 +52,15 @@ export function ChatSidebar({
 }) {
   const authDisabled = !setupStatus.appReady;
   const newSessionActive = activeChatId === null;
-  const pathname = usePathname();
+  const [pathname, setPathname] = useState("/");
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const syncPathname = () => setPathname(window.location.pathname || "/");
+    syncPathname();
+    window.addEventListener("popstate", syncPathname);
+    return () => window.removeEventListener("popstate", syncPathname);
+  }, []);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -116,6 +122,7 @@ export function ChatSidebar({
             newSessionActive && pathname === "/" ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
+            setPathname("/");
             onNewChat();
             onNavigate?.(null);
           }}
@@ -130,10 +137,13 @@ export function ChatSidebar({
             pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
           )}
           href="/capabilities"
-          onClick={() => onNavigate?.()}
+          onClick={() => {
+            setPathname("/capabilities");
+            onNavigate?.();
+          }}
         >
           <BlocksIcon className="size-4" />
-          Eve capabilities
+          Agent
         </Link>
         <Link
           className={cn(
@@ -141,10 +151,13 @@ export function ChatSidebar({
             pathname === "/native" || pathname.startsWith("/native/") ? activeRowClass : inactiveRowClass,
           )}
           href="/native"
-          onClick={() => onNavigate?.()}
+          onClick={() => {
+            setPathname("/native");
+            onNavigate?.();
+          }}
         >
           <RadioTowerIcon className="size-4" />
-          Native Web Chat
+          Web channel
         </Link>
         <Link
           className={cn(
@@ -152,10 +165,13 @@ export function ChatSidebar({
             pathname === "/session" ? activeRowClass : inactiveRowClass,
           )}
           href="/session"
-          onClick={() => onNavigate?.()}
+          onClick={() => {
+            setPathname("/session");
+            onNavigate?.();
+          }}
         >
           <ListRestartIcon className="size-4" />
-          Session lifecycle
+          Sessions
         </Link>
       </div>
 
