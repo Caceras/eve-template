@@ -1,9 +1,11 @@
+import { connection } from "next/server";
 import { NextResponse } from "next/server";
 import { listChatsPageByUser } from "@/lib/db/queries";
 import { getServerViewer } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
 
 export async function GET() {
+  await connection();
   const setupStatus = await getSetupStatus();
   const viewer = await getServerViewer(setupStatus);
   const initialChatsPage =

@@ -1,4 +1,13 @@
-import { ArrowUpIcon, BlocksIcon, HammerIcon, ListRestartIcon, MenuIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  BlocksIcon,
+  HammerIcon,
+  ListRestartIcon,
+  MenuIcon,
+  PanelLeftIcon,
+  PlusIcon,
+  RadioTowerIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const activeRowClass = "bg-muted/50 text-foreground";
@@ -18,7 +27,13 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
         <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex size-8 items-center justify-center rounded-md">
-              <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/aegentica.svg" />
+              <img
+                alt=""
+                aria-hidden
+                className="size-4 select-none invert dark:invert-0"
+                draggable={false}
+                src="/aegentica.svg"
+              />
             </div>
             <div className="flex size-8 items-center justify-center rounded-md text-muted-foreground/55">
               <PanelLeftIcon className="size-4" />
@@ -76,7 +91,6 @@ export function AgentChatSkeleton({ mode }: { readonly mode: "chat" | "new" }) {
         </div>
 
         <AgentChatContentSkeleton mode={mode} />
-
       </main>
     </div>
   );
@@ -90,15 +104,23 @@ function EmptyChatSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-14 md:pt-8">
       <div className="flex min-h-0 flex-1 items-center justify-center pb-12 sm:pb-[8vh]">
-        <div className="w-full max-w-2xl space-y-6 sm:space-y-8 md:space-y-9">
+        <div className="w-full max-w-2xl space-y-6 sm:space-y-7">
           <h1 className="flex justify-center">
             <img
               alt=""
-              className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
+              className="size-12 select-none invert sm:size-14 dark:invert-0"
               draggable={false}
               src="/aegentica.svg"
             />
           </h1>
+          <div className="space-y-2 text-center">
+            <p className="text-2xl font-medium tracking-tight sm:text-3xl">
+              What would you like to work on?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Bring a question, an idea, or a task. We’ll take it from here.
+            </p>
+          </div>
           <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">
             <StaticComposerFallback />
           </div>

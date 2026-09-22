@@ -1,3 +1,4 @@
+import { enforceLoginLimit } from "@/lib/login-limit";
 import { NextResponse } from "next/server";
 import {
   createPasswordSessionToken,
@@ -25,11 +26,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   }
 
-  const body = (await request.json().catch(() => null)) as { password?: unknown } | null;
+  const retryAfter = enforceLoginLimit();
+  if (retryAfter) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
+  }
+  const reader = request.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  if (reader) {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 1024) {
+        await reader.cancel();
+        break;
+      }
+      chunks.push(value);
+    }
+  }
+  if (size > 1024) return NextResponse.json({ error: "Request too large." }, { status: 413 });
+  const raw = Buffer.concat(chunks).toString("utf8");
+  let body: { password?: unknown; username?: unknown } | null;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    body = null;
+  }
+  const username = typeof body?.username === "string" ? body.username : "";
   const password = typeof body?.password === "string" ? body.password : "";
 
-  if (!verifyChatPassword(password)) {
-    return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
+  if (!verifyChatPassword(password, username)) {
+    return NextResponse.json({ error: "Incorrect username or password." }, { status: 401 });
   }
 
   const response = NextResponse.json({ ok: true });

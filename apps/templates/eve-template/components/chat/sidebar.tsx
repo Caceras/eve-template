@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  BookOpenIcon,
+  BlocksIcon,
+  EllipsisIcon,
+  ListRestartIcon,
+  PanelLeftIcon,
+  PlusIcon,
+  RadioTowerIcon,
+  Trash2Icon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -102,7 +112,13 @@ export function ChatSidebar({
             }}
             type="button"
           >
-            <img alt="" aria-hidden className="size-4 select-none invert dark:invert-0" draggable={false} src="/aegentica.svg" />
+            <img
+              alt=""
+              aria-hidden
+              className="size-4 select-none invert dark:invert-0"
+              draggable={false}
+              src="/aegentica.svg"
+            />
           </button>
           {onToggleSidebar ? (
             <Button
@@ -119,7 +135,7 @@ export function ChatSidebar({
         </div>
         <button
           className={cn(
-            "flex h-9 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors md:h-8",
+            "flex h-11 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors md:h-8",
             newSessionActive ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
@@ -136,7 +152,7 @@ export function ChatSidebar({
         </button>
         <Link
           className={cn(
-            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
           )}
           aria-current={pathname === "/capabilities" ? "page" : undefined}
@@ -151,10 +167,14 @@ export function ChatSidebar({
         </Link>
         <Link
           className={cn(
-            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/native" || pathname.startsWith("/native/") ? activeRowClass : inactiveRowClass,
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            pathname === "/native" || pathname.startsWith("/native/")
+              ? activeRowClass
+              : inactiveRowClass,
           )}
-          aria-current={pathname === "/native" || pathname.startsWith("/native/") ? "page" : undefined}
+          aria-current={
+            pathname === "/native" || pathname.startsWith("/native/") ? "page" : undefined
+          }
           href="/native"
           onClick={() => {
             setPathname("/native");
@@ -166,7 +186,7 @@ export function ChatSidebar({
         </Link>
         <Link
           className={cn(
-            "flex h-9 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
             pathname === "/session" ? activeRowClass : inactiveRowClass,
           )}
           aria-current={pathname === "/session" ? "page" : undefined}
@@ -179,12 +199,28 @@ export function ChatSidebar({
           <ListRestartIcon className="size-4" />
           Sessions
         </Link>
+        <Link
+          href="/library"
+          aria-current={pathname === "/library" ? "page" : undefined}
+          onClick={() => {
+            setPathname("/library");
+            onNavigate?.();
+          }}
+          className={cn(
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            pathname === "/library" ? activeRowClass : inactiveRowClass,
+          )}
+        >
+          <BookOpenIcon className="size-4" /> Library
+        </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {chats.length ? (
           <div>
-            <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">Recent</p>
+            <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">
+              Recent
+            </p>
             {chats.map((chat) => {
               const active = activeChatId === chat.id;
 

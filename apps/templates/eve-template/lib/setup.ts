@@ -2,7 +2,7 @@ import type { SetupStatus } from "@/lib/chat/types";
 import { isDatabaseConfigured, isDatabaseSchemaReady } from "@/lib/db/client";
 import { isChatPasswordConfigured } from "@/lib/password-auth";
 
-const PASSWORD_ENV_KEY = "EVE_CHAT_PASSWORD";
+const PASSWORD_ENV_KEY = "EVE_SESSION_SECRET";
 const AUTH_ENV_KEYS = [
   "BETTER_AUTH_SECRET",
   "NEXT_PUBLIC_VERCEL_APP_CLIENT_ID",

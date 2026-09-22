@@ -13,6 +13,7 @@ export function PasswordSignInForm({
   readonly onBeforeSignIn?: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -28,7 +29,7 @@ export function PasswordSignInForm({
 
     try {
       const response = await fetch("/api/password-auth/login", {
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -52,26 +53,47 @@ export function PasswordSignInForm({
 
   return (
     <form className="space-y-3.5" onSubmit={handleSubmit}>
-      <Input
-        aria-label="Password"
-        autoComplete="current-password"
-        autoFocus
-        disabled={pending}
-        id="eve-chat-password"
-        onChange={(event) => setPassword(event.target.value)}
-        className="h-11"
-        placeholder="Password"
-        type="password"
-        value={password}
-      />
+      <label className="block space-y-1.5 text-sm font-medium">
+        <span>Username</span>
+        <Input
+          autoComplete="username"
+          autoFocus
+          required
+          disabled={pending}
+          className="h-11"
+          placeholder="Username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm font-medium">
+        <span>Password</span>
+        <Input
+          aria-label="Password"
+          autoComplete="current-password"
+          required
+          disabled={pending}
+          id="eve-chat-password"
+          onChange={(event) => setPassword(event.target.value)}
+          className="h-11"
+          placeholder="Password"
+          type="password"
+          value={password}
+        />
+      </label>
       {error ? (
         <p aria-live="polite" className="text-sm text-destructive" role="alert">
           {error}
         </p>
       ) : null}
-      <Button aria-busy={pending} className="h-11 w-full rounded-lg" disabled={pending} type="submit">
+      <Button
+        aria-busy={pending}
+        className="h-11 w-full rounded-lg"
+        disabled={pending}
+        type="submit"
+      >
         {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-        {pending ? "Signing in..." : "Continue"}
+        {pending ? "Signing in..." : "Sign in"}
       </Button>
     </form>
   );

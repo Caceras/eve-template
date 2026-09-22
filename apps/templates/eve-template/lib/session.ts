@@ -6,19 +6,18 @@ import { getSetupStatus } from "@/lib/setup";
 
 const PASSWORD_VIEWER: Viewer = {
   email: "local@aegentica.local",
-  id: "aegentica-user",
+  id: "eve-chat-user",
   image: null,
-  name: "Ægentica user",
+  name: "Riki",
 };
 
 export async function getServerViewer(setupStatus?: SetupStatus): Promise<Viewer | null> {
+  const requestHeaders = await headers();
   const status = setupStatus ?? (await getSetupStatus());
 
   if (!status.appReady) {
     return null;
   }
-
-  const requestHeaders = await headers();
 
   if (status.authMode === "local-dev") {
     return PASSWORD_VIEWER;

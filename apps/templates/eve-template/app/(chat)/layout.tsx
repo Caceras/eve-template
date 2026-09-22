@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { AgentChatBootstrapSync } from "@/app/_components/agent-chat-bootstrap-sync";
 import { AgentChatShell } from "@/app/_components/agent-chat-shell";
@@ -26,6 +27,7 @@ export default function ChatLayout({ children }: { readonly children: ReactNode 
 }
 
 async function ResolvedChatBootstrap() {
+  await connection();
   const setupStatus = await getSetupStatus();
   const viewer = await getServerViewer(setupStatus);
   const appReady = setupStatus.appReady;

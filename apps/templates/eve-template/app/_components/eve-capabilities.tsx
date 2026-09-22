@@ -1,6 +1,7 @@
 "use client";
 
-import { Client } from "eve/client";
+import { useChatShell } from "@/app/_components/chat-shell-context";
+import Link from "next/link";
 import {
   ActivityIcon,
   BlocksIcon,
@@ -34,7 +35,7 @@ interface RuntimeInfo {
   readonly agent?: {
     readonly name?: string;
     readonly description?: string;
-    readonly model?: { readonly id?: string };
+    readonly model?: { readonly id?: string; readonly endpoint?: { readonly connected?: boolean } };
   };
   readonly tools?: { readonly static?: readonly unknown[]; readonly dynamic?: readonly unknown[] };
   readonly skills?: { readonly static?: readonly unknown[]; readonly dynamic?: readonly unknown[] };
@@ -46,12 +47,21 @@ interface RuntimeInfo {
   readonly hooks?: readonly unknown[];
   readonly memories?: readonly unknown[];
   readonly schedules?: readonly unknown[];
-  readonly channels?: { readonly routes?: readonly unknown[]; readonly shadowed?: readonly unknown[] };
+  readonly channels?: {
+    readonly routes?: readonly unknown[];
+    readonly shadowed?: readonly unknown[];
+  };
   readonly subagents?: { readonly local?: readonly unknown[]; readonly total?: number };
   readonly remoteAgents?: { readonly entries?: readonly unknown[]; readonly total?: number };
   readonly sandbox?: unknown;
-  readonly workspace?: { readonly resourceRoot?: string | null; readonly rootEntries?: readonly unknown[] };
-  readonly composition?: { readonly disabled?: readonly unknown[]; readonly shadowed?: readonly unknown[] };
+  readonly workspace?: {
+    readonly resourceRoot?: string | null;
+    readonly rootEntries?: readonly unknown[];
+  };
+  readonly composition?: {
+    readonly disabled?: readonly unknown[];
+    readonly shadowed?: readonly unknown[];
+  };
   readonly diagnostics?: { readonly discoveryErrors?: number; readonly discoveryWarnings?: number };
 }
 
@@ -73,6 +83,8 @@ const INCLUDED_AREAS = [
 ] as const;
 
 export function EveCapabilities() {
+  const { requestSignIn } = useChatShell();
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [info, setInfo] = useState<RuntimeInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,8 +95,16 @@ export function EveCapabilities() {
     setLoading(true);
     setError(null);
     try {
-      const client = new Client({ host: "" });
-      setInfo((await client.info()) as unknown as RuntimeInfo);
+      setInfo(null);
+      setNeedsLogin(false);
+      const response = await fetch("/eve/v1/info");
+      if (response.status === 401) {
+        setNeedsLogin(true);
+        return;
+      }
+      if (!response.ok)
+        throw new Error("Agent status could not be loaded. Try refreshing in a moment.");
+      setInfo((await response.json()) as RuntimeInfo);
     } catch (value) {
       setError(value instanceof Error ? value.message : "Could not inspect the Ægentica agent.");
     } finally {
@@ -120,7 +140,7 @@ export function EveCapabilities() {
     ["Skills", <SparklesIcon className={iconClass} />, pairEntries(info?.skills)],
     ["Instructions", <BrainIcon className={iconClass} />, pairEntries(info?.instructions)],
     ["Connections", <CableIcon className={iconClass} />, info?.connections ?? []],
-    ["Channels", <RadioTowerIcon className={iconClass} />, info?.channels?.routes ?? []],
+    ["Channel routes", <RadioTowerIcon className={iconClass} />, info?.channels?.routes ?? []],
     ["Memory", <DatabaseIcon className={iconClass} />, info?.memories ?? []],
     ["Schedules", <CalendarClockIcon className={iconClass} />, info?.schedules ?? []],
     ["Hooks", <ActivityIcon className={iconClass} />, info?.hooks ?? []],
@@ -143,23 +163,34 @@ export function EveCapabilities() {
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">Agent</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Runtime truth, included scaffolds and the Ægentica capability surface — kept separate so
-              capabilities are visible without overstating what is active.
+              See what your agent can do, check its connection, and explore more possibilities.{" "}
+              <Link href="/library" className="underline underline-offset-4">
+                Read the guide
+              </Link>
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge
-              className="h-7 gap-1.5 rounded-md px-2.5 font-normal"
-              variant="outline"
-            >
+            <Badge className="h-7 gap-1.5 rounded-md px-2.5 font-normal" variant="outline">
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  error ? "bg-destructive" : loading ? "bg-muted-foreground/40" : "bg-emerald-500",
+                  needsLogin
+                    ? "bg-muted-foreground"
+                    : error
+                      ? "bg-destructive"
+                      : loading
+                        ? "bg-muted-foreground/40"
+                        : "bg-emerald-500",
                 )}
               />
-              {error ? "Runtime unavailable" : loading ? "Checking runtime" : "Runtime live"}
+              {needsLogin
+                ? "Sign in to inspect"
+                : error
+                  ? "Status unavailable"
+                  : loading
+                    ? "Checking agent"
+                    : "Runtime live"}
             </Badge>
             <Button
               aria-label="Refresh runtime"
@@ -186,6 +217,18 @@ export function EveCapabilities() {
           </ViewButton>
         </div>
 
+        {needsLogin && view === "overview" ? (
+          <div className="mt-6 rounded-xl border p-6">
+            <h2 className="text-base font-medium">Get to know your agent</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Sign in to see your agent’s live capabilities. You can explore Included, Available and
+              the library without signing in.
+            </p>
+            <Button className="mt-4" onClick={() => requestSignIn()}>
+              Sign in
+            </Button>
+          </div>
+        ) : null}
         {error ? (
           <div className="mt-6 flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/[0.035] p-4 text-sm">
             <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -196,7 +239,7 @@ export function EveCapabilities() {
           </div>
         ) : null}
 
-        {view === "overview" ? (
+        {view === "overview" && !needsLogin ? (
           <div className="mt-6 space-y-6">
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Metric
@@ -209,37 +252,59 @@ export function EveCapabilities() {
                 detail="static + dynamic"
                 icon={<WrenchIcon className={iconClass} />}
                 label="Tools"
-                value={String(countPair(info?.tools))}
+                value={info ? String(countPair(info.tools)) : "—"}
               />
               <Metric
                 detail="static + dynamic"
                 icon={<SparklesIcon className={iconClass} />}
                 label="Skills"
-                value={String(countPair(info?.skills))}
+                value={info ? String(countPair(info.skills)) : "—"}
               />
               <Metric
                 detail="local + remote"
                 icon={<GitBranchIcon className={iconClass} />}
                 label="Agents"
-                value={String((info?.subagents?.total ?? 0) + (info?.remoteAgents?.total ?? 0))}
+                value={
+                  info
+                    ? String((info.subagents?.total ?? 0) + (info.remoteAgents?.total ?? 0))
+                    : "—"
+                }
               />
             </section>
 
+            {info ? (
+              <div className="rounded-lg border px-4 py-3 text-sm leading-6">
+                <span className="font-medium">Model connection: </span>
+                {info.agent?.model?.endpoint?.connected ? "Connected" : "Not connected"}.
+                <p className="text-muted-foreground">
+                  The capabilities below are declared by the agent. External services require their
+                  own connection and a successful test.
+                </p>
+              </div>
+            ) : null}
             <section>
               <SectionHeading
-                description="Reported by the live compiled agent for this runtime."
-                title="Active capabilities"
+                description="Declared by the live runtime. Connections listed here are not necessarily authenticated."
+                title="Agent capabilities"
               />
               <div className="overflow-hidden rounded-xl border bg-card">
-                {activeGroups.map(([title, icon, entries], index) => (
-                  <CapabilityRow
-                    entries={entries}
-                    icon={icon}
-                    key={title}
-                    last={index === activeGroups.length - 1}
-                    title={title}
-                  />
-                ))}
+                {info ? (
+                  activeGroups.map(([title, icon, entries], index) => (
+                    <CapabilityRow
+                      entries={entries}
+                      icon={icon}
+                      key={title}
+                      last={index === activeGroups.length - 1}
+                      title={title}
+                    />
+                  ))
+                ) : (
+                  <p className="p-4 text-sm text-muted-foreground">
+                    {loading
+                      ? "Loading agent capabilities…"
+                      : "Agent capabilities are currently unknown."}
+                  </p>
+                )}
               </div>
             </section>
 
@@ -253,7 +318,11 @@ export function EveCapabilities() {
                 <Diagnostic label="Mode" value={info?.mode ?? "—"} />
                 <Diagnostic
                   label="Discovery"
-                  value={`${info?.diagnostics?.discoveryErrors ?? 0} errors · ${info?.diagnostics?.discoveryWarnings ?? 0} warnings`}
+                  value={
+                    info
+                      ? `${info.diagnostics?.discoveryErrors ?? 0} errors · ${info.diagnostics?.discoveryWarnings ?? 0} warnings`
+                      : "—"
+                  }
                 />
               </div>
             </section>
@@ -304,10 +373,7 @@ export function EveCapabilities() {
               <div className="mt-4 overflow-hidden rounded-xl border bg-card">
                 {groups.length ? (
                   groups.map(([category, items], groupIndex) => (
-                    <div
-                      className={cn(groupIndex > 0 && "border-t")}
-                      key={category}
-                    >
+                    <div className={cn(groupIndex > 0 && "border-t")} key={category}>
                       <div className="flex items-center justify-between bg-muted/30 px-4 py-2.5">
                         <p className="text-xs font-medium capitalize text-muted-foreground">
                           {category}
@@ -454,7 +520,11 @@ function CapabilityRow({
         {entries.length ? (
           <div className="flex flex-wrap gap-1.5">
             {entries.slice(0, 12).map((entry, index) => (
-              <Badge className="max-w-full font-normal" key={`${entryName(entry)}-${index}`} variant="outline">
+              <Badge
+                className="max-w-full font-normal"
+                key={`${entryName(entry)}-${index}`}
+                variant="outline"
+              >
                 <span className="truncate">{entryName(entry)}</span>
               </Badge>
             ))}
@@ -481,11 +551,15 @@ function Diagnostic({ label, value }: { readonly label: string; readonly value: 
   );
 }
 
-function pairEntries(value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"]) {
+function pairEntries(
+  value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"],
+) {
   return [...(value?.static ?? []), ...(value?.dynamic ?? [])];
 }
 
-function countPair(value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"]) {
+function countPair(
+  value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"],
+) {
   return (value?.static?.length ?? 0) + (value?.dynamic?.length ?? 0);
 }
 

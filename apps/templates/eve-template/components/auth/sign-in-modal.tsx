@@ -41,12 +41,10 @@ export function SignInModal({
               <VercelIcon className="size-4 text-foreground" />
             )}
           </div>
-          <DialogTitle>
-            {usesPassword ? "Sign in" : "Continue with Vercel"}
-          </DialogTitle>
+          <DialogTitle>{usesPassword ? "Sign in to Ægentica" : "Continue with Vercel"}</DialogTitle>
           <DialogDescription>
             {usesPassword
-              ? "Enter the password for this agent."
+              ? "Your private workspace for research, ideas and getting things done."
               : "Use your Vercel account to continue."}
           </DialogDescription>
         </DialogHeader>

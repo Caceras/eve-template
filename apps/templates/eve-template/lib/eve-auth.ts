@@ -44,8 +44,8 @@ export const passwordEveAuth: AuthFn<Request> = async (request) => {
 
   return {
     attributes: {
-      email: "local@eve.dev",
-      name: "eve user",
+      email: "local@aegentica.local",
+      name: "Riki",
     },
     authenticator: "password",
     issuer: "eve-chat-template",

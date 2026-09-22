@@ -57,7 +57,7 @@ async function shutdown(exitCode = 0) {
 
   const hardStop = setTimeout(() => {
     for (const child of children) {
-      if (!child.killed) child.kill("SIGKILL");
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     }
   }, 20_000);
   hardStop.unref();
@@ -83,17 +83,16 @@ process.once("SIGTERM", () => void shutdown(0));
 process.once("SIGINT", () => void shutdown(0));
 
 try {
-  spawnChild(
-    "eve",
-    ["node_modules/eve/bin/eve.js", "start", "--port", evePort],
-    { PORT: evePort, HOST: "127.0.0.1", NITRO_HOST: "127.0.0.1", NITRO_PORT: evePort },
-  );
+  spawnChild("eve", ["node_modules/eve/bin/eve.js", "start", "--port", evePort], {
+    PORT: evePort,
+    HOST: "127.0.0.1",
+    NITRO_HOST: "127.0.0.1",
+    NITRO_PORT: evePort,
+  });
 
-  spawnChild(
-    "next",
-    ["node_modules/next/dist/bin/next", "start", "-H", host, "-p", nextPort],
-    { PORT: nextPort },
-  );
+  spawnChild("next", ["node_modules/next/dist/bin/next", "start", "-H", host, "-p", nextPort], {
+    PORT: nextPort,
+  });
 
   void waitForEve()
     .then(() => console.log(`[eve] ready on 127.0.0.1:${evePort}`))

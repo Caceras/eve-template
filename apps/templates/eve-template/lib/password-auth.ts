@@ -4,24 +4,26 @@ export const PASSWORD_SESSION_COOKIE_NAME = "eve_chat_session";
 export const PASSWORD_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 const TOKEN_VERSION = "v1";
-const INITIAL_PASSWORD_SHA256 = "232ed0cd7ee50c95d05d7a70a561304feedc01d86dfba4aaa3e87dd668978ffe";
+const TEMPORARY_USERNAME = "Riki";
+const TEMPORARY_PASSWORD = "1010";
 
 export function getChatPassword() {
-  return process.env.EVE_CHAT_PASSWORD?.trim() ?? "";
+  return process.env.EVE_CHAT_PASSWORD?.trim() || TEMPORARY_PASSWORD;
 }
 
 export function isChatPasswordConfigured() {
-  return Boolean(getChatPassword()) || Boolean(INITIAL_PASSWORD_SHA256);
+  return Boolean(getChatPassword()) && Boolean(process.env.EVE_SESSION_SECRET?.trim());
 }
 
-export function verifyChatPassword(candidate: string) {
-  const configured = getChatPassword();
-
-  if (configured) {
-    return timingSafeEqual(hash(candidate), hash(configured));
-  }
-
-  return timingSafeEqual(hash(candidate), Buffer.from(INITIAL_PASSWORD_SHA256, "hex"));
+export function verifyChatPassword(candidate: string, username: string) {
+  return (
+    isChatPasswordConfigured() &&
+    timingSafeEqual(
+      hash(username),
+      hash(process.env.EVE_CHAT_USERNAME?.trim() || TEMPORARY_USERNAME),
+    ) &&
+    timingSafeEqual(hash(candidate), hash(getChatPassword()))
+  );
 }
 
 export function createPasswordSessionToken(now = Date.now()) {
@@ -33,7 +35,7 @@ export function createPasswordSessionToken(now = Date.now()) {
 }
 
 export function verifyPasswordSessionToken(token: string | undefined, now = Date.now()) {
-  if (!token) {
+  if (!token || !isChatPasswordConfigured()) {
     return false;
   }
 
@@ -67,7 +69,11 @@ export function getPasswordSessionFromHeaders(headers: Headers) {
     .map((cookie) => cookie.trim().split("="))
     .find(([name]) => name === PASSWORD_SESSION_COOKIE_NAME)?.[1];
 
-  return verifyPasswordSessionToken(token ? decodeURIComponent(token) : undefined);
+  try {
+    return verifyPasswordSessionToken(token ? decodeURIComponent(token) : undefined);
+  } catch {
+    return false;
+  }
 }
 
 export function hasSameOriginRequest(request: Request) {
@@ -96,6 +102,7 @@ function hash(value: string) {
 }
 
 function sign(payload: string) {
-  const key = getChatPassword() || INITIAL_PASSWORD_SHA256;
+  const key = process.env.EVE_SESSION_SECRET?.trim();
+  if (!key) throw new Error("Session signing is not configured.");
   return createHmac("sha256", key).update(payload).digest("base64url");
 }
