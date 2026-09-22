@@ -1,4 +1,6 @@
 "use client";
+import { ModelPicker } from "@/components/chat/model-picker";
+import { modelRequestHeaders } from "@/lib/chat/model-preference";
 
 import type { UserContent } from "ai";
 import { useEveAgent } from "eve/react";
@@ -86,7 +88,10 @@ export function NativeAgentChat({
 
     setHasInputText(false);
     setCancellationError(undefined);
-    const options = isBusy ? { turnPolicy: "steer" as const } : undefined;
+    const options = {
+      headers: modelRequestHeaders(),
+      turnPolicy: isBusy ? ("steer" as const) : undefined,
+    };
 
     if (message.files.length === 0) {
       await agent.send(text, options);
@@ -116,6 +121,9 @@ export function NativeAgentChat({
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
         placeholder="Message Ægentica"
       />
+      <div className="px-2 pb-1">
+        <ModelPicker />
+      </div>
       <ComposerAction
         hasInputText={hasInputText}
         isBusy={isBusy}
@@ -157,7 +165,7 @@ export function NativeAgentChat({
                   message={message}
                   onInputResponses={(inputResponses) => {
                     setCancellationError(undefined);
-                    return agent.respond(inputResponses);
+                    return agent.respond(inputResponses, { headers: modelRequestHeaders() });
                   }}
                 />
               ),
@@ -188,7 +196,9 @@ export function NativeAgentChat({
             <span className="sr-only">{AGENT_NAME}</span>
           </div>
         )}
-        <div className="w-full [&_[data-slot=input-group]]:rounded-[20px] [&_[data-slot=input-group]]:border-black/[0.06] [&_[data-slot=input-group]]:bg-white/92 [&_[data-slot=input-group]]:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] [&_[data-slot=input-group]]:backdrop-blur-xl dark:[&_[data-slot=input-group]]:border-white/[0.08] dark:[&_[data-slot=input-group]]:bg-white/[0.06]">{composer}</div>
+        <div className="w-full [&_[data-slot=input-group]]:rounded-[20px] [&_[data-slot=input-group]]:border-black/[0.06] [&_[data-slot=input-group]]:bg-white/92 [&_[data-slot=input-group]]:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] [&_[data-slot=input-group]]:backdrop-blur-xl dark:[&_[data-slot=input-group]]:border-white/[0.08] dark:[&_[data-slot=input-group]]:bg-white/[0.06]">
+          {composer}
+        </div>
       </div>
     </main>
   );

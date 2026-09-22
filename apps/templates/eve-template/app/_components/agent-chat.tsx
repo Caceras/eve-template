@@ -1,4 +1,6 @@
 "use client";
+import { ModelPicker } from "@/components/chat/model-picker";
+import { modelRequestHeaders } from "@/lib/chat/model-preference";
 
 import { Client } from "eve/client";
 import type {
@@ -646,6 +648,7 @@ export function AgentChatSession({
       try {
         startFinalizingTurn();
         await agent.send(message, {
+          headers: modelRequestHeaders(),
           clientContext: createConnectionClientContext(
             enabledConnections,
             setupStatus.connectionsAvailable,
@@ -714,7 +717,7 @@ export function AgentChatSession({
 
       try {
         startFinalizingTurn();
-        await agent.respond(responses);
+        await agent.respond(responses, { headers: modelRequestHeaders() });
       } catch (error) {
         stopFinalizingTurn();
         setClientError(error instanceof Error ? error.message : "Failed to send response.");
@@ -1487,8 +1490,9 @@ function createConnectionClientContext(
   }
 
   const configured = new Set(configuredConnections ?? []);
-  const entries = (Object.entries(CONNECTION_LABELS) as [keyof EnabledConnections, string][])
-    .filter(([connection]) => configured.has(connection));
+  const entries = (
+    Object.entries(CONNECTION_LABELS) as [keyof EnabledConnections, string][]
+  ).filter(([connection]) => configured.has(connection));
   const enabled = entries
     .filter(([connection]) => enabledConnections[connection])
     .map(([, label]) => label);
@@ -1621,6 +1625,7 @@ export function ComposerFooterControls({ setupStatus }: { readonly setupStatus: 
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
+      <ModelPicker />
       <ComposerHint setupStatus={setupStatus} />
       {setupStatus.connectionsAvailable ? (
         <IntegrationsMenu

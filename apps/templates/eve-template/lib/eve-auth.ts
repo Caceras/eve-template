@@ -1,3 +1,4 @@
+import { MODEL_HEADER, resolveChatModel } from "@/lib/model-catalog";
 import type { AuthFn } from "eve/channels/auth";
 import { auth } from "@/lib/auth";
 import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
@@ -20,6 +21,7 @@ export const betterAuthEveAuth: AuthFn<Request> = async (request) => {
 
   return {
     attributes: {
+      chatModel: resolveChatModel(request.headers.get(MODEL_HEADER)),
       email: session.user.email,
       name: session.user.name,
     },
@@ -44,6 +46,7 @@ export const passwordEveAuth: AuthFn<Request> = async (request) => {
 
   return {
     attributes: {
+      chatModel: resolveChatModel(request.headers.get(MODEL_HEADER)),
       email: "local@aegentica.local",
       name: "Riki",
     },

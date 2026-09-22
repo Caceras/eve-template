@@ -23,3 +23,26 @@ provider errors or credentials. Settings currently require the shared password
 operator session; OAuth users cannot administer this credential.
 
 Run `node scripts/test-gateway-settings.mjs` to verify storage and API boundaries.
+
+## Model picker
+
+The composer and Settings expose the full Gateway model catalog from
+`/v1/models`, searchable by name, provider, model ID and type. The server refreshes
+its cache every five minutes and falls back to a complete dated snapshot if the
+catalog cannot be reached. All model types remain visible. This tool-using agent
+can select language models with text input/output and tool support; incompatible
+entries explain why they require another interface.
+
+The browser remembers the choice, and each send or human-input response carries
+it in `x-aegentica-model`. Authentication records the choice as caller metadata.
+The root agent resolves it against the current catalog at `turn.started`, so the
+selection controls the next model call rather than merely changing a UI label.
+Subagents retain their own authored model configurations. Provider access and
+billing remain subject to the saved Gateway key. Switching models can change
+cost and prompt-cache behavior.
+
+Run `node scripts/test-model-picker.mjs`, `node scripts/test-model-catalog.mjs`,
+and `node scripts/test-gateway-settings.mjs` for focused checks.
+`node scripts/check-model-routing.mjs` exercises a running local app (or
+`CHECK_ORIGIN`) and verifies runtime `step.started.modelId` for two providers.
+It sends real model requests, which can consume tokens when a valid key is set.

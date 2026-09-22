@@ -1,3 +1,4 @@
+import { resolveGatewayChatModel } from "./gateway-model-catalog";
 import { gatewayStatus, readGatewayCredential, saveGatewayCredential } from "./gateway-settings";
 import { getPasswordSessionFromHeaders, hasSameOriginRequest } from "./password-auth";
 let windowStart = 0;
@@ -52,7 +53,7 @@ export async function handleGatewaySettings(request: Request) {
         signal: AbortSignal.timeout(30_000),
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "openai/gpt-5.6-luna-fast",
+          model: await resolveGatewayChatModel(body.model),
           messages: [{ role: "user", content: "Reply with OK." }],
           max_tokens: 32,
         }),

@@ -1,4 +1,6 @@
 "use client";
+import { ModelPicker } from "@/components/chat/model-picker";
+import { readModelPreference } from "@/lib/chat/model-preference";
 import { useEffect, useState, type FormEvent } from "react";
 import { KeyRoundIcon, Loader2Icon } from "lucide-react";
 import { useChatShell } from "./chat-shell-context";
@@ -55,7 +57,9 @@ export function GatewaySettings() {
       const response = await fetch("/api/settings/gateway", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action === "save" ? { action, apiKey } : { action }),
+        body: JSON.stringify(
+          action === "save" ? { action, apiKey } : { action, model: readModelPreference() },
+        ),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -104,6 +108,10 @@ export function GatewaySettings() {
                   : "No key configured"
                 : "Loading settings…"}
             </p>
+            <div className="mt-4">
+              <p className="text-xs text-muted-foreground">Model to test</p>
+              <ModelPicker />
+            </div>
             <form
               className="mt-6 space-y-3"
               onSubmit={(event: FormEvent) => {

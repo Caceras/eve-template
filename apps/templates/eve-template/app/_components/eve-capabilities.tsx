@@ -274,8 +274,12 @@ export function EveCapabilities() {
 
             {info ? (
               <div className="rounded-lg border px-4 py-3 text-sm leading-6">
-                <span className="font-medium">Model credentials: </span>
-                {info.agent?.model?.endpoint?.connected ? "Configured" : "Not configured"}.
+                <span className="font-medium">Model selection: </span>
+                Choose a model in the message composer.{" "}
+                <Link href="/settings" className="underline underline-offset-4">
+                  Test your API key in Settings
+                </Link>
+                .
                 <p className="text-muted-foreground">
                   The capabilities below are declared by the agent. External services require their
                   own connection and a successful test.
