@@ -2,8 +2,8 @@
 
 import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
@@ -51,10 +51,17 @@ export function ChatSidebar({
   readonly viewer: Viewer | null;
 }) {
   const authDisabled = !setupStatus.appReady;
-  const pathname = usePathname();
   const router = useRouter();
+  const [pathname, setPathname] = useState("/");
   const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const syncPathname = () => setPathname(window.location.pathname || "/");
+    syncPathname();
+    window.addEventListener("popstate", syncPathname);
+    return () => window.removeEventListener("popstate", syncPathname);
+  }, []);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -116,6 +123,7 @@ export function ChatSidebar({
             newSessionActive ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
+            setPathname("/");
             router.push("/");
             onNewChat();
             onNavigate?.(null);
@@ -134,6 +142,7 @@ export function ChatSidebar({
           aria-current={pathname === "/capabilities" ? "page" : undefined}
           href="/capabilities"
           onClick={() => {
+            setPathname("/capabilities");
             onNavigate?.();
           }}
         >
@@ -148,6 +157,7 @@ export function ChatSidebar({
           aria-current={pathname === "/native" || pathname.startsWith("/native/") ? "page" : undefined}
           href="/native"
           onClick={() => {
+            setPathname("/native");
             onNavigate?.();
           }}
         >
@@ -162,6 +172,7 @@ export function ChatSidebar({
           aria-current={pathname === "/session" ? "page" : undefined}
           href="/session"
           onClick={() => {
+            setPathname("/session");
             onNavigate?.();
           }}
         >
@@ -190,6 +201,7 @@ export function ChatSidebar({
                     aria-current={active ? "page" : undefined}
                     href={`/chat/${chat.id}`}
                     onClick={() => {
+                      setPathname(`/chat/${chat.id}`);
                       onNavigate?.(chat.id);
                     }}
                   >
