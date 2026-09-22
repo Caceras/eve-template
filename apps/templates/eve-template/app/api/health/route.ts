@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSetupStatus } from "@/lib/setup";
 
-
-export async function GET(request: Request) {
+export async function GET() {
   const setup = await getSetupStatus();
   const startedAt = Date.now();
+  const evePort = process.env.EVE_NEXT_PRODUCTION_PORT?.trim() || "4274";
 
   try {
-    const response = await fetch(new URL("/eve/v1/health", request.url), {
+    const response = await fetch(`http://127.0.0.1:${evePort}/eve/v1/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(3_000),
     });
