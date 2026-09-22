@@ -1,12 +1,13 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { ExternalLinkIcon, KeyRoundIcon, Loader2Icon } from "lucide-react";
+import Link from "next/link";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { readModelPreference } from "@/lib/chat/model-preference";
 import { providerAction, useModelSettings, type ProviderState } from "@/lib/chat/provider-client";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/model-catalog";
 import { useChatShell } from "./chat-shell-context";
-import { ScheduleSettings } from "./schedule-settings";
+import { DeviceSettings } from "./device-settings";
 import { TelegramSettings } from "./telegram-settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -227,8 +228,19 @@ export function ProviderSettings() {
                 active={status.active === provider}
               />
             ))}
+            <DeviceSettings />
+            <section className="flex items-center gap-3 rounded-lg border bg-card p-4 sm:p-5">
+              <div className="min-w-0 flex-1">
+                <h2 className="font-medium">Scheduled tasks</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Reminders, briefings and recurring jobs that Ægentica runs on its own.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="h-11 md:h-9">
+                <Link href="/tasks">Open tasks</Link>
+              </Button>
+            </section>
             <TelegramSettings />
-            <ScheduleSettings />
             <p className="text-xs leading-5 text-muted-foreground">
               Keys and bot tokens are encrypted on this server and never shown again or stored in
               your browser. The connection test sends one short request and may use a few tokens.

@@ -85,15 +85,18 @@ try {
 
   const claimedDaily = claimed.find((t) => t.id === daily.id);
   const claimedOnce = claimed.find((t) => t.id === once.id);
-  await store.completeRun(claimedDaily, at);
-  await store.completeRun(claimedOnce, at);
+  await store.completeRun(claimedDaily, { chatId: "chat-1" }, at);
+  await store.completeRun(claimedOnce, { chatId: "chat-2", failed: true }, at);
   let tasks = await store.listTasks();
   assert.equal(tasks.find((t) => t.id === daily.id).nextRunAt, "2026-09-24T06:00:00.000Z");
+  assert.equal(tasks.find((t) => t.id === daily.id).lastChatId, "chat-1", "result chat recorded");
   assert.equal(tasks.find((t) => t.id === once.id).enabled, false, "one-time task finishes");
+  assert.equal(tasks.find((t) => t.id === once.id).lastStatus, "failed", "failed turn is shown");
+  assert.equal(tasks.find((t) => t.id === once.id).failures, 0, "failed turn is not retried");
   assert(!("lease" in tasks[0]), "leases never leave the store");
 
   // A stale completion (old lease token) is ignored.
-  await store.completeRun({ ...claimedDaily, lease: { token: "old", until: 0 } }, at);
+  await store.completeRun({ ...claimedDaily, lease: { token: "old", until: 0 } }, {}, at);
 
   // Failures retry after 5 minutes, then skip to the next slot after 3 attempts.
   let failAt = new Date("2026-09-24T06:00:10Z");
@@ -159,6 +162,37 @@ try {
     )
   ).json();
   assert(!listed.tasks.some((t) => t.id === daily.id));
+
+  // --- Tasks page: create, edit, run now, and schedule validation errors.
+  const post = async (body) => handleScheduleSettings(request("/api/settings/schedules", body));
+  listed = await (
+    await post({
+      action: "create",
+      title: "Briefing",
+      prompt: "Summarise the news. ".repeat(150),
+      cron: "0 8 * * 1-5",
+      runAt: null,
+      timezone: "Europe/Stockholm",
+    })
+  ).json();
+  const briefing = listed.tasks.find((t) => t.title === "Briefing");
+  assert.equal(briefing.cron, "0 8 * * 1-5");
+  assert.equal(
+    (await post({ action: "create", title: "Bad", prompt: "x", cron: "* * * * *" })).status,
+    400,
+  );
+  const onceAt = new Date(Date.now() + 3 * 3_600_000).toISOString();
+  listed = await (
+    await post({ action: "update", id: briefing.id, title: "Morning", cron: null, runAt: onceAt })
+  ).json();
+  const edited = listed.tasks.find((t) => t.id === briefing.id);
+  assert.equal(edited.title, "Morning");
+  assert.equal(edited.cron, null);
+  assert.equal(edited.nextRunAt, onceAt);
+  listed = await (await post({ action: "run", id: briefing.id })).json();
+  assert(Date.parse(listed.tasks.find((t) => t.id === briefing.id).nextRunAt) <= Date.now());
+  assert.equal((await post({ action: "run", id: "missing" })).status, 400);
+  await post({ action: "delete", id: briefing.id });
 
   // --- Telegram connect: token format, getMe + setWebhook, encrypted storage.
   const token = "123456789:" + "A".repeat(35);
@@ -233,7 +267,7 @@ try {
   assert.equal((await telegram.telegramStatus()).connected, false);
 
   console.log(
-    "PASS: shared operator identity and memory scope, schedule validation, Stockholm cron math, exclusive leases, completion/retry/give-up, Settings pause/resume/delete with auth and CSRF, Telegram connect/webhook/secret, pairing brute-force limit and single use, reconnect keeps link, test message, disconnect",
+    "PASS: shared operator identity and memory scope, schedule validation, Stockholm cron math, exclusive leases, completion/retry/give-up, Tasks API create/edit/run now/pause/resume/delete with auth and CSRF, Telegram connect/webhook/secret, pairing brute-force limit and single use, reconnect keeps link, test message, disconnect",
   );
 } finally {
   globalThis.fetch = originalFetch;

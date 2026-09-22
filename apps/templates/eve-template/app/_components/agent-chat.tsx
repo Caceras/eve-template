@@ -196,6 +196,16 @@ function isSnapshotForCurrentSession(
   return snapshotSession.sessionId === currentSession?.sessionId;
 }
 
+/** A saved chat whose latest turn failed (e.g. a scheduled run) still shows why. */
+function lastTurnFailure(events: readonly MessageStreamEvent[]) {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    if (event.type === "turn.failed") return event.data.message;
+    if (event.type === "turn.started" || event.type === "turn.completed") return null;
+  }
+  return null;
+}
+
 function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -498,7 +508,8 @@ export function AgentChatSession({
     !isWaitingForAuthorization &&
     (Boolean(pendingMessage || localPendingMessage) || hasOpenTurn || isTurnBlocked);
   const thinkingPresence = useThinkingPresence(showThinking);
-  const displayError = clientError ?? agent.error?.message ?? null;
+  const savedTurnError = useMemo(() => lastTurnFailure(displayEvents), [displayEvents]);
+  const displayError = clientError ?? agent.error?.message ?? savedTurnError;
   const toastError = displayError && dismissedError !== displayError ? displayError : null;
 
   const resetSession = useCallback(() => {

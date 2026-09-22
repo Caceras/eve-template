@@ -158,6 +158,24 @@ export async function saveChatSessionStateAction(input: {
   return { ok: true };
 }
 
+/** Copies one chat kept in browser storage (before server history existed) to the server. */
+export async function importBrowserChatAction(input: {
+  readonly title: string;
+  readonly events: readonly MessageStreamEvent[];
+  readonly session: ClientSessionState | undefined;
+}) {
+  const viewer = await requireViewer();
+  if (input.events.length === 0) return null;
+  const chat = await createChat(viewer.id, { title: input.title.slice(0, 200) });
+  await saveChatSnapshot({
+    chatId: chat.id,
+    events: input.events,
+    session: input.session,
+    userId: viewer.id,
+  });
+  return chat;
+}
+
 export async function deleteChatAction(chatId: string) {
   const viewer = await requireViewer();
 

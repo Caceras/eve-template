@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   BookOpenIcon,
   BlocksIcon,
+  CalendarClockIcon,
   EllipsisIcon,
   ListRestartIcon,
   KeyRoundIcon,
@@ -151,6 +152,21 @@ export function ChatSidebar({
           <PlusIcon className="size-4" />
           New session
         </button>
+        <Link
+          href="/tasks"
+          className={cn(
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            pathname === "/tasks" ? activeRowClass : inactiveRowClass,
+          )}
+          aria-current={pathname === "/tasks" ? "page" : undefined}
+          onClick={() => {
+            setPathname("/tasks");
+            onNavigate?.();
+          }}
+        >
+          <CalendarClockIcon className="size-4" />
+          Tasks
+        </Link>
         <Link
           href="/settings"
           className={cn(

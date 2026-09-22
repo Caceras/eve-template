@@ -1,15 +1,19 @@
 // End-to-end check against a running app whose outgoing Telegram API calls are
 // faked (see docs/SELF_HOSTING.md). Drives pairing, owner/stranger messages,
-// webhook secret rejection and one dispatched scheduled task.
+// webhook secret rejection and one scheduled task saved as a web chat.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+const root = fileURLToPath(new URL("..", import.meta.url));
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier.startsWith("@/")) specifier = pathToFileURL(join(root, specifier.slice(2))).href;
     try {
       return next(specifier, context);
     } catch (error) {
-      if (/^\.\.?\//.test(specifier) && !specifier.split("/").at(-1).includes("."))
+      if (/^(\.\.?\/|file:)/.test(specifier) && !specifier.split("/").at(-1).includes("."))
         return next(specifier + ".ts", context);
       throw error;
     }
@@ -19,6 +23,8 @@ const host = process.env.CHECK_ORIGIN || "http://127.0.0.1:3311";
 const logFile = process.env.FAKE_TELEGRAM_LOG;
 const telegram = await import("../lib/telegram-settings.ts");
 const store = await import("../lib/schedule-store.ts");
+const chats = await import("../lib/db/sqlite-queries.ts");
+const { OPERATOR_PRINCIPAL_ID } = await import("../lib/operator.ts");
 const calls = () =>
   readFileSync(logFile, "utf8")
     .trim()
@@ -110,13 +116,12 @@ console.log(
   JSON.stringify(reply.body.text).slice(0, 120),
 );
 
-// A task due now is dispatched to the owner's chat by the one-minute schedule.
+// A task due now runs on the one-minute schedule and is saved as a web chat.
 const task = await store.createTask({
   title: "E2E reminder",
   prompt: "Remind me to stretch.",
   runAt: new Date(Date.now() + 1000).toISOString(),
 });
-const dispatchMark = calls().length;
 const done = await (async () => {
   const deadline = Date.now() + 130_000;
   while (Date.now() < deadline) {
@@ -124,18 +129,15 @@ const done = await (async () => {
     if (row?.lastStatus) return row;
     await sleep(2000);
   }
-  throw new Error("Timed out waiting for the scheduled task dispatch");
+  throw new Error("Timed out waiting for the scheduled task run");
 })();
-assert.equal(done.lastStatus, "sent");
+// A fake model key fails the turn; the run still completes and saves its chat.
+assert(["sent", "failed"].includes(done.lastStatus));
 assert.equal(done.enabled, false);
-await waitFor(
-  () =>
-    calls()
-      .slice(dispatchMark)
-      .find((c) => String(c.body.chat_id) === "42"),
-  "scheduled session activity in the owner chat",
-);
-console.log("ok  scheduled task dispatched to Telegram at", done.lastRunAt);
+const chat = await chats.getChatForUser(done.lastChatId, OPERATOR_PRINCIPAL_ID);
+assert.equal(chat?.title, "E2E reminder");
+assert(chat.events.some((event) => event.type === "message.received"));
+console.log("ok  scheduled task saved as chat", done.lastChatId, "at", done.lastRunAt);
 console.log(
-  "PASS: Telegram webhook security, pairing, owner-only access, agent session, schedule dispatch",
+  "PASS: Telegram webhook security, pairing, owner-only access, agent session, scheduled task run",
 );

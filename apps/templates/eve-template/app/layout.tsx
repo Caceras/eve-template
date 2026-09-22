@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { PwaRegistration } from "@/app/_components/pwa-registration";
 import { AuthDisplayPreHydrationHead } from "@/components/auth/auth-display";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -48,9 +49,13 @@ export const metadata: Metadata = {
   title,
   description,
   applicationName: title,
+  appleWebApp: { capable: true, title, statusBarStyle: "default" },
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
     shortcut: ["/icon.svg"],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
@@ -100,6 +105,7 @@ export default function RootLayout({ children }: { readonly children: ReactNode 
         <ThemeProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </ThemeProvider>
+        <PwaRegistration />
         <Analytics />
         <SpeedInsights />
       </body>

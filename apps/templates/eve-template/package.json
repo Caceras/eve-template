@@ -1,6 +1,7 @@
 {
   "name": "eve-template",
   "version": "0.0.0",
+  "description": "Ægentica — persistent AI agent product built on the Eve framework.",
   "type": "module",
   "imports": {
     "#*": "./agent/*",
@@ -63,20 +64,21 @@
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.3",
     "use-stick-to-bottom": "1.1.6",
+    "web-push": "3.6.7",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.5",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
+    "@types/web-push": "^3.6.4",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "drizzle-kit": "0.31.10",
     "microsandbox": "^0.5.10",
     "typescript": "7.0.2"
   },
-  "packageManager": "pnpm@12.4.2",
-  "description": "Ægentica — persistent AI agent product built on the Eve framework.",
   "engines": {
     "node": ">=24"
-  }
+  },
+  "packageManager": "pnpm@12.4.2"
 }

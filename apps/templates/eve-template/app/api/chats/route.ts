@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { listChatsPageByUser } from "@/lib/db/queries";
 import { getServerViewer } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
 
 export async function GET(request: Request) {
+  // Per-viewer data: without this, the build prerenders the empty logged-out answer.
+  await connection();
   const setupStatus = await getSetupStatus();
 
   if (!setupStatus.appReady || setupStatus.storageMode !== "database") {

@@ -32,6 +32,7 @@ import {
   SIDEBAR_COOKIE_MAX_AGE,
   SIDEBAR_COOKIE_NAME,
 } from "@/lib/chat/sidebar-state";
+import { importBrowserChats } from "@/lib/chat/browser-import";
 import { deleteClientChat, listClientChats } from "@/lib/chat/persistence-client";
 import type { ChatListItem, SetupStatus, Viewer } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
@@ -228,9 +229,7 @@ export function AgentChatShell({
       readonly viewer: Viewer | null;
     }) => {
       setSetupStatusState(incomingSetupStatus);
-      setEnabledConnections((current) =>
-        reconcileEnabledConnections(current, incomingSetupStatus),
-      );
+      setEnabledConnections((current) => reconcileEnabledConnections(current, incomingSetupStatus));
       setViewerState(incomingViewer);
       const usesBrowserStorage = incomingSetupStatus.storageMode === "browser";
       const nextChats =
@@ -245,6 +244,23 @@ export function AgentChatShell({
     },
     [],
   );
+
+  // Chats saved in this browser before server history existed move to the server once.
+  const serverHistory = Boolean(viewerState) && setupStatusState.storageMode === "database";
+  useEffect(() => {
+    if (!serverHistory || listClientChats("browser").length === 0) return;
+    let cancelled = false;
+    void importBrowserChats().then(async (count) => {
+      if (count === 0 || cancelled) return;
+      const response = await fetch("/api/chats", { cache: "no-store" }).catch(() => null);
+      if (!response?.ok || cancelled) return;
+      const data = (await response.json()) as { chats: ChatListItem[] };
+      setHistory((items) => mergeChatHistory(data.chats, items));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverHistory]);
 
   useEffect(() => {
     const target = window as Window & {

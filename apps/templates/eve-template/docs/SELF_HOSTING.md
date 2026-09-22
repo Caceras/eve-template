@@ -6,7 +6,8 @@ a key or choosing another model applies to the next model call. Nothing is
 rebuilt, redeployed or restarted, and running conversations continue on the new
 setting from their next step.
 
-Telegram and scheduled tasks are covered in
+The installable app, notifications, the Tasks page and server-side chat history
+are covered in [WEB_APP.md](./WEB_APP.md); Telegram and the scheduler in
 [TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md).
 
 ## Settings
