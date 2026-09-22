@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
+import { readGatewayCredential, markGatewayApplied } from "../lib/gateway-settings.ts";
 
 const nextPort = process.env.PORT?.trim() || "3000";
 const evePort = process.env.EVE_NEXT_PRODUCTION_PORT?.trim() || "4274";
 const host = process.env.NEXT_HOST?.trim() || "0.0.0.0";
 const children = new Set();
 let shuttingDown = false;
+const intentionalStops = new WeakSet();
+let eveChild;
+let appliedRevision;
+let checkingGateway = false;
 
 function spawnChild(name, args, env) {
   const child = spawn(process.execPath, args, {
@@ -17,7 +22,7 @@ function spawnChild(name, args, env) {
   child.once("exit", (code, signal) => {
     children.delete(child);
 
-    if (shuttingDown) return;
+    if (shuttingDown || intentionalStops.has(child)) return;
 
     const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
     console.error(`[${name}] exited unexpectedly (${detail})`);
@@ -83,12 +88,48 @@ process.once("SIGTERM", () => void shutdown(0));
 process.once("SIGINT", () => void shutdown(0));
 
 try {
-  spawnChild("eve", ["node_modules/eve/bin/eve.js", "start", "--port", evePort], {
-    PORT: evePort,
-    HOST: "127.0.0.1",
-    NITRO_HOST: "127.0.0.1",
-    NITRO_PORT: evePort,
-  });
+  const initialCredential = await readGatewayCredential();
+  function startEve(credential) {
+    return spawnChild("eve", ["node_modules/eve/bin/eve.js", "start", "--port", evePort], {
+      PORT: evePort,
+      HOST: "127.0.0.1",
+      NITRO_HOST: "127.0.0.1",
+      NITRO_PORT: evePort,
+      AI_GATEWAY_API_KEY: credential.apiKey,
+    });
+  }
+  eveChild = startEve(initialCredential);
+  appliedRevision = initialCredential.revision;
+  await waitForEve();
+  await markGatewayApplied(appliedRevision);
+  const monitor = setInterval(async () => {
+    if (checkingGateway || shuttingDown) return;
+    checkingGateway = true;
+    try {
+      const credential = await readGatewayCredential();
+      if (credential.revision === appliedRevision) return;
+      intentionalStops.add(eveChild);
+      await new Promise((resolve) => {
+        const hardStop = setTimeout(() => eveChild.kill("SIGKILL"), 15_000);
+        eveChild.once("exit", () => {
+          clearTimeout(hardStop);
+          resolve();
+        });
+        eveChild.kill("SIGTERM");
+      });
+      if (shuttingDown) return;
+      eveChild = startEve(credential);
+      await waitForEve();
+      appliedRevision = credential.revision;
+      await markGatewayApplied(appliedRevision);
+      console.log("[eve] saved Gateway key applied");
+    } catch {
+      console.error("[eve] could not apply Gateway settings");
+    } finally {
+      checkingGateway = false;
+    }
+  }, 2000);
+  monitor.unref();
 
   spawnChild("next", ["node_modules/next/dist/bin/next", "start", "-H", host, "-p", nextPort], {
     PORT: nextPort,

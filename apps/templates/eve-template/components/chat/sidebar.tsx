@@ -6,6 +6,7 @@ import {
   BlocksIcon,
   EllipsisIcon,
   ListRestartIcon,
+  KeyRoundIcon,
   PanelLeftIcon,
   PlusIcon,
   RadioTowerIcon,
@@ -150,6 +151,21 @@ export function ChatSidebar({
           <PlusIcon className="size-4" />
           New session
         </button>
+        <Link
+          href="/settings"
+          className={cn(
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            pathname === "/settings" ? activeRowClass : inactiveRowClass,
+          )}
+          aria-current={pathname === "/settings" ? "page" : undefined}
+          onClick={() => {
+            setPathname("/settings");
+            onNavigate?.();
+          }}
+        >
+          <KeyRoundIcon className="size-4" />
+          Settings
+        </Link>
         <Link
           className={cn(
             "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
