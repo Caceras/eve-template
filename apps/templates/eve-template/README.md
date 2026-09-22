@@ -61,7 +61,10 @@ The generator deliberately removes the copied Chat Template lockfile because the
 - `/capabilities` — Agent: live runtime, included scaffolds, and the official installable Eve surface
 - `/native` — Web: current official `channel/web` scaffold using `useEveAgent`
 - `/session` — Sessions: inspect and control durable Eve sessions
-- `/settings` — model providers (AI Gateway and OpenRouter, see [`docs/SELF_HOSTING.md`](./docs/SELF_HOSTING.md)), Telegram and scheduled tasks (see [`docs/TELEGRAM_AND_SCHEDULES.md`](./docs/TELEGRAM_AND_SCHEDULES.md))
+- `/tasks` — scheduled tasks: create, edit, run now, pause; each run is saved as a chat and sent as a notification (see [`docs/WEB_APP.md`](./docs/WEB_APP.md))
+- `/settings` — model providers (AI Gateway and OpenRouter, see [`docs/SELF_HOSTING.md`](./docs/SELF_HOSTING.md)), this device (install the app, notifications) and Telegram (see [`docs/TELEGRAM_AND_SCHEDULES.md`](./docs/TELEGRAM_AND_SCHEDULES.md))
+
+The app is installable (PWA) with Web Push notifications, and in password mode chat history is stored in SQLite on the server volume so every device sees the same chats ([`docs/WEB_APP.md`](./docs/WEB_APP.md)).
 
 The Agent page separates three truths: **Active** capabilities from `Client.info()` (agent-info v4), **Included** scaffolds present in this repo, and **Available** official integrations generated from `apps/docs/registry.json`.
 

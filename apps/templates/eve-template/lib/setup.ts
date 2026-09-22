@@ -86,7 +86,9 @@ function createSetupStatus({
       databaseSchemaReady,
       missing: [],
       rateLimitReady,
-      storageMode: databaseReady ? "database" : "browser",
+      // Without Postgres, the single operator's history lives in SQLite on the
+      // server volume so every device (desktop, installed PWA) sees the same chats.
+      storageMode: "database",
     };
   }
 

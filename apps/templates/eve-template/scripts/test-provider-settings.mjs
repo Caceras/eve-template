@@ -59,7 +59,7 @@ try {
     ).status,
     403,
   );
-  assert.equal((await call("x".repeat(5000))).status, 413);
+  assert.equal((await call("x".repeat(17_000))).status, 413);
   assert.equal((await call("{")).status, 400);
   assert.equal((await call({ action: "save", provider: "other", apiKey: gatewayKey })).status, 400);
   assert.equal((await call({ action: "save", provider: "gateway", apiKey: "short" })).status, 400);

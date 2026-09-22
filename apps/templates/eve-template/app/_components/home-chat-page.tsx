@@ -196,7 +196,7 @@ export function HomeChatPage() {
             <p className="text-center text-xs leading-5 text-muted-foreground">
               {setupStatus.storageMode === "browser"
                 ? "Chat history stays in this browser."
-                : "Your conversations are saved."}{" "}
+                : "Your conversations are saved on your server and sync across your devices."}{" "}
               <Link
                 href="/library"
                 className="inline-flex items-center gap-0.5 underline underline-offset-4 hover:text-foreground"

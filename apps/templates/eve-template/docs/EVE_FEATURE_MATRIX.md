@@ -148,39 +148,40 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 
 ## Channels
 
-| Capability                                                      | Coverage                               | Implementation                                           |
-| --------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------- |
-| Eve HTTP channel                                                | Included                               | Chat Template channel                                    |
-| Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold              |
-| Slack                                                           | Included/configurable                  | Chat Template                                            |
-| MCP server channel                                              | Included local-only                    | `channels/mcp.ts`                                        |
-| custom HTTP channel                                             | Included but token-disabled by default | `channels/demo.ts`                                       |
-| cross-channel handoff                                           | Reference                              | custom-channel API                                       |
-| audience / trace policy                                         | Reference                              | channels + instrumentation docs                          |
-| GitHub / Linear native channels                                 | Surfaced                               | official registry                                        |
-| Telegram                                                        | Active when connected                  | `channels/telegram.ts`, owner-only, paired from Settings |
-| Discord / Teams / Twilio                                        | Surfaced                               | official registry                                        |
-| Chat SDK adapters (Beeper, Gmail, WhatsApp, X, Messenger, etc.) | Surfaced                               | official registry                                        |
-| proactive sessions / attachments / HITL                         | Active on Telegram                     | scheduled tasks, uploads, inline-keyboard approvals      |
+| Capability                                                      | Coverage                               | Implementation                                                                            |
+| --------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
+| Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold                                               |
+| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → This device                                 |
+| Slack                                                           | Included/configurable                  | Chat Template                                                                             |
+| MCP server channel                                              | Included local-only                    | `channels/mcp.ts`                                                                         |
+| custom HTTP channel                                             | Included but token-disabled by default | `channels/demo.ts`                                                                        |
+| cross-channel handoff                                           | Reference                              | custom-channel API                                                                        |
+| audience / trace policy                                         | Reference                              | channels + instrumentation docs                                                           |
+| GitHub / Linear native channels                                 | Surfaced                               | official registry                                                                         |
+| Telegram                                                        | Active when connected                  | `channels/telegram.ts`, owner-only, paired from Settings                                  |
+| Discord / Teams / Twilio                                        | Surfaced                               | official registry                                                                         |
+| Chat SDK adapters (Beeper, Gmail, WhatsApp, X, Messenger, etc.) | Surfaced                               | official registry                                                                         |
+| proactive sessions / attachments / HITL                         | Active (web + Telegram)                | scheduled runs saved as web chats + Web Push; Telegram uploads, inline-keyboard approvals |
 
 ## Scheduling, hooks, extensions, observability
 
-| Capability                      | Coverage                         | Implementation                                                         |
-| ------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
-| static TypeScript schedule      | Included                         | `schedules/heartbeat.ts`                                               |
-| handler schedule                | Active                           | `schedules/scheduled-tasks.ts`, one-minute dispatcher                  |
-| dynamic scheduling pattern      | Active                           | `schedule_task` tools + `lib/schedule-store.ts`, delivered on Telegram |
-| Markdown schedule               | Reference                        | official scheduler syntax                                              |
-| global lifecycle hook           | Included                         | `hooks/audit.ts`                                                       |
-| channel-specific event handlers | Inherited/reference              | official channel behavior                                              |
-| Extensions                      | Surfaced + reference             | official registry / `defineExtension`                                  |
-| extension override/disable      | Demonstrated conceptually        | `write_file` mirrors override composition                              |
-| self-modification extension     | Surfaced / optional              | official `eve/self-modification` registry item                         |
-| local traces                    | Built in                         | Eve dev default                                                        |
-| Vercel Agent Runs               | Built in on supported deployment | Eve deployment default                                                 |
-| OTel configuration/destinations | Surfaced / reference             | official registry + API                                                |
-| lifecycle instrumentation       | Reference                        | `defineInstrumentation`                                                |
-| trace redaction/export policy   | Reference                        | official OTEL API                                                      |
+| Capability                      | Coverage                         | Implementation                                                                                                                        |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| static TypeScript schedule      | Included                         | `schedules/heartbeat.ts`                                                                                                              |
+| handler schedule                | Active                           | `schedules/scheduled-tasks.ts`, one-minute dispatcher                                                                                 |
+| dynamic scheduling pattern      | Active                           | `/tasks` page + `schedule_task` tools + `lib/schedule-store.ts`; each run is an eve session saved as a web chat, notified by Web Push |
+| Markdown schedule               | Reference                        | official scheduler syntax                                                                                                             |
+| global lifecycle hook           | Included                         | `hooks/audit.ts`                                                                                                                      |
+| channel-specific event handlers | Inherited/reference              | official channel behavior                                                                                                             |
+| Extensions                      | Surfaced + reference             | official registry / `defineExtension`                                                                                                 |
+| extension override/disable      | Demonstrated conceptually        | `write_file` mirrors override composition                                                                                             |
+| self-modification extension     | Surfaced / optional              | official `eve/self-modification` registry item                                                                                        |
+| local traces                    | Built in                         | Eve dev default                                                                                                                       |
+| Vercel Agent Runs               | Built in on supported deployment | Eve deployment default                                                                                                                |
+| OTel configuration/destinations | Surfaced / reference             | official registry + API                                                                                                               |
+| lifecycle instrumentation       | Reference                        | `defineInstrumentation`                                                                                                               |
+| trace redaction/export policy   | Reference                        | official OTEL API                                                                                                                     |
 
 ## Evals, protocols, developer tooling
 

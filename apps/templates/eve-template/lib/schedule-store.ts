@@ -27,6 +27,8 @@ export type ScheduledTask = {
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastStatus: "sent" | "failed" | null;
+  /** Chat holding the latest run's result. */
+  lastChatId?: string | null;
   failures: number;
   createdAt: string;
   lease?: { token: string; until: number };
@@ -171,6 +173,18 @@ export async function deleteTask(id: string) {
   });
 }
 
+/** Makes a task due now; the next dispatcher tick (within a minute) runs it. */
+export async function runTaskNow(id: string, now = new Date()) {
+  return mutate((tasks) => {
+    const task = tasks.find((candidate) => candidate.id === id);
+    if (!task) throw new ScheduleError("No scheduled task has that id.");
+    task.enabled = true;
+    task.failures = 0;
+    task.nextRunAt = now.toISOString();
+    return publicTask(task);
+  });
+}
+
 /** Leases due tasks so overlapping minute ticks never dispatch the same run twice. */
 export async function claimDue(options: { now: Date; limit: number; leaseForMs: number }) {
   const now = options.now.getTime();
@@ -191,13 +205,19 @@ export async function claimDue(options: { now: Date; limit: number; leaseForMs: 
   );
 }
 
-export async function completeRun(job: ScheduledTask, now = new Date()) {
+export async function completeRun(
+  job: ScheduledTask,
+  result: { chatId?: string; failed?: boolean } = {},
+  now = new Date(),
+) {
   await mutate((tasks) => {
     const task = tasks.find((candidate) => candidate.id === job.id);
     if (!task || task.lease?.token !== job.lease?.token) return;
     delete task.lease;
     task.lastRunAt = now.toISOString();
-    task.lastStatus = "sent";
+    // A run that reached the model is not retried; its chat shows the error.
+    task.lastStatus = result.failed ? "failed" : "sent";
+    if (result.chatId) task.lastChatId = result.chatId;
     task.failures = 0;
     const next = task.cron ? nextCronRun(task.cron, task.timezone, now) : null;
     task.nextRunAt = next?.toISOString() ?? null;

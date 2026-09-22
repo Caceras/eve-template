@@ -15,7 +15,7 @@ async function readBody(request: Request) {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 4096) {
+      if (size > 16_384) {
         await reader.cancel();
         return "too-large" as const;
       }
@@ -31,7 +31,8 @@ async function readBody(request: Request) {
 
 /**
  * Shared guard for operator settings APIs: password-operator session, then
- * for writes same-origin, a per-process rate limit and a 4 KB JSON body.
+ * for writes same-origin, a per-process rate limit and a 16 KB JSON body (task prompts are up to 4,000
+ * characters).
  */
 export async function handleOperatorSettings(
   request: Request,

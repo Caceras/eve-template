@@ -19,7 +19,7 @@ export const productLibrary = [
     status: "Included",
     example:
       "Start a conversation, return to New session, then select the conversation under Recent.",
-    requirements: "The history list stays in this browser. It does not sync to another device.",
+    requirements: "History is saved on your server, so the desktop and the installed app share it.",
     path: "guides/client/continuations",
   },
   {
