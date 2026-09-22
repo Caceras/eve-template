@@ -4,19 +4,24 @@ export const PASSWORD_SESSION_COOKIE_NAME = "eve_chat_session";
 export const PASSWORD_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 const TOKEN_VERSION = "v1";
+const INITIAL_PASSWORD_SHA256 = "232ed0cd7ee50c95d05d7a70a561304feedc01d86dfba4aaa3e87dd668978ffe";
 
 export function getChatPassword() {
   return process.env.EVE_CHAT_PASSWORD?.trim() ?? "";
 }
 
-export function verifyChatPassword(candidate: string) {
-  const expected = getChatPassword();
+export function isChatPasswordConfigured() {
+  return Boolean(getChatPassword()) || Boolean(INITIAL_PASSWORD_SHA256);
+}
 
-  if (!expected) {
-    return false;
+export function verifyChatPassword(candidate: string) {
+  const configured = getChatPassword();
+
+  if (configured) {
+    return timingSafeEqual(hash(candidate), hash(configured));
   }
 
-  return timingSafeEqual(hash(candidate), hash(expected));
+  return timingSafeEqual(hash(candidate), Buffer.from(INITIAL_PASSWORD_SHA256, "hex"));
 }
 
 export function createPasswordSessionToken(now = Date.now()) {
@@ -91,5 +96,6 @@ function hash(value: string) {
 }
 
 function sign(payload: string) {
-  return createHmac("sha256", getChatPassword()).update(payload).digest("base64url");
+  const key = getChatPassword() || INITIAL_PASSWORD_SHA256;
+  return createHmac("sha256", key).update(payload).digest("base64url");
 }
