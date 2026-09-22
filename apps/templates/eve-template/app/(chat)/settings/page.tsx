@@ -1,4 +1,4 @@
-import { GatewaySettings } from "@/app/_components/gateway-settings";
+import { ProviderSettings } from "@/app/_components/provider-settings";
 export default function SettingsPage() {
-  return <GatewaySettings />;
+  return <ProviderSettings />;
 }

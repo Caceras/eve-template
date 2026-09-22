@@ -1,15 +1,10 @@
-import { defineAgent, defineDynamic } from "eve";
-import { resolveGatewayChatModel } from "../lib/gateway-model-catalog";
+import { defineAgent } from "eve";
+import { routedModel } from "./lib/routed-model";
 
 export default defineAgent({
   description:
     "General-purpose Ægentica agent. Keep simple work in the root; delegate deep research and review when their narrower contexts are useful.",
-  model: defineDynamic({
-    events: {
-      "turn.started": (_event, ctx) =>
-        resolveGatewayChatModel(ctx.session.auth.current?.attributes.chatModel),
-    },
-  }),
+  model: routedModel(),
   reasoning: "high",
   compaction: {
     thresholdPercent: 0.8,

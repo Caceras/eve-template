@@ -1,8 +1,14 @@
-import { MODEL_HEADER, resolveChatModel } from "@/lib/model-catalog";
+import { MODEL_HEADER, isModelId } from "@/lib/model-catalog";
 import type { AuthFn } from "eve/channels/auth";
 import { auth } from "@/lib/auth";
 import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
 import { getSetupStatus } from "@/lib/setup";
+
+/** An absent or unknown model falls back to the active provider's default at each model step. */
+function chatModelAttribute(request: Request): Record<string, string> {
+  const model = request.headers.get(MODEL_HEADER);
+  return isModelId(model) ? { chatModel: model } : {};
+}
 
 export const betterAuthEveAuth: AuthFn<Request> = async (request) => {
   const setupStatus = await getSetupStatus();
@@ -21,7 +27,7 @@ export const betterAuthEveAuth: AuthFn<Request> = async (request) => {
 
   return {
     attributes: {
-      chatModel: resolveChatModel(request.headers.get(MODEL_HEADER)),
+      ...chatModelAttribute(request),
       email: session.user.email,
       name: session.user.name,
     },
@@ -46,7 +52,7 @@ export const passwordEveAuth: AuthFn<Request> = async (request) => {
 
   return {
     attributes: {
-      chatModel: resolveChatModel(request.headers.get(MODEL_HEADER)),
+      ...chatModelAttribute(request),
       email: "local@aegentica.local",
       name: "Riki",
     },

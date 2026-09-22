@@ -151,11 +151,11 @@ export const productLibrary = [
     category: "Control and quality",
     title: "Understand usage limits",
     description:
-      "Model access is metered, with limits on each session and a separate limit on this installation’s Gateway key.",
+      "Model access is metered, with limits on each session and on the API key of the active provider (AI Gateway or OpenRouter).",
     status: "Configured",
-    example: "Keep initial tests short. Check the Agent page for model connectivity.",
+    example: "Keep initial tests short. Test your provider key in Settings.",
     requirements:
-      "The production Gateway key has a $10 monthly limit. No automatic credit purchase was enabled.",
+      "Each session stops at $25 of model cost. Set a spending limit on each provider key in the provider’s dashboard.",
     path: "agent-config",
   },
   {

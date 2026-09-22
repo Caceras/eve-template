@@ -277,7 +277,7 @@ export function EveCapabilities() {
                 <span className="font-medium">Model selection: </span>
                 Choose a model in the message composer.{" "}
                 <Link href="/settings" className="underline underline-offset-4">
-                  Test your API key in Settings
+                  Switch between AI Gateway and OpenRouter in Settings
                 </Link>
                 .
                 <p className="text-muted-foreground">
