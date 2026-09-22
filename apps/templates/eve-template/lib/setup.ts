@@ -1,5 +1,6 @@
 import type { SetupStatus } from "@/lib/chat/types";
 import { isDatabaseConfigured, isDatabaseSchemaReady } from "@/lib/db/client";
+import { isChatPasswordConfigured } from "@/lib/password-auth";
 
 const PASSWORD_ENV_KEY = "EVE_CHAT_PASSWORD";
 const AUTH_ENV_KEYS = [
@@ -28,7 +29,7 @@ export function isAuthConfigured() {
 }
 
 export function isPasswordConfigured() {
-  return Boolean(process.env.EVE_CHAT_PASSWORD?.trim());
+  return isChatPasswordConfigured();
 }
 
 export function isRateLimitConfigured() {
