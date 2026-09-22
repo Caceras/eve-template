@@ -143,6 +143,8 @@ export function ModelPicker({ className }: { className?: string }) {
   }
   function choose(model: CatalogModel) {
     setModelPreference(model.id);
+    // The operator's pick also becomes the model for Telegram and schedules.
+    if (status) void providerAction({ action: "model", model: model.id });
     setOpen(false);
     setQuery("");
   }

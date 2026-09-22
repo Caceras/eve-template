@@ -47,6 +47,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
+    "croner": "10.0.1",
     "drizzle-orm": "0.45.2",
     "eve": "0.63.0",
     "just-bash": "3.4.2",

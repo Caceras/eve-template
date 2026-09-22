@@ -3,6 +3,7 @@ import type { AuthFn } from "eve/channels/auth";
 import { auth } from "@/lib/auth";
 import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
 import { getSetupStatus } from "@/lib/setup";
+import { operatorAuth } from "@/lib/operator";
 
 /** An absent or unknown model falls back to the active provider's default at each model step. */
 function chatModelAttribute(request: Request): Record<string, string> {
@@ -50,16 +51,5 @@ export const passwordEveAuth: AuthFn<Request> = async (request) => {
     return null;
   }
 
-  return {
-    attributes: {
-      ...chatModelAttribute(request),
-      email: "local@aegentica.local",
-      name: "Riki",
-    },
-    authenticator: "password",
-    issuer: "eve-chat-template",
-    principalId: "eve-chat-user",
-    principalType: "user",
-    subject: "eve-chat-user",
-  };
+  return operatorAuth("password", chatModelAttribute(request));
 };

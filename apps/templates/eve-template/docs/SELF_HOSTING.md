@@ -6,6 +6,9 @@ a key or choosing another model applies to the next model call. Nothing is
 rebuilt, redeployed or restarted, and running conversations continue on the new
 setting from their next step.
 
+Telegram and scheduled tasks are covered in
+[TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md).
+
 ## Settings
 
 Sign in as the password operator and open `/settings`. Each provider has its own
@@ -84,16 +87,23 @@ it reads the active provider and key from the settings directory, resolves the
 requested model against that provider's catalog, and returns:
 
 - AI Gateway: `createGateway({ apiKey })(modelId)` from the AI SDK.
-- OpenRouter: `createOpenRouter({ apiKey }).chat(modelId)` from
+- OpenRouter: `openRouterModel()` in `lib/openrouter-model.ts`, built on
   `@openrouter/ai-sdk-provider`, with reasoning effort `high` for models that
   support reasoning (OpenRouter takes reasoning as a model setting, not a call
   option).
 
+eve attaches AI Gateway's provider-executed search (`gateway.exa_search`) as
+`web_search` to every dynamically selected model. OpenRouter cannot run that
+tool, so the OpenRouter model swaps it for OpenRouter's own
+`openrouter:web_search` server tool (up to 10 results). Web search therefore
+works on both providers; OpenRouter bills its searches separately.
+
 Each selection includes the model's context window from the catalog, which eve
 uses for compaction. The root agent and the researcher follow the composer
 choice; the reviewer prefers `anthropic/claude-sonnet-5` for an independent
-second opinion. Channels without a browser, such as schedules, use the active
-provider's default model.
+second opinion. The operator's picks are also saved on the server
+(`settings/provider.json`), so Telegram and scheduled tasks, which have no
+browser, use the last picked model, then the provider default.
 
 The session cost limit (`maxTokenCostUsdPerSession`, $25) works on both
 providers: eve reads cost from AI Gateway metadata, so the OpenRouter model
@@ -108,6 +118,7 @@ model ID.
 ```sh
 node scripts/test-provider-settings.mjs   # auth, CSRF, storage, switching, tests, fail-closed
 node scripts/test-models.mjs              # catalogs, fallbacks, picker preference
+node scripts/test-openrouter-model.mjs    # OpenRouter request shape, search tool, cost
 ```
 
 `node scripts/check-model-routing.mjs` runs against a live app (`CHECK_ORIGIN`,

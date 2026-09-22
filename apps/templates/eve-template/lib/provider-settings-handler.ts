@@ -1,4 +1,4 @@
-import { PROVIDERS, isProviderId, pickModel, type ProviderId } from "./model-catalog";
+import { PROVIDERS, isModelId, isProviderId, pickModel, type ProviderId } from "./model-catalog";
 import { getCatalog } from "./provider-catalog";
 import {
   providerStatus,
@@ -6,40 +6,14 @@ import {
   removeProviderKey,
   saveProviderKey,
   setActiveProvider,
+  setDefaultModel,
 } from "./provider-settings";
-import { getPasswordSessionFromHeaders, hasSameOriginRequest } from "./password-auth";
+import { handleOperatorSettings, json } from "./settings-api";
 
 const API_BASE: Record<ProviderId, string> = {
   gateway: "https://ai-gateway.vercel.sh/v1",
   openrouter: "https://openrouter.ai/api/v1",
 };
-let windowStart = 0;
-let attempts = 0;
-const json = (body: unknown, status = 200) =>
-  Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-
-async function readBody(request: Request) {
-  const reader = request.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  if (reader)
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 4096) {
-        await reader.cancel();
-        return "too-large" as const;
-      }
-      chunks.push(value);
-    }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 function keyError(provider: ProviderId, key: string) {
   if (key.length < 20 || key.length > 2048 || /[^\x21-\x7e]/.test(key))
     return `Enter a valid ${PROVIDERS[provider].label} API key.`;
@@ -113,48 +87,40 @@ async function testConnection(provider: ProviderId, requestedModel: unknown) {
   return json({ error }, 422);
 }
 
-export async function handleProviderSettings(request: Request) {
-  if (!getPasswordSessionFromHeaders(request.headers))
-    return json({ error: "Sign in to manage model providers." }, 401);
-  try {
-    if (request.method === "GET") return json(await providerStatus());
-    if (!hasSameOriginRequest(request)) return json({ error: "Invalid request origin." }, 403);
-    if (Date.now() - windowStart > 60_000) {
-      windowStart = Date.now();
-      attempts = 0;
-    }
-    if (++attempts > 20) return json({ error: "Too many requests. Try again in a minute." }, 429);
-    const body = await readBody(request);
-    if (body === "too-large") return json({ error: "Request too large." }, 413);
-    if (!body || !isProviderId(body.provider)) return json({ error: "Invalid request." }, 400);
-    const provider = body.provider;
-    switch (body.action) {
-      case "save": {
-        const key = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
-        const error = keyError(provider, key);
-        if (error) return json({ error }, 400);
-        await saveProviderKey(provider, key);
-        await setActiveProvider(provider);
+export function handleProviderSettings(request: Request) {
+  return handleOperatorSettings(request, {
+    read: async () => json(await providerStatus()),
+    async write(body) {
+      if (body.action === "model") {
+        if (!isModelId(body.model)) return json({ error: "Invalid model." }, 400);
+        await setDefaultModel(body.model);
         return json(await providerStatus());
       }
-      case "remove":
-        await removeProviderKey(provider);
-        return json(await providerStatus());
-      case "activate": {
-        if (!(await readProviderKey(provider)).apiKey)
-          return json({ error: `Add a ${PROVIDERS[provider].label} key first.` }, 400);
-        await setActiveProvider(provider);
-        return json(await providerStatus());
+      if (!isProviderId(body.provider)) return json({ error: "Invalid request." }, 400);
+      const provider = body.provider;
+      switch (body.action) {
+        case "save": {
+          const key = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+          const error = keyError(provider, key);
+          if (error) return json({ error }, 400);
+          await saveProviderKey(provider, key);
+          await setActiveProvider(provider);
+          return json(await providerStatus());
+        }
+        case "remove":
+          await removeProviderKey(provider);
+          return json(await providerStatus());
+        case "activate": {
+          if (!(await readProviderKey(provider)).apiKey)
+            return json({ error: `Add a ${PROVIDERS[provider].label} key first.` }, 400);
+          await setActiveProvider(provider);
+          return json(await providerStatus());
+        }
+        case "test":
+          return await testConnection(provider, body.model);
+        default:
+          return json({ error: "Invalid action." }, 400);
       }
-      case "test":
-        return await testConnection(provider, body.model);
-      default:
-        return json({ error: "Invalid action." }, 400);
-    }
-  } catch {
-    return json(
-      { error: "Could not complete the request. Try again or check your server configuration." },
-      503,
-    );
-  }
+    },
+  });
 }
