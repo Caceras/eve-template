@@ -6,7 +6,7 @@ WORKDIR /app
 
 FROM base AS deps
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ liblzma-dev \
+  && apt-get install -y --no-install-recommends python3 make g++ pkg-config liblzma-dev \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-workspace.yaml .npmrc* ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --no-frozen-lockfile
