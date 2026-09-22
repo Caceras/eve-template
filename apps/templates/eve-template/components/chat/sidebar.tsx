@@ -2,7 +2,7 @@
 
 import { ArrowRightIcon, BlocksIcon, EllipsisIcon, ListRestartIcon, PanelLeftIcon, PlusIcon, RadioTowerIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
@@ -52,6 +52,7 @@ export function ChatSidebar({
 }) {
   const authDisabled = !setupStatus.appReady;
   const pathname = usePathname();
+  const router = useRouter();
   const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -115,7 +116,7 @@ export function ChatSidebar({
             newSessionActive ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
-            setPathname("/");
+            router.push("/");
             onNewChat();
             onNavigate?.(null);
           }}
