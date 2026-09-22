@@ -5,7 +5,7 @@ import {
   type LanguageModelMiddleware,
   type ProviderMetadata,
 } from "ai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
 import { PROVIDERS, pickModel } from "@/lib/model-catalog";
 import { getCatalog } from "@/lib/provider-catalog";
 import { readActiveProvider, readProviderKey } from "@/lib/provider-settings";
@@ -74,13 +74,12 @@ export function routedModel(options: { prefer?: string } = {}) {
           appName: "Ægentica",
           appUrl: process.env.BETTER_AUTH_URL,
         });
+        const settings: OpenRouterChatSettings = { usage: { include: true } };
+        // OpenRouter ignores the AI SDK call-level reasoning option; it is a model setting.
+        if (model.reasoning) settings.reasoning = { effort: "high" };
         return {
           model: wrapLanguageModel({
-            model: openrouter.chat(model.id, {
-              usage: { include: true },
-              // OpenRouter ignores the AI SDK call-level reasoning option; it is a model setting.
-              ...(model.reasoning ? { reasoning: { effort: "high" } } : {}),
-            }),
+            model: openrouter.chat(model.id, settings),
             middleware: reportOpenRouterCost,
           }),
           // OpenRouter models are not in eve's Gateway metadata catalog.
