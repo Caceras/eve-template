@@ -55,7 +55,7 @@ export function GatewaySettings() {
       const response = await fetch("/api/settings/gateway", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...(action === "save" ? { apiKey } : {}) }),
+        body: JSON.stringify(action === "save" ? { action, apiKey } : { action }),
       });
       const data = await response.json();
       if (!response.ok) {
