@@ -89,14 +89,17 @@ try {
     { PORT: evePort, HOST: "127.0.0.1", NITRO_HOST: "127.0.0.1", NITRO_PORT: evePort },
   );
 
-  await waitForEve();
-  console.log(`[eve] ready on 127.0.0.1:${evePort}`);
-
   spawnChild(
     "next",
     ["node_modules/next/dist/bin/next", "start", "-H", host, "-p", nextPort],
     { PORT: nextPort },
   );
+
+  void waitForEve()
+    .then(() => console.log(`[eve] ready on 127.0.0.1:${evePort}`))
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+    });
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   await shutdown(1);

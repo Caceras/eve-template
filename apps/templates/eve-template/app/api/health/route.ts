@@ -7,12 +7,12 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
 
   try {
-    const response = await fetch(new URL("/eve/v1/info", request.url), {
+    const response = await fetch(new URL("/eve/v1/health", request.url), {
       cache: "no-store",
       signal: AbortSignal.timeout(3_000),
     });
 
-    const healthy = response.ok && setup.appReady;
+    const healthy = response.ok;
 
     return NextResponse.json(
       {
