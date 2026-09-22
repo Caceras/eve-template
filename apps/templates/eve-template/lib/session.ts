@@ -5,10 +5,10 @@ import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
 import { getSetupStatus } from "@/lib/setup";
 
 const PASSWORD_VIEWER: Viewer = {
-  email: "local@eve.dev",
-  id: "eve-chat-user",
+  email: "local@aegentica.local",
+  id: "aegentica-user",
   image: null,
-  name: "eve user",
+  name: "Ægentica user",
 };
 
 export async function getServerViewer(setupStatus?: SetupStatus): Promise<Viewer | null> {
