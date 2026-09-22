@@ -76,8 +76,8 @@ export function useModelSettings() {
 }
 
 export async function providerAction(body: {
-  action: "save" | "remove" | "activate" | "test";
-  provider: ProviderId;
+  action: "save" | "remove" | "activate" | "test" | "model";
+  provider?: ProviderId;
   apiKey?: string;
   model?: string;
 }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
@@ -89,7 +89,7 @@ export async function providerAction(body: {
     });
     const data = await response.json();
     if (!response.ok) return { ok: false, error: data.error || "Could not complete the request." };
-    if (body.action !== "test") {
+    if (body.action !== "test" && body.action !== "model") {
       catalogRequest = undefined;
       statusRequest = undefined;
       version++;

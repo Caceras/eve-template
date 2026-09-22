@@ -6,6 +6,8 @@ import { readModelPreference } from "@/lib/chat/model-preference";
 import { providerAction, useModelSettings, type ProviderState } from "@/lib/chat/provider-client";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/model-catalog";
 import { useChatShell } from "./chat-shell-context";
+import { ScheduleSettings } from "./schedule-settings";
+import { TelegramSettings } from "./telegram-settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,12 +194,12 @@ export function ProviderSettings() {
         <KeyRoundIcon className="mb-4 size-6" />
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Choose where Ægentica gets its AI models. Switching provider, key or model applies to the
+          Choose where Ægentica gets its AI models and where it can reach you. Changes apply to the
           next message, with no restart.
         </p>
         {!viewer ? (
           <div className="mt-8 rounded-lg border p-5">
-            <p className="mb-4 text-sm">Sign in to manage model providers.</p>
+            <p className="mb-4 text-sm">Sign in to manage Ægentica.</p>
             <Button onClick={() => requestSignIn()}>Sign in</Button>
           </div>
         ) : status === undefined ? (
@@ -225,9 +227,11 @@ export function ProviderSettings() {
                 active={status.active === provider}
               />
             ))}
+            <TelegramSettings />
+            <ScheduleSettings />
             <p className="text-xs leading-5 text-muted-foreground">
-              Keys are encrypted on this server and never shown again or stored in your browser. The
-              connection test sends one short request and may use a few tokens.
+              Keys and bot tokens are encrypted on this server and never shown again or stored in
+              your browser. The connection test sends one short request and may use a few tokens.
             </p>
           </div>
         )}
