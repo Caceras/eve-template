@@ -22,11 +22,12 @@ This matrix is the coverage contract for the Ultimate Eve Template. â€œIncludedâ
 | Workflow world selection | Reference | official docs, self-host/Vercel options |
 | Workflow checkpoint batching | Reference / experimental | official `defineAgent.experimental.workflow` |
 | Run retention | Reference / experimental | official `defineAgent.experimental.workflow.retention` |
-| Gateway model | Included | root/subagent configs |
+| Gateway model | Active | `agent/lib/routed-model.ts`, AI Gateway key in Settings |
+| OpenRouter model (AI SDK provider) | Active | `agent/lib/routed-model.ts`, OpenRouter key in Settings |
 | direct OpenAI / Anthropic | Reference | public model helpers |
 | local ChatGPT subscription | Reference | `chatgpt()` local-only helper |
 | automatic model selection | Reference | `auto()` |
-| dynamic model selection | Reference | `defineDynamic` |
+| dynamic model selection | Active | `defineDynamic` `step.started` in root, researcher and reviewer |
 | reasoning effort | Included | root and subagents |
 | provider model options | Reference | public agent config |
 

@@ -1,6 +1,10 @@
 import { connection } from "next/server";
-import { getGatewayCatalog } from "@/lib/gateway-model-catalog";
-export async function GET() {
+import { isProviderId } from "@/lib/model-catalog";
+import { getCatalog } from "@/lib/provider-catalog";
+import { readActiveProvider } from "@/lib/provider-settings";
+export async function GET(request: Request) {
   await connection();
-  return Response.json(await getGatewayCatalog(), { headers: { "Cache-Control": "no-store" } });
+  const requested = new URL(request.url).searchParams.get("provider");
+  const provider = isProviderId(requested) ? requested : await readActiveProvider();
+  return Response.json(await getCatalog(provider), { headers: { "Cache-Control": "no-store" } });
 }
