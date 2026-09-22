@@ -274,8 +274,8 @@ export function EveCapabilities() {
 
             {info ? (
               <div className="rounded-lg border px-4 py-3 text-sm leading-6">
-                <span className="font-medium">Model connection: </span>
-                {info.agent?.model?.endpoint?.connected ? "Connected" : "Not connected"}.
+                <span className="font-medium">Model credentials: </span>
+                {info.agent?.model?.endpoint?.connected ? "Configured" : "Not configured"}.
                 <p className="text-muted-foreground">
                   The capabilities below are declared by the agent. External services require their
                   own connection and a successful test.
