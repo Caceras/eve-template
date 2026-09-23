@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { PointerEventHandler } from "react";
 
 type Gesture = {
@@ -71,25 +71,37 @@ export function useMobileSidebarSwipe({
     [open],
   );
 
-  const onDrawerPointerUp = useCallback<PointerEventHandler<HTMLDivElement>>(
-    (event) => {
+  useEffect(() => {
+    if (!open) {
+      drawerStart.current = null;
+      return;
+    }
+
+    const finishDrawerGesture = (event: PointerEvent) => {
       const start = drawerStart.current;
       drawerStart.current = null;
       if (!start || start.pointerId !== event.pointerId) return;
+
       const dx = event.clientX - start.x;
       const dy = Math.abs(event.clientY - start.y);
       if (dx <= -CLOSE_DISTANCE_PX && Math.abs(dx) >= dy * DIRECTION_RATIO) {
         onOpenChange(false);
       }
-    },
-    [onOpenChange],
-  );
+    };
+    const cancelDrawerGesture = () => {
+      drawerStart.current = null;
+    };
+
+    window.addEventListener("pointerup", finishDrawerGesture, true);
+    window.addEventListener("pointercancel", cancelDrawerGesture, true);
+    return () => {
+      window.removeEventListener("pointerup", finishDrawerGesture, true);
+      window.removeEventListener("pointercancel", cancelDrawerGesture, true);
+    };
+  }, [onOpenChange, open]);
 
   const clearSurface = useCallback(() => {
     surfaceStart.current = null;
-  }, []);
-  const clearDrawer = useCallback(() => {
-    drawerStart.current = null;
   }, []);
 
   return {
@@ -99,9 +111,7 @@ export function useMobileSidebarSwipe({
       onPointerUp: onSurfacePointerUp,
     },
     drawerHandlers: {
-      onPointerCancel: clearDrawer,
       onPointerDown: onDrawerPointerDown,
-      onPointerUp: onDrawerPointerUp,
     },
   };
 }
