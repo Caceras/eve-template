@@ -5,11 +5,9 @@ import { ArrowUpRightIcon, SearchIcon, PencilLineIcon, ListChecksIcon } from "lu
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ComposerFooterControls,
-  ErrorToast,
-  type AgentChatControllerStatus,
-} from "@/app/_components/agent-chat";
+import { type AgentChatControllerStatus } from "@/app/_components/agent-chat";
+import { ComposerFooterControls } from "@/components/chat/composer-footer-controls";
+import { ErrorToast } from "@/components/chat/error-toast";
 import { useChatShell } from "@/app/_components/chat-shell-context";
 import { ChatComposer } from "@/components/chat/composer";
 import { getChatMessageLengthError } from "@/lib/chat/limits";

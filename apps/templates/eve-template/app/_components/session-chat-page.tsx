@@ -4,11 +4,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   AgentChatSession,
-  ComposerFooterControls,
-  ErrorToast,
   type AgentChatController,
   type AgentChatControllerStatus,
 } from "@/app/_components/agent-chat";
+import { ComposerFooterControls } from "@/components/chat/composer-footer-controls";
+import { ErrorToast } from "@/components/chat/error-toast";
 import {
   CHAT_ROUTE_SYNC_EVENT,
   type ChatRouteSyncDetail,
