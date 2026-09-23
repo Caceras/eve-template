@@ -145,10 +145,29 @@ try {
     await snapshot("mobile-navigation-swipe");
     const drawerBox = await dialog.boundingBox();
     assert(drawerBox, "mobile navigation has a visible drawer box");
-    await page.mouse.move(drawerBox.x + Math.min(250, drawerBox.width - 20), 360);
-    await page.mouse.down();
-    await page.mouse.move(drawerBox.x + 40, 362, { steps: 6 });
-    await page.mouse.up();
+    const closeStartX = drawerBox.x + Math.min(250, drawerBox.width - 20);
+    await dialog.dispatchEvent("pointerdown", {
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: closeStartX,
+      clientY: 360,
+      bubbles: true,
+    });
+    await page.evaluate(
+      ({ x, y }) =>
+        window.dispatchEvent(
+          new PointerEvent("pointerup", {
+            pointerId: 41,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX: x,
+            clientY: y,
+            bubbles: true,
+          }),
+        ),
+      { x: drawerBox.x + 40, y: 362 },
+    );
     await dialog.waitFor({ state: "hidden" });
     await page.getByRole("button", { name: "Open sidebar", exact: true }).first().click();
     await dialog.waitFor();
