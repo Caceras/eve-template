@@ -34,81 +34,73 @@ export function useMobileSidebarSwipe({
       ) {
         return;
       }
+
       surfaceStart.current = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
       };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
     },
     [open],
-  );
-
-  const onSurfacePointerUp = useCallback<PointerEventHandler<HTMLDivElement>>(
-    (event) => {
-      const start = surfaceStart.current;
-      surfaceStart.current = null;
-      if (!start || start.pointerId !== event.pointerId) return;
-      const dx = event.clientX - start.x;
-      const dy = Math.abs(event.clientY - start.y);
-      if (dx >= OPEN_DISTANCE_PX && dx >= dy * DIRECTION_RATIO) {
-        onOpenChange(true);
-      }
-    },
-    [onOpenChange],
   );
 
   const onDrawerPointerDown = useCallback<PointerEventHandler<HTMLDivElement>>(
     (event) => {
       if (!open || !event.isPrimary) return;
+
       drawerStart.current = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
       };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
     },
     [open],
   );
 
   useEffect(() => {
-    if (!open) {
-      drawerStart.current = null;
-      return;
-    }
+    const finishGesture = (event: PointerEvent) => {
+      const surface = surfaceStart.current;
+      surfaceStart.current = null;
 
-    const finishDrawerGesture = (event: PointerEvent) => {
-      const start = drawerStart.current;
-      drawerStart.current = null;
-      if (!start || start.pointerId !== event.pointerId) return;
+      if (surface && surface.pointerId === event.pointerId) {
+        const dx = event.clientX - surface.x;
+        const dy = Math.abs(event.clientY - surface.y);
 
-      const dx = event.clientX - start.x;
-      const dy = Math.abs(event.clientY - start.y);
-      if (dx <= -CLOSE_DISTANCE_PX && Math.abs(dx) >= dy * DIRECTION_RATIO) {
-        onOpenChange(false);
+        if (!open && dx >= OPEN_DISTANCE_PX && dx >= dy * DIRECTION_RATIO) {
+          onOpenChange(true);
+        }
+      }
+
+      const drawer = drawerStart.current;
+      drawerStart.current = null;
+
+      if (drawer && drawer.pointerId === event.pointerId) {
+        const dx = event.clientX - drawer.x;
+        const dy = Math.abs(event.clientY - drawer.y);
+
+        if (open && dx <= -CLOSE_DISTANCE_PX && Math.abs(dx) >= dy * DIRECTION_RATIO) {
+          onOpenChange(false);
+        }
       }
     };
-    const cancelDrawerGesture = () => {
+
+    const cancelGesture = () => {
+      surfaceStart.current = null;
       drawerStart.current = null;
     };
 
-    window.addEventListener("pointerup", finishDrawerGesture, true);
-    window.addEventListener("pointercancel", cancelDrawerGesture, true);
+    window.addEventListener("pointerup", finishGesture, true);
+    window.addEventListener("pointercancel", cancelGesture, true);
+
     return () => {
-      window.removeEventListener("pointerup", finishDrawerGesture, true);
-      window.removeEventListener("pointercancel", cancelDrawerGesture, true);
+      window.removeEventListener("pointerup", finishGesture, true);
+      window.removeEventListener("pointercancel", cancelGesture, true);
     };
   }, [onOpenChange, open]);
 
-  const clearSurface = useCallback(() => {
-    surfaceStart.current = null;
-  }, []);
-
   return {
     surfaceHandlers: {
-      onPointerCancel: clearSurface,
       onPointerDown: onSurfacePointerDown,
-      onPointerUp: onSurfacePointerUp,
     },
     drawerHandlers: {
       onPointerDown: onDrawerPointerDown,
