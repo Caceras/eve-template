@@ -395,6 +395,12 @@ export function AgentChatShell({
         <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
           <SheetContent
             {...drawerHandlers}
+            onClickCapture={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest("a[href]")) {
+                setMobileSidebarOpen(false);
+              }
+            }}
             showCloseButton={false}
             side="left"
             className="h-dvh w-[86vw] max-w-[21rem] gap-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
