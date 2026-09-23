@@ -1,6 +1,5 @@
 "use client";
 import {
-  CalendarClockIcon,
   ChevronDownIcon,
   EllipsisIcon,
   Loader2Icon,
@@ -254,8 +253,7 @@ export function TasksPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-2xl px-4 pb-16 pt-20 sm:px-8">
-        <CalendarClockIcon className="mb-4 size-6" />
+      <div className="mx-auto max-w-3xl px-4 pb-16 pt-16 sm:px-6">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
           {viewer && tasks !== null && (

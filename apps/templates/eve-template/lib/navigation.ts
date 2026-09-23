@@ -10,18 +10,12 @@ import {
   SettingsIcon,
   RadioTowerIcon,
 } from "lucide-react";
-export const workspacePages = [
+export const primaryWorkspacePages = [
   {
     href: "/agents",
     label: "Agents",
     icon: BotIcon,
     keywords: "create delegate profiles instructions knowledge",
-  },
-  {
-    href: "/capabilities",
-    label: "Capabilities",
-    icon: BlocksIcon,
-    keywords: "tools skills apps directory sandbox workflows channels",
   },
   {
     href: "/tasks",
@@ -31,6 +25,15 @@ export const workspacePages = [
   },
   { href: "/images", label: "Images", icon: ImageIcon, keywords: "gallery generate pictures" },
   { href: "/memory", label: "Memory", icon: BrainIcon, keywords: "remember facts preferences" },
+] as const;
+
+export const systemWorkspacePages = [
+  {
+    href: "/capabilities",
+    label: "Capabilities",
+    icon: BlocksIcon,
+    keywords: "tools skills apps directory sandbox workflows channels",
+  },
   {
     href: "/settings/integrations",
     label: "Connections",
@@ -45,15 +48,15 @@ export const workspacePages = [
   },
   {
     href: "/session",
-    label: "Sessions",
+    label: "Activity",
     icon: ListRestartIcon,
-    keywords: "runs logs inspect events",
+    keywords: "sessions runs logs inspect events activity",
   },
   {
     href: "/library",
-    label: "Guide",
+    label: "Explore",
     icon: BookOpenIcon,
-    keywords: "documentation help capabilities",
+    keywords: "guide documentation help capabilities explore",
   },
   {
     href: "/settings",
@@ -62,4 +65,6 @@ export const workspacePages = [
     keywords: "models provider API key voice notifications PWA",
   },
 ] as const;
+
+export const workspacePages = [...primaryWorkspacePages, ...systemWorkspacePages] as const;
 export const COMMAND_EVENT = "aegentica:command-menu";

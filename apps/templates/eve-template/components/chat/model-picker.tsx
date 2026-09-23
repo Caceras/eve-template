@@ -168,7 +168,7 @@ export function ModelPicker({ className }: { className?: string }) {
           type="button"
           aria-label={`Model: ${label} via ${PROVIDERS[provider].label}. Change model`}
           className={cn(
-            "min-h-11 max-w-[240px] gap-1.5 px-2 text-sm font-normal md:min-h-9",
+            "min-h-11 max-w-[150px] gap-1.5 px-2 text-xs font-medium text-muted-foreground sm:max-w-[240px] sm:text-sm md:min-h-9",
             className,
           )}
         >

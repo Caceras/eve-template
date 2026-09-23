@@ -142,21 +142,21 @@ export function HomeChatPage() {
 
       <div className="flex min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
         <div className="flex min-h-0 flex-1 items-center justify-center py-6 sm:pb-[8vh]">
-          <div className="w-full max-w-2xl space-y-6 sm:space-y-7">
+          <div className="w-full max-w-2xl space-y-5 sm:space-y-6">
             <div className="flex flex-col items-center text-center">
               <div className="mb-5 flex justify-center">
                 <img
                   alt="Ægentica"
-                  className="size-12 select-none invert sm:size-14 dark:invert-0"
+                  className="size-11 select-none invert sm:size-12 dark:invert-0"
                   draggable={false}
                   src="/aegentica.svg"
                 />
               </div>
-              <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">
-                What would you like to work on?
+              <h1 className="text-2xl font-medium tracking-tight sm:text-[28px]">
+                What should we work on?
               </h1>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Bring a question, an idea, or a task. We’ll take it from here.
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                Ask, research, build, or hand off a task.
               </p>
             </div>
             <ChatComposer
@@ -193,7 +193,7 @@ export function HomeChatPage() {
                 <Button
                   key={title}
                   variant="ghost"
-                  className="h-11 justify-start gap-2.5 rounded-lg border border-border/70 px-3 text-xs font-normal text-muted-foreground"
+                  className="h-11 justify-start gap-2.5 rounded-xl border-0 bg-muted/45 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   onClick={() => {
                     setDraft(text);
                     document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
@@ -204,18 +204,15 @@ export function HomeChatPage() {
                 </Button>
               ))}
             </div>
-            <p className="text-center text-xs leading-5 text-muted-foreground">
-              {setupStatus.storageMode === "browser"
-                ? "Chat history stays in this browser."
-                : "Your conversations are saved on your server and sync across your devices."}{" "}
+            <div className="flex justify-center">
               <Link
-                href="/library"
-                className="inline-flex items-center gap-0.5 underline underline-offset-4 hover:text-foreground"
+                href="/capabilities"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
               >
-                Explore what’s possible
+                Explore capabilities
                 <ArrowUpRightIcon className="size-3" />
               </Link>
-            </p>
+            </div>
           </div>
         </div>
       </div>

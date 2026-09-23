@@ -24,7 +24,7 @@ import { eveSurface } from "@/lib/eve-surface.generated";
 import { cn } from "@/lib/utils";
 
 type Scope = "runtime" | "included" | "directory";
-type Category = "All" | "Tools" | "Skills" | "Agents" | "Apps" | "Channels" | "More";
+type Category = "All" | "Tools" | "Skills" | "Agents" | "Connections" | "Channels" | "System";
 type Item = {
   name: string;
   description: string;
@@ -36,7 +36,7 @@ type Item = {
   access: string;
   details?: Record<string, unknown>;
 };
-const categories: Category[] = ["All", "Tools", "Skills", "Agents", "Apps", "Channels", "More"];
+const categories: Category[] = ["All", "Tools", "Skills", "Agents", "Connections", "Channels", "System"];
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -170,19 +170,19 @@ export function EveCapabilities() {
       ["Skills", "Skills", pair(info.skills)],
       ["Agents", "Local agents", array(record(info.subagents).local)],
       ["Agents", "Remote agents", array(record(info.remoteAgents).entries)],
-      ["Apps", "Connections", array(info.connections)],
+      ["Connections", "Connections", array(info.connections)],
       ["Channels", "Routes", array(record(info.channels).routes)],
-      ["More", "Instructions", pair(info.instructions)],
-      ["More", "Memory", array(info.memories)],
-      ["More", "Schedules", array(info.schedules)],
-      ["More", "Hooks", array(info.hooks)],
-      ["More", "Sandbox", info.sandbox ? [info.sandbox] : []],
-      ["More", "Workspace", array(record(info.workspace).rootEntries)],
-      ["More", "Disabled", array(record(info.composition).disabled)],
-      ["More", "Shadowed", array(record(info.composition).shadowed)],
+      ["System", "Instructions", pair(info.instructions)],
+      ["System", "Memory", array(info.memories)],
+      ["System", "Schedules", array(info.schedules)],
+      ["System", "Hooks", array(info.hooks)],
+      ["System", "Sandbox", info.sandbox ? [info.sandbox] : []],
+      ["System", "Workspace", array(record(info.workspace).rootEntries)],
+      ["System", "Disabled", array(record(info.composition).disabled)],
+      ["System", "Shadowed", array(record(info.composition).shadowed)],
       ["Channels", "Shadowed routes", array(record(info.channels).shadowed)],
-      ["More", "Kernel effects", array(info.kernelEffects)],
-      ["More", "Instrumentation", info.instrumentation ? [info.instrumentation] : []],
+      ["System", "Kernel effects", array(info.kernelEffects)],
+      ["System", "Instrumentation", info.instrumentation ? [info.instrumentation] : []],
     ];
     return groups.flatMap(([category, group, entries]) =>
       entries.map((value) => entry(value, category, group)),
@@ -205,10 +205,10 @@ export function EveCapabilities() {
             : item.category.includes("agent")
               ? "Agents"
               : item.category.includes("connection")
-                ? "Apps"
+                ? "Connections"
                 : item.category.includes("tool")
                   ? "Tools"
-                  : "More",
+                  : "System",
         access:
           "Available from the official eve registry. Not installed or connected by this view.",
       })),
@@ -259,9 +259,9 @@ export function EveCapabilities() {
           <div className="inline-flex rounded-lg bg-muted p-1" aria-label="Capability source">
             {(
               [
-                ["runtime", "Runtime"],
-                ["included", "Included"],
-                ["directory", "Directory"],
+                ["runtime", "Live"],
+                ["included", "Built in"],
+                ["directory", "Explore"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -291,17 +291,17 @@ export function EveCapabilities() {
         </div>
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
           {scope === "runtime"
-            ? "Declared by the live runtime, not a connection or credential test. Session-specific dynamic tools can change during a turn."
+            ? "What this running Ægentica instance can currently expose. Connections may still need credentials or approval."
             : scope === "included"
-              ? "Source patterns in this repository. Some need configuration before they can run."
-              : `${directory.length} official registry entries. Adding one is a maintainer operation, not a one-click connection.`}
+              ? "Capabilities already included in the product, with configuration where needed."
+              : `${directory.length} official Eve capabilities you can add when you need them.`}
         </p>
         <div className="relative mt-5">
           <SearchIcon className="absolute left-3 top-3 size-4 text-muted-foreground" />
           <Input
             className="h-11 pl-9"
             aria-label="Search capabilities"
-            placeholder="Search tools, skills, agents, apps..."
+            placeholder="Search capabilities"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -375,7 +375,7 @@ export function EveCapabilities() {
         )}
         {scope === "runtime" && info && (
           <details className="mt-4 rounded-lg border px-4 py-3 text-sm">
-            <summary className="cursor-pointer font-medium">Runtime diagnostics</summary>
+            <summary className="cursor-pointer font-medium">Technical details</summary>
             <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <dt>Environment</dt>
               <dd>{text(info.mode) || "Unknown"}</dd>
@@ -389,8 +389,7 @@ export function EveCapabilities() {
               <dd>eve {eveSurface.eveVersion}</dd>
             </dl>
             <p className="mt-3 text-xs text-muted-foreground">
-              Inspect Sessions for live events and outcomes. API credentials are not tested by this
-              view.
+              Open Activity for live events and outcomes. Credentials are checked only when a capability actually runs.
             </p>
           </details>
         )}

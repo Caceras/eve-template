@@ -206,7 +206,7 @@ export function ChatComposer({
   const form = (
     <form
       className={cn(
-        "min-w-0 rounded-[24px] border border-black/[0.055] bg-white/94 shadow-[0_12px_44px_rgba(0,0,0,0.075),0_1px_2px_rgba(0,0,0,0.035)] backdrop-blur-2xl transition-[border-color,box-shadow,background-color,transform] duration-200 focus-within:border-black/[0.11] focus-within:bg-white focus-within:shadow-[0_16px_56px_rgba(0,0,0,0.105),0_1px_2px_rgba(0,0,0,0.04)] dark:border-white/[0.08] dark:bg-white/[0.065] dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.09]",
+        "min-w-0 rounded-[22px] border border-border/75 bg-background/96 shadow-[0_8px_30px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.03)] backdrop-blur-2xl transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-foreground/15 focus-within:bg-background focus-within:shadow-[0_12px_38px_rgba(0,0,0,0.085),0_1px_2px_rgba(0,0,0,0.035)] dark:bg-background/92",
         className,
       )}
       data-chat-composer
@@ -217,7 +217,7 @@ export function ChatComposer({
         Message Ægentica
       </label>
       <textarea
-        className="min-h-[62px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[60px] sm:px-5 sm:pt-4 md:text-[15px] dark:placeholder:text-muted-foreground/60"
+        className="min-h-[54px] w-full resize-none bg-transparent px-4 pb-1.5 pt-2.5 text-[16px] leading-6 outline-none placeholder:text-muted-foreground/40 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[52px] sm:px-5 md:text-[15px] dark:placeholder:text-muted-foreground/60"
         data-chat-composer-input
         autoCapitalize="sentences"
         autoComplete="off"
@@ -237,7 +237,7 @@ export function ChatComposer({
           {dictationError}
         </p>
       ) : null}
-      <div className="flex min-h-12 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:gap-3 sm:px-4 sm:pb-3">
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 pb-2.5 pt-0.5 sm:gap-3 sm:px-4">
         <div className="-ml-1 flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {footerStart ?? <span className="block h-8" />}
         </div>

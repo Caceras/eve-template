@@ -118,7 +118,7 @@ export function ComposerWorkspace({
   const ModeIcon = modes.find(([id]) => id === mode)![2];
   return (
     <div className="px-3 pt-2 sm:px-4">
-      <div className="flex min-h-10 items-center gap-1">
+      <div className="flex min-h-8 items-center gap-1">
         <DropdownMenu
           onOpenChange={async (open) => {
             if (!open || !viewer) return;
@@ -137,10 +137,10 @@ export function ComposerWorkspace({
               type="button"
               size="sm"
               variant="ghost"
-              className="min-h-10 max-w-[48%] gap-1.5 px-2 font-normal text-muted-foreground"
+              className="h-8 max-w-[45%] gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted"
               aria-label="Choose agent"
             >
-              <BotIcon className="size-4 shrink-0" />
+              <BotIcon className="size-3.5 shrink-0" />
               <span className="truncate">{draft?.profileName || "\u00c6gentica"}</span>
               <ChevronDownIcon className="size-3 shrink-0" />
             </Button>
@@ -174,10 +174,10 @@ export function ComposerWorkspace({
               disabled={disabled || busy}
               variant="ghost"
               size="sm"
-              className="min-h-10 gap-1.5 px-2 font-normal text-muted-foreground"
+              className="h-8 gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted"
               aria-label="Choose input mode"
             >
-              <ModeIcon className="size-4" />
+              <ModeIcon className="size-3.5" />
               {modes.find(([id]) => id === mode)![1]}
               <ChevronDownIcon className="size-3" />
             </Button>
@@ -206,7 +206,7 @@ export function ComposerWorkspace({
           type="button"
           variant="ghost"
           size="icon"
-          className="ml-auto size-11 shrink-0 text-muted-foreground"
+          className="ml-auto size-9 shrink-0 rounded-full text-muted-foreground hover:bg-muted"
           disabled={disabled || busy}
           aria-label="Attach files"
           title="Images, PDF and text. Up to 4 files, 6 MB total."
@@ -230,10 +230,10 @@ export function ComposerWorkspace({
         />
       </div>
       {Boolean(draft?.files.length) && (
-        <div className="flex flex-wrap gap-1.5 pb-1" aria-label="Attachments">
+        <div className="flex flex-wrap gap-1.5 pb-1.5 pt-1" aria-label="Attachments">
           {draft!.files.map((file, index) => (
             <span
-              className="flex max-w-full items-center gap-1 rounded-lg border pl-2 text-xs"
+              className="flex max-w-full items-center gap-1 rounded-full bg-muted/60 pl-2.5 text-xs text-foreground/80"
               key={`${file.name}-${index}`}
             >
               <span className="max-w-36 truncate">{file.name}</span>
@@ -241,7 +241,7 @@ export function ComposerWorkspace({
               <Button
                 aria-label={`Remove ${file.name}`}
                 disabled={disabled || busy}
-                className="size-9"
+                className="size-8 rounded-full"
                 type="button"
                 size="icon"
                 variant="ghost"
@@ -261,12 +261,12 @@ export function ComposerWorkspace({
         </div>
       )}
       {busy && (
-        <p role="status" className="pb-1 text-xs text-muted-foreground">
+        <p role="status" className="px-1 pb-1 text-[11px] text-muted-foreground">
           Saving draft...
         </p>
       )}
       {error && (
-        <p role="alert" className="pb-1 text-xs text-destructive">
+        <p role="alert" className="px-1 pb-1 text-[11px] text-destructive">
           {error}
         </p>
       )}
