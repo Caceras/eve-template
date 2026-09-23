@@ -16,7 +16,10 @@ env:
   VCR_IMAGE: vcr.vercel.com/vercel/eve/base
 
 jobs:
+  # This workflow publishes Vercel's official eve package and container images.
+  # Forks must never attempt that release path with missing upstream-only secrets.
   release:
+    if: github.repository == 'vercel/eve'
     runs-on: ubuntu-latest
     permissions:
       contents: write
