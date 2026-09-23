@@ -204,7 +204,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run TUI smoke tests
+        if: env.AI_GATEWAY_API_KEY != ''
         run: pnpm test:tui
+
+      - name: Skip credential-dependent TUI smoke tests
+        if: env.AI_GATEWAY_API_KEY == ''
+        run: echo "Skipping TUI smoke tests because AI_GATEWAY_API_KEY is not configured for this fork."
 
   test-dev-windows:
     runs-on: windows-latest
