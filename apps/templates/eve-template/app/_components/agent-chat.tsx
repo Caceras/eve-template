@@ -30,6 +30,7 @@ import {
   ChatScrollButton,
 } from "@/components/chat/conversation";
 import { AgentMessage } from "@/components/chat/message";
+import { ErrorToast } from "@/components/chat/error-toast";
 import { Button } from "@/components/ui/button";
 import { isChatTurnSettledEvent } from "@/lib/chat/events";
 import { getChatMessageLengthError } from "@/lib/chat/limits";

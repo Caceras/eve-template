@@ -16,6 +16,7 @@ import type { SetupStatus } from "@/lib/chat/types";
 import { moveComposerDraft } from "@/lib/chat/composer-draft";
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
+  canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
