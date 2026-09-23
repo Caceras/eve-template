@@ -2,7 +2,7 @@
 
 ## Principle
 
-The app is a product shell over Eve, not a second runtime.
+Ægentica is a product shell over eve, not a second runtime.
 
 ```text
 Next.js product shell
@@ -23,7 +23,44 @@ Eve runtime
 └── evals
 ```
 
-## Two chat surfaces, one Eve runtime
+## Product layer
+
+What Ægentica adds on top of the chat template, all in the Next.js app and
+`lib/`, with eve doing the agent work:
+
+```text
+Browser (web and installed PWA)
+  │  /eve/v1/*  (withEve proxy)          /api/settings/*  (operator-only)
+  ▼                                       ▼
+Next.js :3000 ─────────────────────► lib/ settings, stores, handlers
+  │                                        │
+  │ same volume (.eve/.workflow-data)      │
+  ▼                                        ▼
+eve runtime 127.0.0.1:4274          chats.sqlite · profile.sqlite · settings/*.enc
+  ├─ channels: eve (web), telegram
+  ├─ memory: profile (fileMemory, SQLite backend)
+  ├─ extensions: github (github-tools)
+  ├─ schedules: scheduled-tasks (1-minute dispatcher) → lib/task-runner.ts
+  └─ routed model: AI Gateway or OpenRouter, per step
+```
+
+| Concern       | Where                                                                               | Notes                                                        |
+| ------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Chat history  | `lib/db/queries.ts` → `sqlite-queries.ts` or `pg-queries.ts`                        | SQLite in password mode, Postgres when `DATABASE_URL` is set |
+| Settings      | `lib/secure-settings.ts` + `lib/*-settings*.ts`                                     | AES-256-GCM files; `handleOperatorSettings` guards every API |
+| Models        | `lib/provider-settings.ts`, `agent/lib/routed-model.ts`                             | Provider and model resolved at each step                     |
+| Tasks         | `lib/schedule-store.ts`, `agent/schedules/scheduled-tasks.ts`, `lib/task-runner.ts` | Leased dispatch, each run is an eve session saved as a chat  |
+| Notifications | `lib/push-notifications.ts`, `public/sw.js`                                         | Web Push with server-generated VAPID keys                    |
+| Memory page   | `lib/memory-store.ts`, `agent/memory/profile.ts`                                    | Edits eve's fileMemory document in its own format            |
+| GitHub        | `agent/extensions/github.ts`, `lib/github-settings.ts`                              | Official extension; token read per call                      |
+| Telegram      | `agent/channels/telegram.ts`, `lib/telegram-settings.ts`                            | Owner-only, paired from Settings                             |
+
+The scheduler uses eve's dynamic-scheduling and outbox patterns: rows are
+leased under a lock, work is at least once, and a failed hand-off retries.
+The task runner calls the local eve API with an internal HMAC token
+(`lib/internal-auth.ts`) that authenticates it as the operator.
+
+## Two chat surfaces, one eve runtime
 
 The persisted root chat keeps the richer Chat Template product behavior: auth, thread history, database/browser persistence, connection toggles, and durable session cursors.
 

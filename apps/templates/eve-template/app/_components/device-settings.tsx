@@ -3,6 +3,7 @@ import { Loader2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { installPrompt, onInstallPromptChange, promptInstall } from "@/lib/pwa/install-prompt";
+import { SettingsShell } from "./settings-shell";
 
 type Support = "loading" | "unsupported" | "ios-browser" | "ready";
 
@@ -46,6 +47,18 @@ async function notificationsApi(body?: Record<string, unknown>) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Could not complete the request.");
   return data as { publicKey?: string; devices?: number; message?: string };
+}
+
+export function NotificationSettings() {
+  return (
+    <SettingsShell
+      section="notifications"
+      title="App & notifications"
+      description="Install Ægentica on this phone or computer and choose whether it may notify you."
+    >
+      <DeviceSettings />
+    </SettingsShell>
+  );
 }
 
 /** Install the app and turn on notifications for scheduled task results. */

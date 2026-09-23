@@ -1,6 +1,15 @@
 "use client";
-import { CalendarClockIcon, EllipsisIcon, Loader2Icon, PlusIcon } from "lucide-react";
+import {
+  CalendarClockIcon,
+  ChevronDownIcon,
+  EllipsisIcon,
+  Loader2Icon,
+  MessageSquareIcon,
+  PencilIcon,
+  SearchIcon,
+} from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useChatShell } from "./chat-shell-context";
 
 type Task = {
@@ -158,6 +168,21 @@ function statusLine(task: Task) {
   return failed ? `Last run hit an error · ${state}` : state;
 }
 
+type Filter = "all" | "active" | "paused" | "completed";
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "completed", label: "Completed" },
+];
+
+function taskState(task: Task): Exclude<Filter, "all"> {
+  if (task.enabled) return "active";
+  return task.cron || task.nextRunAt ? "paused" : "completed";
+}
+
+const CREATE_PROMPT = "Schedule a task for me: ";
+
 async function request(body?: Record<string, unknown>): Promise<Task[]> {
   const response = await fetch("/api/settings/schedules", {
     method: body ? "POST" : "GET",
@@ -177,6 +202,24 @@ export function TasksPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const router = useRouter();
+
+  const createWithAgent = () => {
+    try {
+      window.sessionStorage.setItem("eve-chat-draft", CREATE_PROMPT);
+    } catch {
+      // Without storage the chat simply opens empty.
+    }
+    router.push("/");
+  };
+  const needle = query.trim().toLowerCase();
+  const shown = (tasks ?? []).filter(
+    (task) =>
+      (filter === "all" || taskState(task) === filter) &&
+      (!needle || `${task.title} ${task.prompt}`.toLowerCase().includes(needle)),
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -216,10 +259,24 @@ export function TasksPage() {
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
           {viewer && tasks !== null && (
-            <Button className="h-11 md:h-9" onClick={() => setDraft(newDraft())}>
-              <PlusIcon className="size-4" />
-              New task
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="h-11 md:h-9">
+                  Create
+                  <ChevronDownIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={createWithAgent}>
+                  <MessageSquareIcon className="size-4" />
+                  Create with Ægentica
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setDraft(newDraft())}>
+                  <PencilIcon className="size-4" />
+                  Set up manually
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -241,78 +298,126 @@ export function TasksPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               Create a reminder, a daily briefing or a weekly check-in.
             </p>
-            <Button className="mt-4 h-11 md:h-9" onClick={() => setDraft(newDraft())}>
-              <PlusIcon className="size-4" />
-              New task
-            </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button className="h-11 md:h-9" onClick={createWithAgent}>
+                <MessageSquareIcon className="size-4" />
+                Create with Ægentica
+              </Button>
+              <Button
+                className="h-11 md:h-9"
+                onClick={() => setDraft(newDraft())}
+                variant="outline"
+              >
+                Set up manually
+              </Button>
+            </div>
           </div>
         ) : (
-          <ul className="mt-8 divide-y rounded-lg border bg-card">
-            {tasks.map((task) => (
-              <li key={task.id} className="flex items-center gap-2 p-3 sm:px-4">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {repeatLabel(task)}
-                    <span className="hidden sm:inline"> · </span>
-                    <br className="sm:hidden" />
-                    {statusLine(task)}
-                  </p>
-                  {task.lastChatId && (
-                    <Link
-                      className="mt-1 inline-flex min-h-8 items-center text-xs underline underline-offset-4"
-                      href={`/chat/${task.lastChatId}`}
-                    >
-                      View latest result
-                    </Link>
+          <>
+            <div className="relative mt-8">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Search tasks"
+                className="h-11 pl-9"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search tasks"
+                value={query}
+              />
+            </div>
+            <div
+              aria-label="Filter tasks"
+              className="mt-3 flex gap-1 overflow-x-auto"
+              role="tablist"
+            >
+              {FILTERS.map((item) => (
+                <button
+                  aria-selected={filter === item.value}
+                  className={cn(
+                    "h-11 shrink-0 rounded-md px-3 text-sm transition-colors md:h-8",
+                    filter === item.value
+                      ? "bg-muted/70 text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   )}
-                </div>
-                <Button
-                  variant="outline"
-                  className="h-11 md:h-8"
-                  disabled={Boolean(busy)}
-                  onClick={() => void act("run", task)}
+                  key={item.value}
+                  onClick={() => setFilter(item.value)}
+                  role="tab"
+                  type="button"
                 >
-                  {busy === `run:${task.id}` && <Loader2Icon className="size-4 animate-spin" />}
-                  Run now
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      aria-label={`More actions for ${task.title}`}
-                      variant="ghost"
-                      className="size-11 md:size-8"
-                      disabled={Boolean(busy)}
-                    >
-                      {busy && busy.endsWith(task.id) && !busy.startsWith("run") ? (
-                        <Loader2Icon className="size-4 animate-spin" />
-                      ) : (
-                        <EllipsisIcon className="size-4" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {shown.length === 0 ? (
+              <p className="mt-6 text-sm text-muted-foreground">No tasks match.</p>
+            ) : (
+              <ul className="mt-4 divide-y rounded-lg border bg-card">
+                {shown.map((task) => (
+                  <li key={task.id} className="flex items-center gap-2 p-3 sm:px-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{task.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {repeatLabel(task)}
+                        <span className="hidden sm:inline"> · </span>
+                        <br className="sm:hidden" />
+                        {statusLine(task)}
+                      </p>
+                      {task.lastChatId && (
+                        <Link
+                          className="mt-1 inline-flex min-h-8 items-center text-xs underline underline-offset-4"
+                          href={`/chat/${task.lastChatId}`}
+                        >
+                          View latest result
+                        </Link>
                       )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setDraft(draftFromTask(task))}>
-                      Edit
-                    </DropdownMenuItem>
-                    {(task.enabled || task.cron || task.nextRunAt) && (
-                      <DropdownMenuItem
-                        onSelect={() => void act(task.enabled ? "pause" : "resume", task)}
-                      >
-                        {task.enabled ? "Pause" : "Resume"}
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onSelect={() => void act("delete", task)}
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="h-11 md:h-8"
+                      disabled={Boolean(busy)}
+                      onClick={() => void act("run", task)}
                     >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
-            ))}
-          </ul>
+                      {busy === `run:${task.id}` && <Loader2Icon className="size-4 animate-spin" />}
+                      Run now
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          aria-label={`More actions for ${task.title}`}
+                          variant="ghost"
+                          className="size-11 md:size-8"
+                          disabled={Boolean(busy)}
+                        >
+                          {busy && busy.endsWith(task.id) && !busy.startsWith("run") ? (
+                            <Loader2Icon className="size-4 animate-spin" />
+                          ) : (
+                            <EllipsisIcon className="size-4" />
+                          )}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setDraft(draftFromTask(task))}>
+                          Edit
+                        </DropdownMenuItem>
+                        {(task.enabled || task.cron || task.nextRunAt) && (
+                          <DropdownMenuItem
+                            onSelect={() => void act(task.enabled ? "pause" : "resume", task)}
+                          >
+                            {task.enabled ? "Pause" : "Resume"}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onSelect={() => void act("delete", task)}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
         {notice && (
           <p role="status" className="mt-3 text-sm">

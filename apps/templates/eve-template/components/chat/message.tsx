@@ -1,13 +1,25 @@
 "use client";
 
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
-import { ChevronDownIcon, ChevronRightIcon, CheckIcon, Loader2Icon, XIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckIcon,
+  CopyIcon,
+  Loader2Icon,
+  SquareIcon,
+  Volume2Icon,
+  XIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { readVoicePreferences } from "@/lib/voice/preferences";
+import { announceReplySpoken, isVoiceConversation } from "@/lib/voice/conversation";
+import { canSpeak, speak, stopSpeaking } from "@/lib/voice/speech";
 
 const STREAM_TEXT_TICK_MS = 60;
 const STREAM_TEXT_CACHE_LIMIT = 40;
@@ -35,6 +47,12 @@ export function AgentMessage({
     -1,
   );
   const isUser = message.role === "user";
+  const replyText = isUser
+    ? ""
+    : message.parts
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join("\n\n")
+        .trim();
 
   return (
     <article
@@ -61,8 +79,87 @@ export function AgentMessage({
           parts={message.parts}
           showCaret={isStreaming && message.role === "assistant"}
         />
+        {!isUser && replyText ? <ReplyActions isStreaming={isStreaming} text={replyText} /> : null}
       </div>
     </article>
+  );
+}
+
+/** Copy and read-aloud under a finished reply; also speaks new replies when the user chose that. */
+function ReplyActions({
+  isStreaming,
+  text,
+}: {
+  readonly isStreaming: boolean;
+  readonly text: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+  const wasStreaming = useRef(isStreaming);
+
+  useEffect(() => setSpeechAvailable(canSpeak()), []);
+  useEffect(() => {
+    const conversation = isVoiceConversation();
+    if (wasStreaming.current && !isStreaming && conversation && !canSpeak()) announceReplySpoken();
+    if (wasStreaming.current && !isStreaming && canSpeak()) {
+      if (conversation || readVoicePreferences().readReplies) {
+        setSpeaking(true);
+        speak(text, {
+          onEnd: () => {
+            setSpeaking(false);
+            if (conversation) announceReplySpoken();
+          },
+        });
+      }
+    }
+    wasStreaming.current = isStreaming;
+  }, [isStreaming, text]);
+
+  if (isStreaming) return null;
+
+  return (
+    <div className="-ml-2 mt-1 flex items-center gap-0.5 text-muted-foreground opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+      <Button
+        aria-label={copied ? "Copied" : "Copy reply"}
+        className="size-8"
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+      </Button>
+      {speechAvailable ? (
+        <Button
+          aria-label={speaking ? "Stop reading" : "Read aloud"}
+          className="size-8"
+          onClick={() => {
+            if (speaking) {
+              stopSpeaking();
+              setSpeaking(false);
+              return;
+            }
+            setSpeaking(true);
+            speak(text, { onEnd: () => setSpeaking(false) });
+          }}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          {speaking ? (
+            <SquareIcon className="size-3 fill-current" />
+          ) : (
+            <Volume2Icon className="size-3.5" />
+          )}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -93,15 +190,19 @@ function AgentMessageParts({
 
     const partsForGroup = pendingTools;
 
+    const groupKey = partsForGroup.map((part) => part.toolCallId).join(":");
     elements.push(
       <ToolGroup
         canRespond={canRespond}
         isSettled={isSettled}
-        key={`tools:${partsForGroup.map((part) => part.toolCallId).join(":")}`}
+        key={`tools:${groupKey}`}
         onInputResponses={onInputResponses}
         parts={partsForGroup}
       />,
     );
+    const images = partsForGroup.flatMap(generatedImages);
+    if (images.length > 0)
+      elements.push(<GeneratedImages images={images} key={`images:${groupKey}`} />);
     pendingTools = [];
   };
 
@@ -418,6 +519,38 @@ function ToolGroup({
         </CollapsibleContent>
       ) : null}
     </Collapsible>
+  );
+}
+
+type GeneratedImage = { url: string; alt: string };
+
+/** Images the generate_image tool saved; shown in the conversation, not hidden in the tool card. */
+function generatedImages(part: EveDynamicToolPart): GeneratedImage[] {
+  if (part.state !== "output-available") return [];
+  const images = asRecord(part.output)?.images;
+  if (!Array.isArray(images)) return [];
+  return images.flatMap((image) => {
+    const record = asRecord(image);
+    const url = readString(record, ["url"]);
+    return url?.startsWith("/api/media/") ? [{ url, alt: readString(record, ["alt"]) ?? "" }] : [];
+  });
+}
+
+function GeneratedImages({ images }: { readonly images: readonly GeneratedImage[] }) {
+  return (
+    <div className={cn("my-2 grid gap-2", images.length > 1 && "sm:grid-cols-2")}>
+      {images.map((image) => (
+        <a
+          className="block overflow-hidden rounded-xl border border-border/60 bg-muted/30"
+          href={image.url}
+          key={image.url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <img alt={image.alt} className="h-auto w-full" loading="lazy" src={image.url} />
+        </a>
+      ))}
+    </div>
   );
 }
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowUpIcon, Loader2Icon, SquareIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, Loader2Icon, MicIcon, SquareIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
+  useState,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -15,6 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getChatMessageLength, MAX_CHAT_MESSAGE_CHARS } from "@/lib/chat/limits";
 import { cn } from "@/lib/utils";
+import {
+  onReplySpoken,
+  setVoiceConversation,
+  useVoiceConversation,
+} from "@/lib/voice/conversation";
+import { canDictate, startDictation, stopSpeaking } from "@/lib/voice/speech";
 
 const MAX_TEXTAREA_HEIGHT = 168;
 
@@ -52,6 +59,86 @@ export function ChatComposer({
   const textareaDisabled = disabled || isBusy || isPreparing;
   const trimmedValue = value.trim();
   const isOverMaxLength = getChatMessageLength(trimmedValue) > maxLength;
+  const [dictationSupported, setDictationSupported] = useState(false);
+  const [dictationError, setDictationError] = useState("");
+  const stopDictationRef = useRef<(() => void) | null>(null);
+  const listening = stopDictationRef.current !== null;
+  const [, setListeningTick] = useState(0);
+
+  const conversation = useVoiceConversation();
+  const latest = useRef({ onSubmit, isBusy, disabled });
+  latest.current = { onSubmit, isBusy, disabled };
+
+  useEffect(() => setDictationSupported(canDictate()), []);
+  // The conversation switch outlives this composer: sending from the home page
+  // opens the chat page, whose composer continues the loop.
+  useEffect(() => () => stopDictationRef.current?.(), []);
+
+  // Hands-free turn: listen until a pause, send what was said, then wait for
+  // the reply to finish speaking (onReplySpoken) before listening again.
+  const listenForTurn = useCallback(() => {
+    if (stopDictationRef.current || latest.current.isBusy || latest.current.disabled) return;
+    setDictationError("");
+    let heard = "";
+    stopDictationRef.current = startDictation({
+      singleUtterance: true,
+      onText: (spoken) => {
+        heard = spoken;
+        onChange(spoken);
+      },
+      onEnd: (error) => {
+        stopDictationRef.current = null;
+        setListeningTick((tick) => tick + 1);
+        if (error) {
+          setDictationError(error);
+          setVoiceConversation(false);
+          return;
+        }
+        if (heard.trim()) {
+          void latest.current.onSubmit(heard.trim());
+        } else {
+          // Nothing heard: keep the conversation open but wait for a tap.
+          setVoiceConversation(false);
+        }
+      },
+    });
+    setListeningTick((tick) => tick + 1);
+  }, [onChange]);
+
+  useEffect(
+    () => onReplySpoken(() => conversation && window.setTimeout(listenForTurn, 250)),
+    [conversation, listenForTurn],
+  );
+
+  const toggleConversation = () => {
+    if (conversation) {
+      setVoiceConversation(false);
+      stopDictationRef.current?.();
+      stopSpeaking();
+      return;
+    }
+    setVoiceConversation(true);
+    listenForTurn();
+  };
+
+  const toggleDictation = () => {
+    if (stopDictationRef.current) {
+      stopDictationRef.current();
+      return;
+    }
+    setDictationError("");
+    const before = value.trimEnd();
+    stopDictationRef.current = startDictation({
+      onText: (spoken) => onChange(before ? `${before} ${spoken}` : spoken),
+      onEnd: (error) => {
+        stopDictationRef.current = null;
+        setListeningTick((tick) => tick + 1);
+        if (error) setDictationError(error);
+        textareaRef.current?.focus();
+      },
+    });
+    setListeningTick((tick) => tick + 1);
+  };
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -81,6 +168,7 @@ export function ChatComposer({
       return;
     }
 
+    stopDictationRef.current?.();
     void onSubmit(text);
   }, [disabled, isBusy, isPreparing, maxLength, onSubmit, value]);
 
@@ -129,16 +217,62 @@ export function ChatComposer({
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={listening ? "Listening…" : placeholder}
         ref={textareaRef}
         rows={1}
         value={value}
       />
+      {dictationError ? (
+        <p className="px-4 text-xs text-destructive sm:px-5" role="alert">
+          {dictationError}
+        </p>
+      ) : null}
       <div className="flex min-h-12 items-center justify-between gap-2 px-3 pb-3 pt-1 sm:gap-3 sm:px-4 sm:pb-3">
         <div className="-ml-1 flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           {footerStart ?? <span className="block h-8" />}
         </div>
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {dictationSupported ? (
+            <Button
+              aria-label={conversation ? "End voice conversation" : "Start voice conversation"}
+              aria-pressed={conversation}
+              className={cn(
+                "size-9 rounded-full text-muted-foreground",
+                conversation &&
+                  "bg-foreground text-background hover:bg-foreground/85 hover:text-background",
+              )}
+              disabled={disabled}
+              onClick={toggleConversation}
+              size="icon-xs"
+              title={
+                conversation ? "End voice conversation" : "Voice conversation: talk, listen, repeat"
+              }
+              type="button"
+              variant="ghost"
+            >
+              <AudioLinesIcon
+                className={cn("size-4", conversation && listening && "animate-pulse")}
+              />
+            </Button>
+          ) : null}
+          {dictationSupported && !conversation && !isBusy && !isPreparing ? (
+            <Button
+              aria-label={listening ? "Stop dictation" : "Dictate"}
+              aria-pressed={listening}
+              className={cn(
+                "size-9 rounded-full text-muted-foreground",
+                listening && "bg-destructive/10 text-destructive hover:bg-destructive/15",
+              )}
+              disabled={disabled}
+              onClick={toggleDictation}
+              size="icon-xs"
+              title={dictationError || (listening ? "Stop dictation" : "Dictate")}
+              type="button"
+              variant="ghost"
+            >
+              <MicIcon className={cn("size-4", listening && "animate-pulse")} />
+            </Button>
+          ) : null}
           {isBusy ? (
             <Button
               aria-label="Stop response"

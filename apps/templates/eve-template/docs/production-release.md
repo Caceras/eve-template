@@ -1,13 +1,51 @@
-# September 2026 operator release
+# Production release (ai-chat.se)
 
-Host: ai-chat.se, Dokploy application YZiCsMtzVXR5vLrO8AgWM, Caceras/eve-template main.
+Host: ai-chat.se, Dokploy application `YZiCsMtzVXR5vLrO8AgWM`, built from
+`Caceras/eve-template` `main` (auto-deploy is off; deploy from Dokploy after a
+merge). One container runs Next.js on port 3000 and the eve runtime on
+127.0.0.1:4274 under `scripts/start-self-hosted.mjs`. The persistent volume
+`eve-chat-data` is mounted at `/app/.eve/.workflow-data`.
 
-Temporary login: Riki / 1010, configurable with EVE_CHAT_USERNAME and EVE_CHAT_PASSWORD. Session signatures require an independent EVE_SESSION_SECRET. This is a shared operator account, not a multi-user service. The local login limiter supports the current single replica; use shared rate-limit storage before scaling.
+## What lives on the volume
 
-Model access comes from Vercel AI Gateway or OpenRouter, chosen in Settings with keys saved encrypted on the volume (AI_GATEWAY_API_KEY and OPENROUTER_API_KEY are fallbacks). See [SELF_HOSTING.md](./SELF_HOSTING.md). Set a spending limit on each provider key; each session also stops at $25 of model cost. Profile memory uses EVE_MEMORY_DIR on the existing persistent volume, separately from browser-local chat history. Browser history does not synchronize across devices. Sandbox work files are not guaranteed to persist across replacement.
+- `chats.sqlite`: chat history (`EVE_CHAT_DB_PATH` overrides)
+- `profile.sqlite` inside `EVE_MEMORY_DIR`: long-term memory
+- `settings/*.enc`: provider keys, GitHub and Telegram tokens, push keys and
+  devices, scheduled tasks (encrypted with a key derived from `EVE_SESSION_SECRET`)
+- eve's workflow data for durable sessions
 
-Build: pnpm install --frozen-lockfile, pnpm build:eve, pnpm build. Start: node scripts/start-self-hosted.mjs. Node 24+ required, including node:sqlite. Proxy forwards the workflow callback prefix as well as the existing eve routes.
+Never replace the volume with an empty one, and keep `EVE_SESSION_SECRET`
+with it: a new secret makes the saved settings unreadable.
 
-Validation: pnpm typecheck and node scripts/test-production.mjs; production builds for eve and Next.js. Verify the public health route, logged-out Agent page, username login, a real streamed model response, resumed history, and profile-memory recall after deployment.
+## Access
 
-Rollback: pre-release service spec and workflow archive are stored in /root/aegentica-backups/20260922-before-polish on the VPS, with image agents-eve-chat-87enki:pre-polish-20260922 retained. Roll back the image and prior service environment together; never replace the persistent volume with an empty one. Archive integrity was checked; a complete restore was not rehearsed.
+Operator login is set with `EVE_CHAT_USERNAME` and `EVE_CHAT_PASSWORD`; change
+the initial password. It is a single operator account, not a multi-user
+service. The login limiter is per process, which suits the single replica.
+
+## Model access
+
+Choose Vercel AI Gateway or OpenRouter in Settings; keys are saved encrypted
+on the volume (`AI_GATEWAY_API_KEY` and `OPENROUTER_API_KEY` are fallbacks).
+Set a spending limit on each key; each session also stops at $25 of model
+cost. Keep a second provider's key saved: if one provider rejects its key,
+switching is one click. See [SELF_HOSTING.md](./SELF_HOSTING.md).
+
+## Build and verify
+
+Build: `pnpm install --frozen-lockfile`, `pnpm build:eve`, `pnpm build`
+(Node 24). After a deploy, check:
+
+1. `/api/health` reports `app`, `eve` and `storage` ready.
+2. Logged out, `/api/chats` and `/api/settings/*` return 401.
+3. `/sw.js`, `/manifest.webmanifest` and `/icons/icon-192.png` load.
+4. Signed in: Settings → the active provider's **Test connection** succeeds, a
+   chat streams a reply and reappears in the sidebar after a reload, and the
+   Memory and Tasks pages load.
+
+## Rollback
+
+Redeploy the previous commit from Dokploy. Code changes never migrate data
+destructively: the SQLite files add tables and columns only. A backup of the
+pre-polish image and workflow archive from 22 September 2026 is kept on the
+VPS under `/root/aegentica-backups/20260922-before-polish`.
