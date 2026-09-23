@@ -39,6 +39,7 @@ export function useMobileSidebarSwipe({
         x: event.clientX,
         y: event.clientY,
       };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
     },
     [open],
   );
@@ -65,6 +66,7 @@ export function useMobileSidebarSwipe({
         x: event.clientX,
         y: event.clientY,
       };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
     },
     [open],
   );
