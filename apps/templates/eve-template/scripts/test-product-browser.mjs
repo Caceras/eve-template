@@ -30,6 +30,7 @@ const snapshot = async (name) => {
 async function navigate(path = "/") {
   const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" });
   assert.equal(response.status(), 200, path);
+  await page.getByRole("button", { name: "Search pages and conversations", exact: true }).waitFor();
   await page.getByRole("main").waitFor();
   return response;
 }
