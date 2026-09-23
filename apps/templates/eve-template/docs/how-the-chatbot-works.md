@@ -945,3 +945,7 @@ the UI and continue from eve's stream cursor. The static shell keeps navigation
 smooth. The final snapshot keeps the event log canonical.
 
 That is the core design.
+
+## Profiles, modes and attachments
+
+The main composer can select an encrypted saved agent profile, a Chat/Research/Image intent and image/PDF/text attachments. Draft files are held in IndexedDB until the chat obtains its canonical id; they are sent as the existing eve client's standard AI SDK content, not a separate transport. The authenticated server resolves profile instructions before a turn and the existing dynamic router selects the model at each step. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md) for delegation and permission boundaries.

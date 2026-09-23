@@ -23,6 +23,7 @@ import {
 } from "@/lib/chat/provisional-chat";
 import { createClientChat, getClientChat } from "@/lib/chat/persistence-client";
 import type { ActiveChat, SetupStatus } from "@/lib/chat/types";
+import { moveComposerDraft } from "@/lib/chat/composer-draft";
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
   isBusy: false,
@@ -110,6 +111,7 @@ export function SessionChatPage({
           return;
         }
 
+        await moveComposerDraft(chatId, created.id);
         writePendingChatMessage(created.id, pendingMessage);
         clearPendingChatMessage(chatId);
         touchChat(created);

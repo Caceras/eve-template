@@ -5,6 +5,7 @@ import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
 import { getSetupStatus } from "@/lib/setup";
 import { operatorAuth } from "@/lib/operator";
 import { isInternalRequest } from "@/lib/internal-auth";
+import { profileAttributes } from "@/lib/agent-profiles";
 
 /** An absent or unknown model falls back to the active provider's default at each model step. */
 function chatModelAttribute(request: Request): Record<string, string> {
@@ -52,7 +53,10 @@ export const passwordEveAuth: AuthFn<Request> = async (request) => {
     return null;
   }
 
-  return operatorAuth("password", chatModelAttribute(request));
+  return operatorAuth("password", {
+    ...(await profileAttributes(request)),
+    ...chatModelAttribute(request),
+  });
 };
 
 /** Scheduled tasks call the eve API from inside the server as the operator. */

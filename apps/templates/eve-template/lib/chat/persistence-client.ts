@@ -147,3 +147,18 @@ export async function skipClientChatAuthorization(
     ? skipLocalChatAuthorization(input)
     : skipChatAuthorizationAction(input);
 }
+
+/** Shared bounded paging for navigation/search; the server scopes every page to the viewer. */
+export async function listClientChatsPage(storageMode: StorageMode, cursor: string | null = null) {
+  if (storageMode === "browser") return { items: listLocalChats(), nextCursor: null };
+  const response = await fetch(
+    `/api/chats${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) throw new Error("Could not load conversations.");
+  const data = await response.json();
+  return {
+    items: data.chats as import("./types").ChatListItem[],
+    nextCursor: data.nextCursor as string | null,
+  };
+}

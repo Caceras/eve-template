@@ -1,4 +1,5 @@
 "use client";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 import { CheckIcon, MenuIcon, PanelLeftIcon, UploadIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -101,6 +102,15 @@ export function AgentChatShell({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileSidebarOpen]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 768px)");
+    const close = () => {
+      if (desktop.matches) setMobileSidebarOpen(false);
+    };
+    desktop.addEventListener("change", close);
+    return () => desktop.removeEventListener("change", close);
+  }, []);
 
   const requestSignIn = useCallback((draft?: string) => {
     setDraftBeforeSignIn(draft?.trim() ?? "");
@@ -387,39 +397,33 @@ export function AgentChatShell({
           {children}
         </main>
 
-        <div
-          className={cn(
-            "fixed inset-0 z-40 bg-black/35 backdrop-blur-[1px] transition-opacity md:hidden",
-            mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-          )}
-          onClick={() => setMobileSidebarOpen(false)}
-        />
-        <div
-          aria-hidden={!mobileSidebarOpen}
-          aria-modal={mobileSidebarOpen || undefined}
-          className={cn(
-            "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:hidden",
-            mobileSidebarOpen ? "translate-x-0" : "pointer-events-none -translate-x-full",
-          )}
-          inert={!mobileSidebarOpen}
-          role="dialog"
-        >
-          <ChatSidebar
-            activeChatId={activeChatId}
-            chats={history}
-            className="w-[86vw] max-w-[21rem] shadow-2xl"
-            hasMoreChats={Boolean(nextCursor)}
-            isLoadingChats={historyLoading}
-            isLoadingMore={loadingMore}
-            onDeleteChat={handleDeleteChat}
-            onLoadMoreChats={loadMoreChats}
-            onNavigate={handleSidebarNavigate}
-            onNewChat={startNewChat}
-            onSignIn={() => requestSignIn()}
-            setupStatus={setupStatusState}
-            viewer={viewerState}
-          />
-        </div>
+        <Dialog open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <DialogContent
+            showCloseButton={false}
+            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 p-0 sm:max-w-[21rem]"
+          >
+            <DialogTitle className="sr-only">Workspace navigation</DialogTitle>
+            <DialogDescription className="sr-only">
+              Pages and recent conversations
+            </DialogDescription>
+            <ChatSidebar
+              activeChatId={activeChatId}
+              chats={history}
+              className="w-[86vw] max-w-[21rem] shadow-2xl"
+              hasMoreChats={Boolean(nextCursor)}
+              isLoadingChats={historyLoading}
+              isLoadingMore={loadingMore}
+              onDeleteChat={handleDeleteChat}
+              onLoadMoreChats={loadMoreChats}
+              onNavigate={handleSidebarNavigate}
+              onToggleSidebar={() => setMobileSidebarOpen(false)}
+              onNewChat={startNewChat}
+              onSignIn={() => requestSignIn()}
+              setupStatus={setupStatusState}
+              viewer={viewerState}
+            />
+          </DialogContent>
+        </Dialog>
 
         <SignInModal
           authMode={setupStatusState.authMode}

@@ -12,3 +12,5 @@ Keep the docs true in the same change: `README.md` for the feature list, `docs/W
 
 Use `eve` lowercase in user-facing copy, docs, prompts, and comments. Do not
 title-case it unless it is part of an exact external title or quoted text.
+
+For saved agents, attachments or navigation, read `docs/AGENTS_AND_ORCHESTRATION.md` and `docs/RELEASE_VERIFICATION.md`. Profile text is not a permission grant. Prefer eve workflows and client content types over parallel runtimes or transports. Test both logged-out APIs and the actual self-hosted operator flow.

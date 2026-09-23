@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { clearComposerStorage } from "@/lib/chat/composer-draft";
 import type { AuthMode, Viewer } from "@/lib/chat/types";
 
 export function UserMenu({
@@ -88,7 +89,8 @@ export function UserMenu({
                 : authClient.signOut().then(() => undefined);
 
             void signOut
-              .then(() => {
+              .then(async () => {
+                await clearComposerStorage().catch(() => {});
                 router.replace("/");
                 router.refresh();
               })

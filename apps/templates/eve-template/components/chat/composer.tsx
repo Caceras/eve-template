@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { ComposerWorkspace } from "./composer-workspace";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getChatMessageLength, MAX_CHAT_MESSAGE_CHARS } from "@/lib/chat/limits";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ export function ChatComposer({
   readonly value: string;
 }) {
   const composerId = useId();
+  const [workspace, setWorkspace] = useState({ hasFiles: false, busy: false });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const textareaDisabled = disabled || isBusy || isPreparing;
   const trimmedValue = value.trim();
@@ -163,14 +165,21 @@ export function ChatComposer({
   }, [autoFocus, textareaDisabled]);
 
   const submitValue = useCallback(() => {
-    const text = value.trim();
-    if (!text || disabled || isBusy || isPreparing || getChatMessageLength(text) > maxLength) {
+    const text = value.trim() || (workspace.hasFiles ? "Analyze the attached files." : "");
+    if (
+      !text ||
+      disabled ||
+      isBusy ||
+      isPreparing ||
+      workspace.busy ||
+      getChatMessageLength(text) > maxLength
+    ) {
       return;
     }
 
     stopDictationRef.current?.();
     void onSubmit(text);
-  }, [disabled, isBusy, isPreparing, maxLength, onSubmit, value]);
+  }, [disabled, isBusy, isPreparing, maxLength, onSubmit, value, workspace]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -203,6 +212,7 @@ export function ChatComposer({
       data-chat-composer
       onSubmit={handleSubmit}
     >
+      <ComposerWorkspace disabled={textareaDisabled} onState={setWorkspace} />
       <label className="sr-only" htmlFor={composerId}>
         Message Ægentica
       </label>
@@ -237,7 +247,7 @@ export function ChatComposer({
               aria-label={conversation ? "End voice conversation" : "Start voice conversation"}
               aria-pressed={conversation}
               className={cn(
-                "size-9 rounded-full text-muted-foreground",
+                "size-11 rounded-full md:size-9 text-muted-foreground",
                 conversation &&
                   "bg-foreground text-background hover:bg-foreground/85 hover:text-background",
               )}
@@ -260,7 +270,7 @@ export function ChatComposer({
               aria-label={listening ? "Stop dictation" : "Dictate"}
               aria-pressed={listening}
               className={cn(
-                "size-9 rounded-full text-muted-foreground",
+                "size-11 rounded-full md:size-9 text-muted-foreground",
                 listening && "bg-destructive/10 text-destructive hover:bg-destructive/15",
               )}
               disabled={disabled}
@@ -276,7 +286,7 @@ export function ChatComposer({
           {isBusy ? (
             <Button
               aria-label="Stop response"
-              className="size-9 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/85"
+              className="size-11 rounded-full md:size-9 bg-foreground text-background shadow-none hover:bg-foreground/85"
               onClick={onStop}
               size="icon-sm"
               type="button"
@@ -286,7 +296,7 @@ export function ChatComposer({
           ) : isPreparing ? (
             <Button
               aria-label="Preparing chat"
-              className="size-9 rounded-full bg-foreground/75 text-background"
+              className="size-11 rounded-full md:size-9 bg-foreground/75 text-background"
               disabled
               size="icon-xs"
               type="button"
@@ -296,8 +306,13 @@ export function ChatComposer({
           ) : (
             <Button
               aria-label="Send message"
-              className="size-9 cursor-pointer rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-25"
-              disabled={disabled || trimmedValue.length === 0 || isOverMaxLength}
+              className="size-11 cursor-pointer md:size-9 rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-25"
+              disabled={
+                disabled ||
+                workspace.busy ||
+                (!workspace.hasFiles && trimmedValue.length === 0) ||
+                isOverMaxLength
+              }
               size="icon-xs"
               type="submit"
             >

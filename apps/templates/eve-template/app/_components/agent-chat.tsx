@@ -1,6 +1,7 @@
 "use client";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { modelRequestHeaders } from "@/lib/chat/model-preference";
+import { composerTurn, clearComposerFiles, readComposerDraft } from "@/lib/chat/composer-draft";
 
 import { Client } from "eve/client";
 import type {
@@ -15,7 +16,8 @@ import type {
   SendTurnOptions,
 } from "eve/client";
 import type { EveMessage } from "eve/react";
-import { defaultMessageReducer, useEveAgent } from "eve/react";
+import { defaultMessageReducer } from "eve/react";
+import { useEveAgent } from "@/lib/chat/use-reliable-eve-agent";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
@@ -658,14 +660,17 @@ export function AgentChatSession({
 
       try {
         startFinalizingTurn();
-        await agent.send(message, {
-          headers: modelRequestHeaders(),
+        const turn = await composerTurn(chatId, message);
+        await agent.send(turn.message, {
+          headers: turn.headers,
           clientContext: createConnectionClientContext(
             enabledConnections,
             setupStatus.connectionsAvailable,
             setupStatus.configuredConnections,
           ),
         });
+        // Clearing local attachment previews must not turn an accepted send into a retry.
+        await clearComposerFiles(chatId).catch(() => {});
       } catch (error) {
         if (isAbortError(error)) {
           return;
@@ -728,7 +733,13 @@ export function AgentChatSession({
 
       try {
         startFinalizingTurn();
-        await agent.respond(responses, { headers: modelRequestHeaders() });
+        const draft = await readComposerDraft(activeChatIdRef.current ?? "new");
+        const headers: Record<string, string> = {
+          ...modelRequestHeaders(),
+          "x-aegentica-mode": draft.mode,
+        };
+        if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
+        await agent.respond(responses, { headers });
       } catch (error) {
         stopFinalizingTurn();
         setClientError(error instanceof Error ? error.message : "Failed to send response.");

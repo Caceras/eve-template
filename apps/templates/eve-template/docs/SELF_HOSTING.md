@@ -130,3 +130,9 @@ switches provider, sends one message and asserts that eve's `step.started`
 event used the requested model on that provider. With real keys this sends real,
 token-consuming requests. With placeholder keys each provider must reject the
 key, which still proves the request reached the right provider.
+
+## Orchestration release
+
+Saved agents and the image library reuse the existing persistent volume. Keep `settings/agents.enc.json`, generated media and metadata together with existing settings, chats, memory and workflow data; preserve `EVE_SESSION_SECRET`. No new database, Vercel hosting dependency, host Docker socket or public runtime port is introduced. The application remains a single-operator installation, not a public multi-tenant agent service.
+
+The intended primary host is `aegentica.se`; `ai-chat.se` remains the working alias until DNS, domain routing and TLS are verified. Configure both domains to this same application, not separate processes with diverging data. Verify the `orchestration-2026-09-23` health release field after deployment. See [release verification](./RELEASE_VERIFICATION.md) and [agent storage](./AGENTS_AND_ORCHESTRATION.md#storage-and-limits).

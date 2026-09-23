@@ -6,7 +6,7 @@ let attempts = 0;
 export const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-async function readBody(request: Request) {
+async function readBody(request: Request, maxBytes: number) {
   const reader = request.body?.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -15,7 +15,7 @@ async function readBody(request: Request) {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 16_384) {
+      if (size > maxBytes) {
         await reader.cancel();
         return "too-large" as const;
       }
@@ -38,6 +38,7 @@ export async function handleOperatorSettings(
   request: Request,
   handlers: {
     read: () => Promise<Response>;
+    maxBytes?: number;
     write: (body: Record<string, unknown>, request: Request) => Promise<Response>;
   },
 ) {
@@ -51,7 +52,7 @@ export async function handleOperatorSettings(
       attempts = 0;
     }
     if (++attempts > 30) return json({ error: "Too many requests. Try again in a minute." }, 429);
-    const body = await readBody(request);
+    const body = await readBody(request, Math.min(65_536, handlers.maxBytes ?? 16_384));
     if (body === "too-large") return json({ error: "Request too large." }, 413);
     if (!body) return json({ error: "Invalid request." }, 400);
     return await handlers.write(body, request);

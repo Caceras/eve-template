@@ -1,3 +1,13 @@
+# Ægentica product fork
+
+![Ægentica](./apps/templates/eve-template/public/aegentica.svg)
+
+This repository contains the Ægentica product in [`apps/templates/eve-template`](./apps/templates/eve-template), plus the upstream eve framework, docs, registry and fixtures. Production runs on **HostUp + Dokploy**, not Vercel hosting. Start with the [product README](./apps/templates/eve-template/README.md), [design contract](./apps/templates/eve-template/docs/DESIGN.md), [agent orchestration](./apps/templates/eve-template/docs/AGENTS_AND_ORCHESTRATION.md) and [release verification](./apps/templates/eve-template/docs/RELEASE_VERIFICATION.md).
+
+The framework reference below is preserved from upstream; its generic deployment examples are not this product's production configuration. Framework names and attribution remain intact.
+
+---
+
 <div align="center">
   <a href="https://eve.dev/">
     <picture>

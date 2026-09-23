@@ -148,3 +148,13 @@ node scripts/test-push-and-task-runner.mjs       # needs Node 24: notifications 
 node scripts/test-memory-store.mjs               # needs Node 24: Memory page and eve fileMemory share one document
 node scripts/test-image-generation.mjs           # needs Node 24: generate_image, media storage and route
 ```
+
+## Main composer and workspace navigation
+
+The main persisted chat now has the same attachment path as eve's official client: structured AI SDK file content sent through `useEveAgent`, not a separate upload server. Attach or paste PNG/JPEG/WebP/GIF images, PDF or text: at most four files and 6 MB total per turn. Files persist in this device's IndexedDB through draft, provisional chat and canonical chat navigation, then clear after an accepted send. Unsent files are device-local, not synchronized to other devices. Disabling site storage prevents this draft workflow; errors are shown rather than pretending files were sent. Sign-out clears local composer drafts. Image input requires a catalog model marked Vision; changing to an incompatible model yields a recovery error. Model support for documents can still vary by provider.
+
+Choose Chat, Research or Image beside the agent selector without changing conversation. Research and Image supply turn instructions; they are not new runtimes or fake modality endpoints. Image uses the existing `generate_image` tool. Voice retains the device dictation/read-aloud/hands-free loop, not native real-time audio/video.
+
+`/agents` creates saved profiles and `/images` lists generated images, with authenticated details, prompt/model metadata when present, save and confirmed deletion. Older images without metadata remain readable. The gallery scans at most 3,000 directory entries / 1,000 image files and pages 48 at a time; the limit is disclosed. Media responses are private and `no-store`, including after sign-out. Deleting an image also removes it from chats referencing that file.
+
+The sidebar uses shared navigation metadata. Global Search (Cmd/Ctrl+K) includes pages, actions, settings and up to 100 recent conversations. Mobile navigation uses the existing Radix Dialog for focus trapping and Escape handling, closes on navigation, and closes when resized to desktop. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).

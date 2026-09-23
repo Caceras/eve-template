@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentMessage } from "./native-agent-message";
 
-const AGENT_NAME = "Web channel";
+const AGENT_NAME = "Ægentica";
 
 export function NativeAgentChat({
   sessionId,
@@ -115,7 +115,7 @@ export function NativeAgentChat({
   };
 
   const composer = (
-    <PromptInput onSubmit={handleSubmit}>
+    <PromptInput data-chat-composer onSubmit={handleSubmit}>
       <PromptInputTextarea
         disabled={isResuming}
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
@@ -134,7 +134,7 @@ export function NativeAgentChat({
   );
 
   return (
-    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <section aria-label="Channels" className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {showConversationLayout ? (
         <ChatHeader canStartNewChat={activeSessionId !== undefined} />
       ) : null}
@@ -200,7 +200,7 @@ export function NativeAgentChat({
           {composer}
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

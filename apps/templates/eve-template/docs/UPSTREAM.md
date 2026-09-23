@@ -58,3 +58,9 @@ pnpm eval
 ```
 
 Then review `packages/eve/CHANGELOG.md` for removed/deprecated authoring APIs and update the feature matrix if a public capability has changed classification.
+
+## Orchestration additions
+
+The operator layer reuses `defineDynamic` / user-role instructions, the existing step-level model router, `defineWorkflowTool` + `ctx.agent`, `always()` approval, AI SDK `UserContent`, the eve React transport and the repository's shadcn/Radix Dialog, DropdownMenu, Select and Command primitives. No framework-core fork, duplicate streaming transport, second agent runtime or custom modal focus manager is introduced.
+
+Version-sensitive sources are the installed `eve/docs` instructions, dynamic-capabilities, subagents, workflow tools, client messages and self-hosting guides; the official AI Elements Prompt Input / Attachments / Model Selector references; shadcn Command/Dialog; and Dokploy application/domain documentation. Existing vendored AI Elements retain their attribution. Only product-specific state, persistence and orchestration glue is authored here.

@@ -41,7 +41,9 @@ export default defineTool({
       abortSignal: AbortSignal.timeout(120_000),
     });
     const saved = await Promise.all(
-      images.map((image) => saveMedia(image.uint8Array, image.mediaType)),
+      images.map((image) =>
+        saveMedia(image.uint8Array, image.mediaType, { prompt, model: IMAGE_MODEL }),
+      ),
     );
     return {
       images: saved.map(({ url }) => ({ url, alt: prompt.slice(0, 200) })),

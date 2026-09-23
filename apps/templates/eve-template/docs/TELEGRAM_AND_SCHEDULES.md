@@ -115,3 +115,7 @@ starting an agent session, and a scheduled task dispatched by the real
 one-minute schedule and mirrored to Telegram. Run the app with `FAKE_TELEGRAM_LOG` set and a Node
 `--import` preload that answers `api.telegram.org` calls locally, so no real bot
 is needed.
+
+## Relationship to saved agents
+
+The new Agents UI and composer profile selection are for the password-authenticated web operator. A web profile is not automatically assigned to Telegram, Slack or a scheduled task. These channels retain their existing shared operator identity, memory, default model and approval behavior. They may invoke operator-only saved-agent tools when those tools are actually present in their compiled surface. No new background runner or channel is created by saving a profile.
