@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
+import { SheetClose } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,7 @@ export function ChatSidebar({
   activeChatId,
   className,
   chats,
+  closeNavigationLinks = false,
   hasMoreChats = false,
   isLoadingChats = false,
   isLoadingMore = false,
@@ -50,6 +52,7 @@ export function ChatSidebar({
   readonly activeChatId: string | null;
   readonly className?: string;
   readonly chats: readonly ChatListItem[];
+  readonly closeNavigationLinks?: boolean;
   readonly hasMoreChats?: boolean;
   readonly isLoadingChats?: boolean;
   readonly isLoadingMore?: boolean;
@@ -156,39 +159,57 @@ export function ChatSidebar({
           <p className="px-2 pb-1 pt-1 text-[11px] font-medium text-muted-foreground/60">
             Workspace
           </p>
-          {primaryWorkspacePages.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => onNavigate?.()}
-              aria-current={pathname === href ? "page" : undefined}
-              className={cn(
-                "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
-                pathname === href ? activeRowClass : inactiveRowClass,
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {label}
-            </Link>
-          ))}
+          {primaryWorkspacePages.map(({ href, label, icon: Icon }) => {
+            const link = (
+              <Link
+                href={href}
+                onClick={() => onNavigate?.()}
+                aria-current={pathname === href ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
+                  pathname === href ? activeRowClass : inactiveRowClass,
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </Link>
+            );
+
+            return closeNavigationLinks ? (
+              <SheetClose asChild key={href}>
+                {link}
+              </SheetClose>
+            ) : (
+              <div key={href}>{link}</div>
+            );
+          })}
           <p className="px-2 pb-1 pt-3 text-[11px] font-medium text-muted-foreground/60">
             More
           </p>
-          {systemWorkspacePages.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => onNavigate?.()}
-              aria-current={pathname === href ? "page" : undefined}
-              className={cn(
-                "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
-                pathname === href ? activeRowClass : inactiveRowClass,
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {label}
-            </Link>
-          ))}
+          {systemWorkspacePages.map(({ href, label, icon: Icon }) => {
+            const link = (
+              <Link
+                href={href}
+                onClick={() => onNavigate?.()}
+                aria-current={pathname === href ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
+                  pathname === href ? activeRowClass : inactiveRowClass,
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </Link>
+            );
+
+            return closeNavigationLinks ? (
+              <SheetClose asChild key={href}>
+                {link}
+              </SheetClose>
+            ) : (
+              <div key={href}>{link}</div>
+            );
+          })}
         </nav>
         </div>
 

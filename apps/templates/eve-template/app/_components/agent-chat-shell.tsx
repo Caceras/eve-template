@@ -71,7 +71,6 @@ export function AgentChatShell({
   const activeChatIdRef = useRef(activeChatId);
   const setupReady = setupStatusState.appReady;
   const router = useRouter();
-  const pathname = usePathname();
   const { drawerHandlers, surfaceHandlers } = useMobileSidebarSwipe({
     open: mobileSidebarOpen,
     onOpenChange: setMobileSidebarOpen,
@@ -80,10 +79,6 @@ export function AgentChatShell({
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
-
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     cursorRef.current = nextCursor;
@@ -395,12 +390,6 @@ export function AgentChatShell({
         <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
           <SheetContent
             {...drawerHandlers}
-            onClickCapture={(event) => {
-              const target = event.target as HTMLElement;
-              if (target.closest("a[href]")) {
-                setMobileSidebarOpen(false);
-              }
-            }}
             showCloseButton={false}
             side="left"
             className="h-dvh w-[86vw] max-w-[21rem] gap-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
@@ -411,6 +400,7 @@ export function AgentChatShell({
             </SheetDescription>
             <ChatSidebar
               activeChatId={activeChatId}
+              closeNavigationLinks
               chats={history}
               className="w-[86vw] max-w-[21rem] shadow-2xl"
               hasMoreChats={Boolean(nextCursor)}
