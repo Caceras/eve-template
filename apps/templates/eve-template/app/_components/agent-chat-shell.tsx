@@ -71,6 +71,7 @@ export function AgentChatShell({
   const activeChatIdRef = useRef(activeChatId);
   const setupReady = setupStatusState.appReady;
   const router = useRouter();
+  const pathname = usePathname();
   const { drawerHandlers, surfaceHandlers } = useMobileSidebarSwipe({
     open: mobileSidebarOpen,
     onOpenChange: setMobileSidebarOpen,
@@ -79,6 +80,10 @@ export function AgentChatShell({
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     cursorRef.current = nextCursor;
