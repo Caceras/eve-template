@@ -1,0 +1,70 @@
+name: Aegentica exact release repair
+on:
+  push:
+    branches: [codex/aegentica-orchestration-release]
+    paths: [.github/workflows/aegentica-release-repair.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'Caceras/eve-template' && github.ref == 'refs/heads/codex/aegentica-orchestration-release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('node:fs');
+            const prefix='apps/templates/eve-template/';
+            const additions=[];
+            function edit(path, replacements) {
+              let text=fs.readFileSync(prefix+path,'utf8');
+              for(const [before,after] of replacements) {
+                if(text.split(before).length!==2) throw new Error('Ambiguous edit: '+path+' '+before);
+                text=text.replace(before,after);
+              }
+              additions.push({path:prefix+path,contents:Buffer.from(text).toString('base64')});
+            }
+            edit('app/_components/native-agent-chat.tsx',[
+              ['<main className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">','<section aria-label="Channels" className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">'],
+              ['</main>','</section>'],
+              ['<PromptInput onSubmit={handleSubmit}>','<PromptInput data-chat-composer onSubmit={handleSubmit}>'],
+              ['const AGENT_NAME = "Web channel";','const AGENT_NAME = "Ægentica";'],
+            ]);
+            edit('scripts/test-product-browser.mjs',[
+              ['errors.push(error.message)','errors.push(page.url() + " — " + error.message)'],
+            ]);
+            const diagnostic=`import { chromium } from "/tmp/aegentica-browser/node_modules/playwright/index.mjs";
+            import { writeFile } from "node:fs/promises";
+            const browser=await chromium.launch();
+            const page=await browser.newPage();
+            const messages=[];
+            page.on('console',m=>{if(m.type()==='error')messages.push(page.url()+' '+m.text());});
+            page.on('pageerror',e=>messages.push(page.url()+' '+(e.stack||e.message)));
+            try {
+              let ready=false;
+              for(let n=0;n<45;n++){try{await fetch('http://localhost:3001/icon.svg',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await new Promise(r=>setTimeout(r,500));}}
+              if(!ready)throw new Error('Diagnostic server did not start.');
+              await page.goto('http://localhost:3001',{waitUntil:'domcontentloaded',timeout:60000});
+              await page.getByRole('button',{name:'Sign in',exact:true}).first().click();
+              await page.getByLabel('Username',{exact:true}).fill(process.env.EVE_CHAT_USERNAME);
+              await page.getByLabel('Password',{exact:true}).fill(process.env.EVE_CHAT_PASSWORD);
+              await page.locator('form').getByRole('button',{name:'Sign in',exact:true}).click();
+              await page.waitForFunction(async()=>(await fetch('/api/agents')).status===200);
+              await page.getByLabel('Password',{exact:true}).waitFor({state:'hidden'});
+              for(const path of ['/','/agents','/capabilities','/images','/tasks','/memory','/settings','/settings/voice','/settings/notifications','/settings/integrations','/library','/session','/native']){
+                await page.goto('http://localhost:3001'+path,{waitUntil:'domcontentloaded',timeout:60000});
+                await page.waitForTimeout(1000);
+              }
+            }catch(e){messages.push(String(e));}finally{
+              await writeFile(process.env.QA_ARTIFACTS+'/hydration-diagnostics.json',JSON.stringify(messages,null,2));
+              console.log(messages.join('\\n'));
+              await browser.close();
+            }
+            `;
+            additions.push({path:prefix+'scripts/diagnose-hydration.mjs',contents:Buffer.from(diagnostic).toString('base64')});
+            const result=await github.graphql(`mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid url}}}`,{input:{branch:{repositoryNameWithOwner:'Caceras/eve-template',branchName:'codex/aegentica-orchestration-release'},expectedHeadOid:context.sha,message:{headline:'fix: preserve one main landmark and diagnose authenticated hydration',body:'Keep the native channel composer discoverable and preserve strict browser coverage. Capture authenticated development component traces rather than suppressing hydration errors.\n\nSigned-off-by: Riki Caceras <rikicaceras@gmail.com>'},fileChanges:{additions}}});
+            core.info(JSON.stringify(result.createCommitOnBranch.commit));
