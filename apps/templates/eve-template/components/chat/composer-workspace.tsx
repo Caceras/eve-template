@@ -137,7 +137,7 @@ export function ComposerWorkspace({
               type="button"
               size="sm"
               variant="ghost"
-              className="h-8 max-w-[45%] gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted"
+              className="h-11 max-w-[45%] gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted md:h-8"
               aria-label="Choose agent"
             >
               <BotIcon className="size-3.5 shrink-0" />
@@ -174,7 +174,7 @@ export function ComposerWorkspace({
               disabled={disabled || busy}
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted"
+              className="h-11 gap-1.5 rounded-full bg-muted/55 px-2.5 text-xs font-medium text-foreground/80 hover:bg-muted md:h-8"
               aria-label="Choose input mode"
             >
               <ModeIcon className="size-3.5" />
@@ -206,7 +206,7 @@ export function ComposerWorkspace({
           type="button"
           variant="ghost"
           size="icon"
-          className="ml-auto size-9 shrink-0 rounded-full text-muted-foreground hover:bg-muted"
+          className="ml-auto size-11 shrink-0 rounded-full text-muted-foreground hover:bg-muted md:size-9"
           disabled={disabled || busy}
           aria-label="Attach files"
           title="Images, PDF and text. Up to 4 files, 6 MB total."
@@ -241,7 +241,7 @@ export function ComposerWorkspace({
               <Button
                 aria-label={`Remove ${file.name}`}
                 disabled={disabled || busy}
-                className="size-8 rounded-full"
+                className="size-10 rounded-full md:size-8"
                 type="button"
                 size="icon"
                 variant="ghost"

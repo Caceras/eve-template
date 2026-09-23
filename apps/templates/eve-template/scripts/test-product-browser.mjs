@@ -136,8 +136,21 @@ try {
   await check("mobile navigation is focus-trapped and routes fit viewport", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await navigate();
-    await page.getByRole("button", { name: "Open sidebar", exact: true }).first().click();
     const dialog = page.getByRole("dialog", { name: "Workspace navigation" });
+    await page.mouse.move(2, 360);
+    await page.mouse.down();
+    await page.mouse.move(92, 362, { steps: 6 });
+    await page.mouse.up();
+    await dialog.waitFor();
+    await snapshot("mobile-navigation-swipe");
+    const drawerBox = await dialog.boundingBox();
+    assert(drawerBox, "mobile navigation has a visible drawer box");
+    await page.mouse.move(drawerBox.x + Math.min(250, drawerBox.width - 20), 360);
+    await page.mouse.down();
+    await page.mouse.move(drawerBox.x + 40, 362, { steps: 6 });
+    await page.mouse.up();
+    await dialog.waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "Open sidebar", exact: true }).first().click();
     await dialog.waitFor();
     await snapshot("mobile-navigation");
     for (let i = 0; i < 20; i++) {

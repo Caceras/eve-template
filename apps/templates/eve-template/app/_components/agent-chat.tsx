@@ -67,6 +67,7 @@ export type AgentChatController = {
 };
 
 export type AgentChatControllerStatus = {
+  readonly canSteer: boolean;
   readonly disabledReason?: string;
   readonly isBusy: boolean;
   readonly isDisabled: boolean;
@@ -74,6 +75,7 @@ export type AgentChatControllerStatus = {
 };
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
+  canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
@@ -488,6 +490,12 @@ export function AgentChatSession({
     hasLocalPendingUserMessage ||
     (!isWaitingForAuthorization &&
       (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming"));
+  const canSteer =
+    !isResuming &&
+    !hasLocalPendingUserMessage &&
+    !isWaitingForAuthorization &&
+    !isFinalizingTurn &&
+    (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming");
   const isTurnBlocked = isBusy || isFinalizingTurn;
   const pendingMessage = pendingUserMessage
     ? createPendingUserMessage(displayChatId, pendingUserMessage)
@@ -572,7 +580,9 @@ export function AgentChatSession({
     async (text: string, draftHandlers: DraftHandlers) => {
       const message = text.trim();
 
-      if (!message || isTurnBlocked || localPendingUserMessageRef.current) {
+      const steering = canSteer;
+
+      if (!message || (isTurnBlocked && !steering) || localPendingUserMessageRef.current) {
         return;
       }
 
@@ -619,7 +629,9 @@ export function AgentChatSession({
       setResumedEvents([]);
       setIsResuming(false);
       showLocalPendingMessage();
-      onPendingUserMessageSettled?.(message);
+      if (!steering) {
+        onPendingUserMessageSettled?.(message);
+      }
 
       try {
         ready = await prepareSend(message);
@@ -645,21 +657,25 @@ export function AgentChatSession({
         return;
       }
 
-      try {
-        const updated = await markClientChatPendingMessage(storageMode, {
-          chatId,
-          message,
-        });
-        touchChat(updated);
-      } catch (error) {
-        restoreAfterFailedSend(
-          error instanceof Error ? error.message : "Failed to save pending message.",
-        );
-        return;
+      if (!steering) {
+        try {
+          const updated = await markClientChatPendingMessage(storageMode, {
+            chatId,
+            message,
+          });
+          touchChat(updated);
+        } catch (error) {
+          restoreAfterFailedSend(
+            error instanceof Error ? error.message : "Failed to save pending message.",
+          );
+          return;
+        }
       }
 
       try {
-        startFinalizingTurn();
+        if (!steering) {
+          startFinalizingTurn();
+        }
         const turn = await composerTurn(chatId, message);
         await agent.send(turn.message, {
           headers: turn.headers,
@@ -668,6 +684,7 @@ export function AgentChatSession({
             setupStatus.connectionsAvailable,
             setupStatus.configuredConnections,
           ),
+          turnPolicy: steering ? "steer" : undefined,
         });
         // Clearing local attachment previews must not turn an accepted send into a retry.
         await clearComposerFiles(chatId).catch(() => {});
@@ -676,13 +693,16 @@ export function AgentChatSession({
           return;
         }
 
-        stopFinalizingTurn();
-        void clearClientChatPendingMessage(storageMode, chatId);
+        if (!steering) {
+          stopFinalizingTurn();
+          void clearClientChatPendingMessage(storageMode, chatId);
+        }
         restoreAfterFailedSend(error instanceof Error ? error.message : "Failed to send message.");
       }
     },
     [
       agent,
+      canSteer,
       clearLocalPendingUserMessage,
       disabledReason,
       enabledConnections,
@@ -1040,6 +1060,7 @@ export function AgentChatSession({
         stop: () => void agent.cancel(),
       },
       {
+        canSteer,
         disabledReason,
         isBusy,
         isDisabled: !isSetupReady || isWaitingForAuthorization || isFinalizingTurn,
@@ -1048,6 +1069,7 @@ export function AgentChatSession({
     );
   }, [
     agent.cancel,
+    canSteer,
     disabledReason,
     isBusy,
     isFinalizingTurn,

@@ -86,8 +86,9 @@ export function ChatSidebar({
         className,
       )}
     >
-      <div className="flex max-h-[72dvh] shrink-0 flex-col gap-1 overflow-y-auto px-2 pb-2 pt-2">
-        <div className="mb-2 flex h-10 items-center justify-between px-2">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex flex-col gap-1 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <div className="sticky top-0 z-10 mb-2 flex h-10 items-center justify-between bg-background/95 px-2 backdrop-blur">
           <Link
             href="/"
             onClick={() => onNavigate?.(null)}
@@ -133,7 +134,7 @@ export function ChatSidebar({
           type="button"
         >
           <SearchIcon className="size-4" />
-          Search<span className="ml-auto rounded border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-60">⌘K</span>
+          Search<span className="ml-auto hidden rounded border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-60 md:inline-flex">Ctrl/⌘ K</span>
         </button>
         <nav aria-label="Workspace" className="mt-3 grid gap-0.5">
           <p className="px-2 pb-1 pt-1 text-[11px] font-medium text-muted-foreground/60">
@@ -173,9 +174,9 @@ export function ChatSidebar({
             </Link>
           ))}
         </nav>
-      </div>
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="px-2 py-2">
         {chats.length ? (
           <div>
             <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">
@@ -207,7 +208,7 @@ export function ChatSidebar({
                     <DropdownMenuTrigger asChild>
                       <Button
                         aria-label="Chat actions"
-                        className="absolute top-1/2 right-1 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                        className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:right-1 md:size-7 md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                         size="icon-xs"
                         type="button"
                         variant="ghost"
@@ -249,8 +250,9 @@ export function ChatSidebar({
           </div>
         ) : null}
       </div>
+      </div>
 
-      <div className="border-t border-border px-2 py-3">
+      <div className="border-t border-border/70 px-2 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {viewer ? (
           <UserMenu authMode={setupStatus.authMode} viewer={viewer} />
         ) : isLoadingChats ? (

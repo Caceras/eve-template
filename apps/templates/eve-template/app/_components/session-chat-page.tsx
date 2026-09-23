@@ -26,6 +26,7 @@ import type { ActiveChat, SetupStatus } from "@/lib/chat/types";
 import { moveComposerDraft } from "@/lib/chat/composer-draft";
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
+  canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
@@ -390,6 +391,7 @@ export function SessionChatPage({
       <div className="shrink-0 bg-gradient-to-t from-background via-background/96 to-transparent px-0 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-4 sm:pb-5 sm:pt-4">
         <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">
           <ChatComposer
+            allowSteering={controllerStatus.canSteer}
             disabled={composerDisabled}
             disabledReason={composerDisabledReason}
             footerStart={<ComposerFooterControls setupStatus={setupStatus} />}
