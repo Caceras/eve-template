@@ -30,8 +30,8 @@ Last reviewed: 23 September 2026.
 | GitHub                                                          | Built, not confirmed                  | Official github-tools extension, token in Settings, writes need approval                                    |
 | Gmail, Calendar, Drive                                          | Built, not confirmed                  | Not yet                                                                                                     |
 | Delegating coding to Claude Code or Codex                       | Turned off                            | Not yet                                                                                                     |
-| Image generation, spoken replies, widgets                       | Yes                                   | Not yet                                                                                                     |
-| Live voice conversation                                         | Never confirmed end to end            | Not yet                                                                                                     |
+| Image generation, spoken replies, widgets                       | Yes                                   | Images through the active provider, shown in chat; dictation and read-aloud with device voices; no widgets  |
+| Live voice conversation                                         | Never confirmed end to end            | Dictation plus automatic read-aloud; no real-time voice room                                                |
 | Mac desktop app, local file tools, Chrome extension             | Unsigned, not confirmed               | Not planned yet; the PWA covers desktop and phone                                                           |
 | Stewards: goals kept on track with checked outcomes             | Never reached                         | Not yet; Tasks is the base                                                                                  |
 | Hosting                                                         | Vercel (disabled)                     | Own server: HostUp VPS with Dokploy                                                                         |
@@ -41,13 +41,14 @@ Last reviewed: 23 September 2026.
 1. **Google**: Gmail, Calendar and Drive through eve connections, reads free,
    sends and edits behind approval. This makes sol0's `catch-up-on-email` and
    `plan-around-my-calendar` skills portable.
-2. **Media**: image generation and spoken replies through the active model
-   provider, rendered in chat.
+2. **Voice conversation**: a hands-free mode that listens, sends and reads the
+   reply in a loop, then real-time voice through a provider when needed.
 3. **Delegation**: hand coding work to Claude Code or Codex behind approval,
    ending in a pull request (sol0's "short term" horizon).
 4. **Stewards**: tasks that pursue a goal, act within approval, and prove the
    outcome from external evidence (sol0's final acceptance test).
-5. **Voice** once media is in place.
+5. **Widgets**: small interactive results in chat where they read better
+   than text.
 
 ## Principles carried over from sol0
 

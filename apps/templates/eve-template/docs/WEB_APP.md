@@ -1,4 +1,4 @@
-# Web app, notifications, tasks and memory
+# Web app, notifications, tasks, memory, images and voice
 
 The web app is Ægentica's main channel. It installs like a native app (a
 Progressive Web App), keeps every conversation on the server, runs scheduled
@@ -7,12 +7,12 @@ lets the operator see and edit what it remembers.
 
 ## Install the app
 
-- **Android (Chrome)**: open the site, then **Settings → This device → Install**,
+- **Android (Chrome)**: open the site, then **Settings → App & notifications → Install**,
   or the browser menu's **Install app**.
 - **iPhone and iPad (Safari)**: tap **Share → Add to Home Screen**. Notifications
   on iOS work only from the installed app (iOS 16.4 or later).
 - **Desktop (Chrome, Edge)**: the install icon in the address bar, or
-  **Settings → This device → Install**.
+  **Settings → App & notifications → Install**.
 
 The installed app opens in its own window with shortcuts for **New chat**,
 **Tasks** and **Settings** (long-press the icon on Android). The manifest is
@@ -27,7 +27,7 @@ only (`app/_components/pwa-registration.tsx`).
 
 ## Notifications
 
-**Settings → This device → Turn on** asks the browser for permission and
+**Settings → App & notifications → Turn on** asks the browser for permission and
 registers the device for [Web Push](https://developer.mozilla.org/docs/Web/API/Push_API).
 **Send test** delivers a test notification to every registered device. Turn
 notifications on separately on each device that should receive them.
@@ -47,9 +47,11 @@ notifications on separately on each device that should receive them.
 The **Tasks** page (`/tasks`, in the sidebar) lists every scheduled task with
 its schedule, next run and a link to the latest result.
 
-- **New task**: a name, what Ægentica should do, and when: once, every day,
-  every weekday, every week, or a custom cron expression. Times use the
-  browser's time zone for new tasks.
+- **Create → Create with Ægentica** opens a new chat to describe the task in
+  your own words; **Create → Set up manually** opens a form: a name, what
+  Ægentica should do, and when: once, every day, every weekday, every week,
+  or a custom cron expression. Times use the browser's time zone for new tasks.
+- Search and the **All / Active / Paused / Completed** filters narrow the list.
 - **Run now** runs a task within a minute without changing its schedule.
 - **Edit**, **Pause/Resume** and **Delete** are in the row's menu.
 
@@ -59,6 +61,44 @@ continued), sends a notification that opens the chat, and mirrors the answer to
 Telegram when linked. The agent can also create and change tasks from chat. The
 scheduler, limits and retry rules are in
 [TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md#scheduled-tasks).
+
+## Images and voice
+
+**Images.** The agent's `generate_image` tool (`agent/tools/generate_image.ts`)
+creates pictures with the AI SDK's `generateImage` through the active provider
+and its saved key, so no extra account is needed. The default model is
+`openai/gpt-image-1-mini`, which both AI Gateway and OpenRouter offer;
+`AEGENTICA_IMAGE_MODEL` overrides it. Images are saved on the volume
+(`media/` beside `settings/`, `lib/media-store.ts`) and served only to the
+signed-in operator from `/api/media/<name>`, so they reappear after a reload
+and on other devices. The chat shows them under the tool line
+(`components/chat/message.tsx`); the model only receives a short summary.
+
+**Voice.** Voice uses the device's built-in speech features, so it costs
+nothing and needs no provider:
+
+- Dictation: the microphone in the message box uses the browser's speech
+  recognition (Chrome and Android use Google's recogniser, Safari Apple's).
+  Tap to start, tap again or send to stop. Browsers without it hide the button.
+- Spoken replies: every finished reply has **Copy** and **Read aloud**.
+  **Settings → Voice** sets the language, the voice (from the device's
+  voices), the speed, and **Read replies aloud** to speak each new reply
+  automatically.
+
+Voice choices are per device, like a microphone choice, and live in the
+browser's storage (`lib/voice/preferences.ts`); the speech helpers are in
+`lib/voice/speech.ts`.
+
+## Settings
+
+Settings has four sections with a side menu (a scrolling row on phones):
+**Models** (providers, keys and the default model), **Voice**, **App &
+notifications** (install and notifications for this device) and
+**Integrations**. Integrations lists what Ægentica can use in the shape of a
+plugin directory: built-in tools (web search, image creation, files and code,
+voice, memory, tasks), accounts (GitHub and Telegram, set up in place) and work
+apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory**
+opens the Agent page with everything eve can install.
 
 ## Memory
 
@@ -106,4 +146,5 @@ node scripts/test-chat-store.mjs                 # SQLite history: ownership, or
 node scripts/test-telegram-and-schedules.mjs     # Tasks API and scheduler
 node scripts/test-push-and-task-runner.mjs       # needs Node 24: notifications API, internal auth
 node scripts/test-memory-store.mjs               # needs Node 24: Memory page and eve fileMemory share one document
+node scripts/test-image-generation.mjs           # needs Node 24: generate_image, media storage and route
 ```

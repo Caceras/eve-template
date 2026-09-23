@@ -20,7 +20,7 @@ export async function githubToken() {
     (await readGithub().catch(() => undefined))?.token ?? process.env.GITHUB_TOKEN?.trim();
   if (!token)
     throw new GithubSetupError(
-      "GitHub is not connected. Ask the user to add a token in Settings → GitHub.",
+      "GitHub is not connected. Ask the user to add a token in Settings → Integrations → GitHub.",
     );
   return token;
 }

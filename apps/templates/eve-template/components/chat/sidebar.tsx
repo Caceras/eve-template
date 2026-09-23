@@ -187,9 +187,9 @@ export function ChatSidebar({
           href="/settings"
           className={cn(
             "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/settings" ? activeRowClass : inactiveRowClass,
+            pathname.startsWith("/settings") ? activeRowClass : inactiveRowClass,
           )}
-          aria-current={pathname === "/settings" ? "page" : undefined}
+          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
           onClick={() => {
             setPathname("/settings");
             onNavigate?.();

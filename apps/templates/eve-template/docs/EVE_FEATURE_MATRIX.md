@@ -55,32 +55,33 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 
 ## Tools and HITL
 
-| Capability                               | Coverage                        | Implementation                                 |
-| ---------------------------------------- | ------------------------------- | ---------------------------------------------- |
-| `bash`                                   | Built in + surfaced             | Eve default                                    |
-| `read_file`                              | Built in + surfaced             | Eve default                                    |
-| `write_file`                             | Included override               | official definition + `always()`               |
-| `web_fetch`                              | Built in + surfaced             | Eve default                                    |
-| `web_search`                             | Built in + surfaced             | Eve default                                    |
-| `todo`                                   | Built in + surfaced             | Eve default                                    |
-| `ask_question`                           | Built in + native UI            | Eve default + current Web Chat                 |
-| root-copy `agent`                        | Runtime target                  | routed through `agentRouter()`                 |
-| `task_cancel`                            | Built in + surfaced             | Eve default                                    |
-| `connection_search`                      | Built in when connections exist | Eve default                                    |
-| `glob`                                   | Included opt-in                 | official definition                            |
-| `grep`                                   | Included opt-in                 | official definition                            |
-| `sleep`                                  | Included opt-in                 | official durable definition                    |
-| typed `defineTool`                       | Included                        | `session_counter`, `confirm_demo`              |
-| dynamic tool                             | Included                        | `dynamic_context.ts`                           |
-| labels / progress / model projection     | Reference                       | official tool API + Web Chat renderer          |
-| `availableInSubagents`                   | Included indirectly             | `agentRouter()`/official behavior              |
-| `always()` approval                      | Included                        | `confirm_demo`, `write_file`                   |
-| custom approval policy                   | Active                          | `lib/operator-only.ts` on scheduled-task tools |
-| `once()` / `never()` / `auto()` approval | Reference                       | public approval API                            |
-| questions                                | Included/built in               | `ask_question`, workflow `ctx.ask()`           |
-| connection authorization                 | Built in + native UI            | official connection lifecycle                  |
-| session limit input                      | Built in                        | Eve limits lifecycle                           |
-| durable callback/schema                  | Reference                       | provider-package dynamic capability API        |
+| Capability                                | Coverage                        | Implementation                                                                          |
+| ----------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| `bash`                                    | Built in + surfaced             | Eve default                                                                             |
+| `read_file`                               | Built in + surfaced             | Eve default                                                                             |
+| `write_file`                              | Included override               | official definition + `always()`                                                        |
+| `web_fetch`                               | Built in + surfaced             | Eve default                                                                             |
+| `web_search`                              | Built in + surfaced             | Eve default                                                                             |
+| `generate_image` (AI SDK `generateImage`) | Active                          | `tools/generate_image.ts`, active provider, images kept on the volume and shown in chat |
+| `todo`                                    | Built in + surfaced             | Eve default                                                                             |
+| `ask_question`                            | Built in + native UI            | Eve default + current Web Chat                                                          |
+| root-copy `agent`                         | Runtime target                  | routed through `agentRouter()`                                                          |
+| `task_cancel`                             | Built in + surfaced             | Eve default                                                                             |
+| `connection_search`                       | Built in when connections exist | Eve default                                                                             |
+| `glob`                                    | Included opt-in                 | official definition                                                                     |
+| `grep`                                    | Included opt-in                 | official definition                                                                     |
+| `sleep`                                   | Included opt-in                 | official durable definition                                                             |
+| typed `defineTool`                        | Included                        | `session_counter`, `confirm_demo`                                                       |
+| dynamic tool                              | Included                        | `dynamic_context.ts`                                                                    |
+| labels / progress / model projection      | Reference                       | official tool API + Web Chat renderer                                                   |
+| `availableInSubagents`                    | Included indirectly             | `agentRouter()`/official behavior                                                       |
+| `always()` approval                       | Included                        | `confirm_demo`, `write_file`                                                            |
+| custom approval policy                    | Active                          | `lib/operator-only.ts` on scheduled-task tools                                          |
+| `once()` / `never()` / `auto()` approval  | Reference                       | public approval API                                                                     |
+| questions                                 | Included/built in               | `ask_question`, workflow `ctx.ask()`                                                    |
+| connection authorization                  | Built in + native UI            | official connection lifecycle                                                           |
+| session limit input                       | Built in                        | Eve limits lifecycle                                                                    |
+| durable callback/schema                   | Reference                       | provider-package dynamic capability API                                                 |
 
 ## Sandbox and files
 
@@ -152,7 +153,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | --------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
 | Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold                                               |
-| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → This device                                 |
+| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → App & notifications                         |
 | Slack                                                           | Included/configurable                  | Chat Template                                                                             |
 | MCP server channel                                              | Included local-only                    | `channels/mcp.ts`                                                                         |
 | custom HTTP channel                                             | Included but token-disabled by default | `channels/demo.ts`                                                                        |

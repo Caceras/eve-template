@@ -10,7 +10,7 @@ operator's devices and, when Telegram is linked, mirror the answer there.
 
 1. In Telegram, open [@BotFather](https://t.me/BotFather), send `/newbot`, pick a
    name and copy the token.
-2. In Ægentica **Settings → Telegram**, paste the token and press **Connect bot**.
+2. In Ægentica **Settings → Integrations → Telegram**, paste the token and press **Connect bot**.
    Ægentica checks it with `getMe`, generates a random webhook secret and calls
    `setWebhook` for `https://<this site>/eve/v1/telegram`. No redeploy or
    environment variable is needed. The public URL comes from `BETTER_AUTH_URL`

@@ -55,6 +55,24 @@ export const productLibrary = [
     path: "memory/file",
   },
   {
+    category: "Conversations",
+    title: "Create an image",
+    description: "Describe a picture, illustration or logo and get it in the chat.",
+    status: "Configured",
+    example: "Ask: “Make a watercolor illustration of a hummingbird, landscape.”",
+    requirements: "Uses the active model provider and costs a little per image.",
+    path: "tools/overview",
+  },
+  {
+    category: "Conversations",
+    title: "Talk and listen",
+    description: "Dictate with the microphone in the message box and have replies read aloud.",
+    status: "Included",
+    example: "Tap the microphone, speak, and send. Choose a voice in Settings → Voice.",
+    requirements: "Uses your device's speech features; availability depends on the browser.",
+    path: "guides/frontend/overview",
+  },
+  {
     category: "Memory and files",
     title: "Work with attachments",
     description:
@@ -115,7 +133,7 @@ export const productLibrary = [
     status: "Configured",
     example: "Open Tasks → New task, or ask: “Every weekday at 8, give me a short briefing.”",
     requirements:
-      "Turn on notifications in Settings → This device on each phone or computer that should be told.",
+      "Turn on notifications in Settings → App & notifications on each phone or computer that should be told.",
     path: "patterns/dynamic-scheduling",
   },
   {
@@ -126,7 +144,7 @@ export const productLibrary = [
     status: "Needs setup",
     example: "Ask: “Review the latest pull request in my repository and tell me what could break.”",
     requirements:
-      "Add a GitHub token in Settings → GitHub. Anything that changes GitHub asks for your approval first.",
+      "Add a GitHub token in Settings → Integrations → GitHub. Anything that changes GitHub asks for your approval first.",
     path: "extensions",
   },
   {

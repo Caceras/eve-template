@@ -8,7 +8,7 @@ mounted in `agent/extensions/github.ts`, so its tools reach the model as
 
 ## Connect
 
-1. In **Settings → GitHub**, follow **Create a GitHub token**. The link opens
+1. In **Settings → Integrations → GitHub**, follow **Create a GitHub token**. The link opens
    GitHub's fine-grained token form with the permissions filled in: Contents,
    Pull requests, Issues and Actions (read and write) plus Metadata (read).
    Choose which repositories the token may use and an expiry.

@@ -1,15 +1,11 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { ExternalLinkIcon, KeyRoundIcon, Loader2Icon } from "lucide-react";
-import Link from "next/link";
+import { ExternalLinkIcon, Loader2Icon } from "lucide-react";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { readModelPreference } from "@/lib/chat/model-preference";
 import { providerAction, useModelSettings, type ProviderState } from "@/lib/chat/provider-client";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/model-catalog";
-import { useChatShell } from "./chat-shell-context";
-import { DeviceSettings } from "./device-settings";
-import { GithubSettings } from "./github-settings";
-import { TelegramSettings } from "./telegram-settings";
+import { SettingsShell } from "./settings-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -188,68 +184,45 @@ function ProviderCard({
 }
 
 export function ProviderSettings() {
-  const { viewer, requestSignIn } = useChatShell();
   const { status } = useModelSettings();
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-2xl px-4 pb-16 pt-20 sm:px-8">
-        <KeyRoundIcon className="mb-4 size-6" />
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Choose where Ægentica gets its AI models and where it can reach you. Changes apply to the
-          next message, with no restart.
+    <SettingsShell
+      section="general"
+      title="Models"
+      description="Choose where Ægentica gets its AI models. Changes apply to the next message, with no restart."
+    >
+      {status === undefined ? (
+        <p className="text-sm text-muted-foreground">Loading settings…</p>
+      ) : status === null ? (
+        <p className="rounded-lg border p-5 text-sm">
+          Provider settings are available to the operator account that signs in with the app
+          password.
         </p>
-        {!viewer ? (
-          <div className="mt-8 rounded-lg border p-5">
-            <p className="mb-4 text-sm">Sign in to manage Ægentica.</p>
-            <Button onClick={() => requestSignIn()}>Sign in</Button>
-          </div>
-        ) : status === undefined ? (
-          <p className="mt-8 text-sm text-muted-foreground">Loading settings…</p>
-        ) : status === null ? (
-          <p className="mt-8 rounded-lg border p-5 text-sm">
-            Provider settings are available to the operator account that signs in with the app
-            password.
-          </p>
-        ) : (
-          <div className="mt-8 space-y-4">
-            <section className="rounded-lg border bg-card p-4 sm:p-5">
-              <h2 className="font-medium">Model</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Used for new messages and the connection test. You can also change it from the
-                composer.
-              </p>
-              <ModelPicker className="-ml-2 mt-2" />
-            </section>
-            {PROVIDER_IDS.map((provider) => (
-              <ProviderCard
-                key={provider}
-                provider={provider}
-                state={status.providers[provider]}
-                active={status.active === provider}
-              />
-            ))}
-            <DeviceSettings />
-            <section className="flex items-center gap-3 rounded-lg border bg-card p-4 sm:p-5">
-              <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Scheduled tasks</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Reminders, briefings and recurring jobs that Ægentica runs on its own.
-                </p>
-              </div>
-              <Button asChild variant="outline" className="h-11 md:h-9">
-                <Link href="/tasks">Open tasks</Link>
-              </Button>
-            </section>
-            <GithubSettings />
-            <TelegramSettings />
-            <p className="text-xs leading-5 text-muted-foreground">
-              Keys and bot tokens are encrypted on this server and never shown again or stored in
-              your browser. The connection test sends one short request and may use a few tokens.
+      ) : (
+        <>
+          <section className="rounded-lg border bg-card p-4 sm:p-5">
+            <h2 className="font-medium">Model</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Used for new messages and the connection test. You can also change it from the
+              composer.
             </p>
-          </div>
-        )}
-      </div>
-    </div>
+            <ModelPicker className="-ml-2 mt-2" />
+          </section>
+          {PROVIDER_IDS.map((provider) => (
+            <ProviderCard
+              key={provider}
+              provider={provider}
+              state={status.providers[provider]}
+              active={status.active === provider}
+            />
+          ))}
+          <p className="text-xs leading-5 text-muted-foreground">
+            Keys are encrypted on this server and never shown again or stored in your browser. The
+            connection test sends one short request and may use a few tokens. Images are created
+            with the active provider too.
+          </p>
+        </>
+      )}
+    </SettingsShell>
   );
 }
