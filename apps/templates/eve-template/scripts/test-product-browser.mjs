@@ -21,7 +21,7 @@ const page = await context.newPage();
 page.setDefaultTimeout(15000);
 const errors = [];
 const checks = [];
-page.on("pageerror", (error) => errors.push(error.message));
+page.on("pageerror", (error) => errors.push(page.url() + " — " + error.message));
 const snapshot = async (name) => {
   await page.screenshot({ path: join(output, `${name}.png`), fullPage: true });
 };
