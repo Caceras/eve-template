@@ -1,5 +1,5 @@
 "use client";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 import { CheckIcon, MenuIcon, PanelLeftIcon, UploadIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -387,20 +387,18 @@ export function AgentChatShell({
           {children}
         </main>
 
-        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-          <SheetContent
+        <Dialog open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <DialogContent
             {...drawerHandlers}
             showCloseButton={false}
-            side="left"
-            className="h-dvh w-[86vw] max-w-[21rem] gap-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
+            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
           >
-            <SheetTitle className="sr-only">Workspace navigation</SheetTitle>
-            <SheetDescription className="sr-only">
+            <DialogTitle className="sr-only">Workspace navigation</DialogTitle>
+            <DialogDescription className="sr-only">
               Pages and recent conversations
-            </SheetDescription>
+            </DialogDescription>
             <ChatSidebar
               activeChatId={activeChatId}
-              closeNavigationLinks
               chats={history}
               className="w-[86vw] max-w-[21rem] shadow-2xl"
               hasMoreChats={Boolean(nextCursor)}
@@ -415,8 +413,8 @@ export function AgentChatShell({
               setupStatus={setupStatusState}
               viewer={viewerState}
             />
-          </SheetContent>
-        </Sheet>
+          </DialogContent>
+        </Dialog>
 
         <SignInModal
           authMode={setupStatusState.authMode}
