@@ -1,4 +1,4 @@
-import { defineDynamic } from "eve";
+import { defineDynamic, type AgentReasoningDefinition } from "eve";
 import { createGateway } from "ai";
 import { PROVIDERS, pickModel } from "@/lib/model-catalog";
 import { getCatalog } from "@/lib/provider-catalog";
@@ -44,7 +44,7 @@ export function routedModel(options: { prefer?: string } = {}) {
             "The selected model cannot read images. Choose a model marked Vision and retry.",
           );
         const profileReasoning = ctx.session.auth.current?.attributes.agentReasoning;
-        const reasoning =
+        const reasoning: AgentReasoningDefinition | undefined =
           !options.prefer &&
           (profileReasoning === "provider-default" ||
             profileReasoning === "low" ||
@@ -68,4 +68,3 @@ export function routedModel(options: { prefer?: string } = {}) {
       },
     },
   });
-}

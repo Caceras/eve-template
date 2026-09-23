@@ -5,7 +5,8 @@ export default defineDynamic({
     "turn.started": (_event, ctx) => {
       if (!isOperator(ctx.session.auth.current)) return null;
       const attributes = ctx.session.auth.current!.attributes;
-      if (attributes.agentProfileError) throw new Error(attributes.agentProfileError);
+      if (typeof attributes.agentProfileError === "string")
+        throw new Error(attributes.agentProfileError);
       const content = [
         attributes.agentProfileInstructions,
         attributes.composerMode === "image"
