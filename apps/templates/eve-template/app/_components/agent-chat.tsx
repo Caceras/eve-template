@@ -16,7 +16,8 @@ import type {
   SendTurnOptions,
 } from "eve/client";
 import type { EveMessage } from "eve/react";
-import { defaultMessageReducer, useEveAgent } from "eve/react";
+import { defaultMessageReducer } from "eve/react";
+import { useEveAgent } from "@/lib/chat/use-reliable-eve-agent";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
