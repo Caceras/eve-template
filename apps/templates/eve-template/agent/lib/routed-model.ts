@@ -68,3 +68,4 @@ export function routedModel(options: { prefer?: string } = {}) {
       },
     },
   });
+}
