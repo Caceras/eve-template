@@ -336,7 +336,6 @@ If Notion tool calls fail, confirm that `NOTION_CONNECTOR` is set in Vercel, the
 - [Sign in with Vercel prerequisites](https://vercel.com/docs/sign-in-with-vercel/getting-started#prerequisites)
 - [Sign in with Vercel scopes](https://vercel.com/docs/sign-in-with-vercel/scopes-and-permissions)
 
-
 ## Self-hosted production
 
 The production app has two cooperating services inside the same container:
@@ -345,5 +344,7 @@ The production app has two cooperating services inside the same container:
 - the built eve runtime on `EVE_NEXT_PRODUCTION_PORT` (normally `4274`)
 
 Run `pnpm build:eve && pnpm build`, then `pnpm start`. The self-hosted start script supervises both processes and starts Next only after eve is ready. `/api/health` verifies both the product shell and the eve runtime.
+
+Persistent data (chat history, memory, encrypted settings and eve's workflow data) lives under `.eve/.workflow-data`; mount it on a volume and set `EVE_MEMORY_DIR` inside it. [SELF_HOSTING.md](./SELF_HOSTING.md) and [production-release.md](./production-release.md) cover the variables, the volume layout and post-deploy checks.
 
 For a custom HTTPS domain, set `BETTER_AUTH_URL` to that origin. If `EVE_CHAT_PASSWORD` is configured, password auth is the preferred self-hosted sign-in mode even when optional Vercel OAuth variables are also present.

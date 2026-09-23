@@ -49,9 +49,9 @@ export const productLibrary = [
       "Ask the agent to save a stable preference and recall it in a future conversation.",
     status: "Configured",
     example:
-      "Ask: “Remember that I prefer short answers in Swedish.” Then ask about your preference in a new conversation.",
+      "Ask: “Remember that I prefer short answers in Swedish.” Then open Memory to see it, or ask about it in a new conversation.",
     requirements:
-      "Profile memory uses persistent server storage. This temporary installation has one shared operator identity.",
+      "Memory is stored on your server and shared by the app, Telegram and scheduled tasks. Edit or import it on the Memory page.",
     path: "memory/file",
   },
   {
@@ -110,12 +110,24 @@ export const productLibrary = [
   {
     category: "Agent workflows",
     title: "Schedule recurring work",
-    description: "Extend the agent with scheduled tasks and timed follow-ups.",
-    status: "Available",
-    example: "Read the scheduling guide to configure a task, delivery channel and timezone.",
+    description:
+      "Reminders, briefings and recurring jobs that run on their own and arrive as a chat and a notification.",
+    status: "Configured",
+    example: "Open Tasks → New task, or ask: “Every weekday at 8, give me a short briefing.”",
     requirements:
-      "The repository contains a heartbeat example. A schedule definition alone does not prove delivery is configured.",
-    path: "schedules",
+      "Turn on notifications in Settings → This device on each phone or computer that should be told.",
+    path: "patterns/dynamic-scheduling",
+  },
+  {
+    category: "Connections",
+    title: "Work with GitHub",
+    description:
+      "Review pull requests, find why a check failed, and open issues or pull requests in your repositories.",
+    status: "Needs setup",
+    example: "Ask: “Review the latest pull request in my repository and tell me what could break.”",
+    requirements:
+      "Add a GitHub token in Settings → GitHub. Anything that changes GitHub asks for your approval first.",
+    path: "extensions",
   },
   {
     category: "Connections",

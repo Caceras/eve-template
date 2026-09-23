@@ -1,5 +1,15 @@
 # How the Chatbot Works
 
+> **Ægentica note.** This document comes from eve's chat template and still
+> describes the chat core accurately. Ægentica's differences: in password mode
+> (the self-hosted default) chats are stored server-side in SQLite
+> (`lib/db/sqlite-queries.ts`, chosen by `lib/db/queries.ts`) instead of browser
+> storage, and older browser-stored chats are imported once on first load
+> (`lib/chat/browser-import.ts`). The Telegram channel, scheduled tasks, Memory
+> page, GitHub extension and notifications are covered in
+> [ARCHITECTURE.md](./ARCHITECTURE.md), [WEB_APP.md](./WEB_APP.md) and
+> [GITHUB.md](./GITHUB.md).
+
 This document explains the eve chat template end to end. It is written for
 future maintainers who need to understand why the app is shaped this way, where
 state lives, how messages stream, and how to safely change the chat experience.
@@ -48,7 +58,7 @@ Important files:
 | `lib/chat/local-store.ts`               | Versioned browser storage for starter-mode chats and eve session cursors.                           |
 | `lib/chat/persistence-client.ts`        | Routes client persistence calls to browser or database storage.                                     |
 | `lib/db/schema.ts`                      | Drizzle tables for Better Auth, chats, and chat events.                                             |
-| `lib/db/queries.ts`                     | Chat list, chat load, event save, snapshot save, and delete queries.                                |
+| `lib/db/queries.ts`                     | Chat store entry point: SQLite (`sqlite-queries.ts`) or Postgres (`pg-queries.ts`) queries.         |
 | `lib/setup.ts`                          | Selects starter, local development, or production mode and validates readiness.                     |
 | `lib/auth.ts`                           | Better Auth configuration with Sign in with Vercel.                                                 |
 | `lib/password-auth.ts`                  | Shared-password verification and stateless signed session cookies.                                  |

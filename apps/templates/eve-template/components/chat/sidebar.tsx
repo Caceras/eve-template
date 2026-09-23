@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   BookOpenIcon,
   BlocksIcon,
+  BrainIcon,
   CalendarClockIcon,
   EllipsisIcon,
   ListRestartIcon,
@@ -166,6 +167,21 @@ export function ChatSidebar({
         >
           <CalendarClockIcon className="size-4" />
           Tasks
+        </Link>
+        <Link
+          href="/memory"
+          className={cn(
+            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
+            pathname === "/memory" ? activeRowClass : inactiveRowClass,
+          )}
+          aria-current={pathname === "/memory" ? "page" : undefined}
+          onClick={() => {
+            setPathname("/memory");
+            onNavigate?.();
+          }}
+        >
+          <BrainIcon className="size-4" />
+          Memory
         </Link>
         <Link
           href="/settings"

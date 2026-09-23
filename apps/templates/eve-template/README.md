@@ -1,86 +1,82 @@
-# Eve Template
+# Ægentica
 
-The comprehensive reference template for [Vercel Eve](https://eve.dev), built from Eve's own source tree and official scaffolding.
+Ægentica is a personal AI agent you own. It is the successor to sol0: one private assistant for one operator, reachable as an installable web app on phone and desktop and through Telegram, running on your own server at [ai-chat.se](https://ai-chat.se).
 
-This template starts with `apps/templates/eve-chat-template`, keeps its persisted Next.js chat, authentication, storage, connections, and session handling, then layers in the current public Eve surface from the same checkout. The current `channel/web` registry scaffold supplies the native Eve message renderer and AI Elements. Framework defaults remain defaults unless an override is required to demonstrate a feature.
+It is built on [eve](https://eve.dev), Vercel's framework for durable agents, and starts from eve's official `eve-chat-template`. eve supplies the hard parts sol0 had to hand-build: durable sessions that survive a closed tab or a device switch, approvals, memory, schedules, subagents, sandboxed tools and channels. Ægentica adds the product layer on top and keeps eve's defaults wherever they exist.
 
-## What this template demonstrates
+## What it does
 
-- Durable sessions, streaming, reconnect, steering, cancellation, compact/clear/reset semantics
-- Static and dynamic instructions, packaged and dynamic skills
-- Built-in tools plus opt-in `glob`, `grep`, and durable `sleep`
-- Explicit tool approval and durable human input
-- `defineState` durable session state
-- First-class Eve memory via the Chat Template's profile memory
-- Default sandbox plus seeded `/workspace` content and attachments
-- Declared visible/hidden subagents, `agentRouter()`, continuation/task lifecycle
-- Blocking and background `defineWorkflowTool()` flows using `ctx.ask()` and `ctx.agent()`
-- Static schedules and lifecycle hooks
-- OpenAPI connections, the Chat Template's MCP/Vercel Connect examples, and dynamic capability patterns
-- Eve HTTP channel, local-only MCP channel, Slack from the base template, and a minimal custom channel
-- Current Web Chat scaffold side-by-side with the persisted Chat Template shell
-- Eve agent-info v4 capability inspection
-- The entire current official Eve registry surfaced in the UI
-- Eve evals for state, approval, workflow HITL, and delegation
-- Official instrumentation defaults (local traces in development, Agent Runs on Vercel)
-- Optional official self-modification and third-party integrations documented rather than silently enabled
+| Area       | What you get                                                                                                                | Docs                                                       |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Chat       | Streaming chat that resumes after refresh, stop, attachments, reasoning and tool cards, approvals and questions             | [how-the-chatbot-works](./docs/how-the-chatbot-works.md)   |
+| Models     | Vercel AI Gateway or OpenRouter, keys saved encrypted in Settings, instant switching, full model catalog picker             | [SELF_HOSTING](./docs/SELF_HOSTING.md)                     |
+| Everywhere | Installable app (PWA), notifications, chat history stored on the server so every device sees the same chats                 | [WEB_APP](./docs/WEB_APP.md)                               |
+| Memory     | Long-term memory shared by app, Telegram and tasks; see, edit and import it on the Memory page                              | [WEB_APP](./docs/WEB_APP.md#memory)                        |
+| Tasks      | Reminders, briefings and recurring jobs; each run is saved as a chat and sent as a notification                             | [WEB_APP](./docs/WEB_APP.md#tasks)                         |
+| GitHub     | Repositories, pull requests, issues and failing checks through the official GitHub tools extension; every change asks first | [GITHUB](./docs/GITHUB.md)                                 |
+| Skills     | Research, pull-request review, failing-check investigation, daily briefing, deep research, trip planning                    | [agent/skills](./agent/skills)                             |
+| Telegram   | Optional private bot linked to your account, same agent and memory                                                          | [TELEGRAM_AND_SCHEDULES](./docs/TELEGRAM_AND_SCHEDULES.md) |
+| Tools      | Web search and fetch, a sandbox with bash and files, subagents (researcher, reviewer), workflows                            | [EVE_FEATURE_MATRIX](./docs/EVE_FEATURE_MATRIX.md)         |
 
-## Source-of-truth order
+Where this stands against the original sol0 vision, and what comes next, is in [VISION](./docs/VISION.md).
 
-When official Eve examples disagree, this template follows:
+## App pages
 
-1. `packages/eve` public exports and implementation
-2. current `docs/`
-3. current `apps/docs/registry/`
-4. current `e2e/` fixtures and tests
-5. current `apps/frameworks/`
-6. current `apps/templates/`
-7. Vercel Labs showcase templates
+- `/` and `/chat/[id]`: chat
+- `/tasks`: scheduled tasks
+- `/memory`: long-term memory
+- `/settings`: model providers, this device (install and notifications), GitHub, Telegram
+- `/capabilities`: what the running agent can do (Active), what this repository includes (Included), and what eve can install (Available)
+- `/native`: eve's current official `channel/web` scaffold, kept as a reference surface
+- `/session`: inspect and control durable sessions
+- `/library`: product guide
 
-See [`docs/UPSTREAM.md`](./docs/UPSTREAM.md).
+## Run it
 
-## Materialize inside the Eve monorepo
+Requirements: Node.js 24+ (the app uses `node:sqlite`) and pnpm.
 
-From the root of a checkout or fork of `vercel/eve`:
+```bash
+pnpm install
+cp .env.example .env.local   # set EVE_CHAT_USERNAME, EVE_CHAT_PASSWORD, EVE_SESSION_SECRET, EVE_MEMORY_DIR
+pnpm dev                     # Next.js app and eve agent together (withEve)
+```
+
+Production (single container, as on ai-chat.se): `pnpm build:eve && pnpm build`, then `pnpm start`. The start script supervises Next.js and the eve runtime. Deployment, volumes and environment are covered in [SELF_HOSTING](./docs/SELF_HOSTING.md) and [production-release](./docs/production-release.md). The Vercel deployment mode inherited from the chat template (Neon, Upstash, Sign in with Vercel) is in [setup-and-deploy](./docs/setup-and-deploy.md).
+
+## Checks
+
+```bash
+pnpm typecheck
+node scripts/test-chat-store.mjs
+node scripts/test-telegram-and-schedules.mjs
+node scripts/test-provider-settings.mjs
+node scripts/test-openrouter-model.mjs
+node scripts/test-github-settings.mjs
+node scripts/test-memory-store.mjs         # Node 24
+node scripts/test-push-and-task-runner.mjs # Node 24
+pnpm eval                                  # eve evals
+```
+
+## How it relates to eve
+
+The app is a product shell over eve, never a second runtime ([ARCHITECTURE](./docs/ARCHITECTURE.md)). Upstream code wins over custom code: eve defaults stay defaults, registry items are mounted rather than copied, and custom code exists only for product UI and glue eve does not supply ([UPSTREAM](./docs/UPSTREAM.md)). UI changes follow [DESIGN](./docs/DESIGN.md), which keeps the look of an official Vercel product.
+
+The repository is also a complete reference for eve's public surface: every official capability is either active, included as an example, or listed as installable, with the contract in [EVE_FEATURE_MATRIX](./docs/EVE_FEATURE_MATRIX.md). `pnpm eve:surface` regenerates `lib/eve-surface.generated.ts` from the eve package and registry; `pnpm eve:surface:check` fails when it is stale.
+
+### Materialize inside the eve monorepo
+
+From a checkout of `vercel/eve`:
 
 ```bash
 node /path/to/eve-template-overlay/scripts/materialize-eve-template.mjs .
 cd apps/templates/eve-template
-pnpm install
-pnpm typecheck
-pnpm build:eve
-pnpm build
-pnpm eval
+pnpm install && pnpm typecheck && pnpm build:eve && pnpm build && pnpm eval
 ```
-
-The generator deliberately removes the copied Chat Template lockfile because the generated app is synchronized to the Eve version in the current checkout and may have a different dependency graph.
-
-## Reference surfaces
-
-- `/` — persisted Chat Template experience
-- `/capabilities` — Agent: live runtime, included scaffolds, and the official installable Eve surface
-- `/native` — Web: current official `channel/web` scaffold using `useEveAgent`
-- `/session` — Sessions: inspect and control durable Eve sessions
-- `/tasks` — scheduled tasks: create, edit, run now, pause; each run is saved as a chat and sent as a notification (see [`docs/WEB_APP.md`](./docs/WEB_APP.md))
-- `/settings` — model providers (AI Gateway and OpenRouter, see [`docs/SELF_HOSTING.md`](./docs/SELF_HOSTING.md)), this device (install the app, notifications) and Telegram (see [`docs/TELEGRAM_AND_SCHEDULES.md`](./docs/TELEGRAM_AND_SCHEDULES.md))
-
-The app is installable (PWA) with Web Push notifications, and in password mode chat history is stored in SQLite on the server volume so every device sees the same chats ([`docs/WEB_APP.md`](./docs/WEB_APP.md)).
-
-The Agent page separates three truths: **Active** capabilities from `Client.info()` (agent-info v4), **Included** scaffolds present in this repo, and **Available** official integrations generated from `apps/docs/registry.json`.
 
 ## Security defaults
 
-The template is comprehensive without making unsafe capabilities globally permissive:
-
-- the custom demo channel is disabled unless `EVE_TEMPLATE_DEMO_CHANNEL_TOKEN` is set;
-- the MCP channel uses `localDev()` and therefore rejects production requests;
-- `write_file` retains Eve's official implementation but is overridden with `always()` approval;
-- the harmless approval demo also uses `always()`;
-- self-modification is documented as an official optional integration and is not installed automatically;
-- third-party registry integrations are visible but not activated without credentials/setup.
-
-## Keeping the template complete
-
-`pnpm eve:surface` regenerates `lib/eve-surface.generated.ts` from the current Eve package export map and registry. `pnpm eve:surface:check` is intended for CI and fails when the generated surface is stale.
-
-The human-readable coverage contract is [`docs/EVE_FEATURE_MATRIX.md`](./docs/EVE_FEATURE_MATRIX.md).
+- One operator account (password login, signed session cookie); settings APIs require that session, same-origin requests, bounded bodies and a rate limit.
+- Provider keys, GitHub and Telegram tokens and notification keys are stored AES-256-GCM encrypted and never returned to the browser.
+- Tools that change the outside world (GitHub writes, the sandbox `write_file`) require approval, and the scheduled-task tools only work for the operator.
+- The custom demo channel is off unless `EVE_TEMPLATE_DEMO_CHANNEL_TOKEN` is set; the MCP channel only runs locally.
+- Registry integrations are listed but not activated without credentials.

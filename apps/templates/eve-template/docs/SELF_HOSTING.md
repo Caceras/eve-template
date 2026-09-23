@@ -6,9 +6,11 @@ a key or choosing another model applies to the next model call. Nothing is
 rebuilt, redeployed or restarted, and running conversations continue on the new
 setting from their next step.
 
-The installable app, notifications, the Tasks page and server-side chat history
-are covered in [WEB_APP.md](./WEB_APP.md); Telegram and the scheduler in
-[TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md).
+The installable app, notifications, the Tasks and Memory pages and server-side
+chat history are covered in [WEB_APP.md](./WEB_APP.md); GitHub in
+[GITHUB.md](./GITHUB.md); Telegram and the scheduler in
+[TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md); releasing to
+ai-chat.se in [production-release.md](./production-release.md).
 
 ## Settings
 

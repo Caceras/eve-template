@@ -33,25 +33,25 @@ This matrix is the coverage contract for the Ultimate Eve Template. â€œIncludedâ
 
 ## Context and authoring
 
-| Capability                         | Coverage                 | Implementation                                       |
-| ---------------------------------- | ------------------------ | ---------------------------------------------------- |
-| Markdown instructions              | Included                 | `agent/instructions.md`                              |
-| TypeScript instructions            | Reference                | official API/docs                                    |
-| system/user instruction roles      | Reference                | official API/docs                                    |
-| dynamic instructions               | Included                 | `instructions/runtime.ts`                            |
-| turn-scoped user-role instructions | Active                   | `instructions/clock.ts` (current time)               |
-| flat skill                         | Inherited                | Chat Template `plan_a_trip`                          |
-| packaged skill + resources         | Included                 | `skills/deep-research/`                              |
-| dynamic skill                      | Included                 | `skills/caller-note.ts`                              |
-| `load_skill`                       | Built in                 | Eve default harness                                  |
-| durable per-session state          | Included                 | `defineState` + `session_counter`                    |
-| cross-session memory               | Included                 | Chat Template profile memory                         |
-| memory scoping                     | Active                   | operator scope shared by web, Telegram and schedules |
-| custom memory provider             | Reference                | official memory provider contract                    |
-| File Memory                        | Included / base template | official Eve provider                                |
-| Supermemory                        | Surfaced                 | official registry                                    |
-| Upstash AgentKit                   | Surfaced                 | official registry                                    |
-| Arcana                             | Surfaced                 | official registry                                    |
+| Capability                         | Coverage           | Implementation                                                                                                               |
+| ---------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Markdown instructions              | Included           | `agent/instructions.md`                                                                                                      |
+| TypeScript instructions            | Reference          | official API/docs                                                                                                            |
+| system/user instruction roles      | Reference          | official API/docs                                                                                                            |
+| dynamic instructions               | Included           | `instructions/runtime.ts`                                                                                                    |
+| turn-scoped user-role instructions | Active             | `instructions/clock.ts` (current time)                                                                                       |
+| flat skill                         | Inherited + Active | Chat Template `plan_a_trip`, `daily-briefing.md`                                                                             |
+| packaged skill + resources         | Active             | `skills/deep-research/`, `review-a-pull-request/`, `investigate-a-failing-check/`, `research-a-question/` (ported from sol0) |
+| dynamic skill                      | Included           | `skills/caller-note.ts`                                                                                                      |
+| `load_skill`                       | Built in           | Eve default harness                                                                                                          |
+| durable per-session state          | Included           | `defineState` + `session_counter`                                                                                            |
+| cross-session memory               | Active             | `memory/profile.ts`, fileMemory on a SQLite backend; Memory page edits the same document                                     |
+| memory scoping                     | Active             | operator scope shared by web, Telegram and schedules                                                                         |
+| custom memory provider             | Reference          | official memory provider contract                                                                                            |
+| File Memory                        | Active             | official eve provider with `agent/lib/durable-memory.ts` backend                                                             |
+| Supermemory                        | Surfaced           | official registry                                                                                                            |
+| Upstash AgentKit                   | Surfaced           | official registry                                                                                                            |
+| Arcana                             | Surfaced           | official registry                                                                                                            |
 
 ## Tools and HITL
 
@@ -174,7 +174,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. â€œIncludedâ
 | Markdown schedule               | Reference                        | official scheduler syntax                                                                                                             |
 | global lifecycle hook           | Included                         | `hooks/audit.ts`                                                                                                                      |
 | channel-specific event handlers | Inherited/reference              | official channel behavior                                                                                                             |
-| Extensions                      | Surfaced + reference             | official registry / `defineExtension`                                                                                                 |
+| Extensions                      | Active + surfaced                | `extensions/github.ts` mounts the registry's `@github-tools/eve-extension`; the rest of the registry is surfaced                      |
 | extension override/disable      | Demonstrated conceptually        | `write_file` mirrors override composition                                                                                             |
 | self-modification extension     | Surfaced / optional              | official `eve/self-modification` registry item                                                                                        |
 | local traces                    | Built in                         | Eve dev default                                                                                                                       |

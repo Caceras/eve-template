@@ -1,8 +1,9 @@
-# Web app, notifications and tasks
+# Web app, notifications, tasks and memory
 
 The web app is Ægentica's main channel. It installs like a native app (a
 Progressive Web App), keeps every conversation on the server, runs scheduled
-tasks on its own and notifies the operator's devices when a result is ready.
+tasks on its own, notifies the operator's devices when a result is ready, and
+lets the operator see and edit what it remembers.
 
 ## Install the app
 
@@ -59,6 +60,30 @@ Telegram when linked. The agent can also create and change tasks from chat. The
 scheduler, limits and retry rules are in
 [TELEGRAM_AND_SCHEDULES.md](./TELEGRAM_AND_SCHEDULES.md#scheduled-tasks).
 
+## Memory
+
+The **Memory** page (`/memory`, in the sidebar) shows what Ægentica
+remembers about the operator across the app, Telegram and scheduled tasks.
+Entries can be added, edited and removed, and **Import** takes a pasted list
+(one per line; bullets and numbering are stripped), for example ChatGPT's
+Settings → Personalization → Manage memories.
+
+The page edits the same document the agent uses. Memory is eve's built-in
+`fileMemory()` provider in the `profile` slot (`agent/memory/profile.ts`),
+stored in `profile.sqlite` inside `EVE_MEMORY_DIR` (`agent/lib/durable-memory.ts`).
+The agent saves with `profile__save_memory` when asked to remember something
+and removes with `profile__remove_memory`. `lib/memory-store.ts` reads and
+writes that document in the provider's own versioned format and with its
+limits: 8,000 characters of recalled memory, about 2,000 per entry, duplicates
+skipped. Each edit bumps the document version, so a concurrent agent save
+retries rather than overwriting it.
+
+eve derives each document's storage key from the memory scope and does not
+expose it, so the agent records which key belongs to the operator on its first
+recall (`memory_owner` table). Until the operator has sent one message, the
+page says memory starts with the first message. Memory is off, and the page
+says so, when `EVE_MEMORY_DIR` is not set.
+
 ## Chat history
 
 In password mode (the self-hosted default) chats are stored in SQLite on the
@@ -80,4 +105,5 @@ mode), chats are stored in Postgres instead.
 node scripts/test-chat-store.mjs                 # SQLite history: ownership, order, paging, delete
 node scripts/test-telegram-and-schedules.mjs     # Tasks API and scheduler
 node scripts/test-push-and-task-runner.mjs       # needs Node 24: notifications API, internal auth
+node scripts/test-memory-store.mjs               # needs Node 24: Memory page and eve fileMemory share one document
 ```

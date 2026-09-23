@@ -8,6 +8,7 @@ import { providerAction, useModelSettings, type ProviderState } from "@/lib/chat
 import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/model-catalog";
 import { useChatShell } from "./chat-shell-context";
 import { DeviceSettings } from "./device-settings";
+import { GithubSettings } from "./github-settings";
 import { TelegramSettings } from "./telegram-settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -240,6 +241,7 @@ export function ProviderSettings() {
                 <Link href="/tasks">Open tasks</Link>
               </Button>
             </section>
+            <GithubSettings />
             <TelegramSettings />
             <p className="text-xs leading-5 text-muted-foreground">
               Keys and bot tokens are encrypted on this server and never shown again or stored in
