@@ -44,9 +44,22 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH=./browsers npx playwright install chromium
           cd ..
           tar -czf aegentica-validation.tar.gz apps/templates/eve-template/node_modules validation-tools
+          split -b 240M -d aegentica-validation.tar.gz aegentica-part-
       - uses: actions/upload-artifact@v4
         with:
-          name: aegentica-validation-${{ github.sha }}
-          path: aegentica-validation.tar.gz
+          name: validation-part-0
+          path: aegentica-part-00
           retention-days: 1
-          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-part-1
+          path: aegentica-part-01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-part-2
+          path: aegentica-part-02
+          retention-days: 1
+          compression-level: 0
