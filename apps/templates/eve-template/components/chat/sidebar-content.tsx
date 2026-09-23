@@ -162,6 +162,7 @@ export function ChatSidebar({
           {primaryWorkspacePages.map(({ href, label, icon: Icon }) => {
             const link = (
               <Link
+                key={href}
                 href={href}
                 onClick={() => onNavigate?.()}
                 aria-current={pathname === href ? "page" : undefined}
@@ -180,7 +181,7 @@ export function ChatSidebar({
                 {link}
               </SheetClose>
             ) : (
-              <div key={href}>{link}</div>
+              link
             );
           })}
           <p className="px-2 pb-1 pt-3 text-[11px] font-medium text-muted-foreground/60">
@@ -189,6 +190,7 @@ export function ChatSidebar({
           {systemWorkspacePages.map(({ href, label, icon: Icon }) => {
             const link = (
               <Link
+                key={href}
                 href={href}
                 onClick={() => onNavigate?.()}
                 aria-current={pathname === href ? "page" : undefined}
@@ -207,7 +209,7 @@ export function ChatSidebar({
                 {link}
               </SheetClose>
             ) : (
-              <div key={href}>{link}</div>
+              link
             );
           })}
         </nav>
