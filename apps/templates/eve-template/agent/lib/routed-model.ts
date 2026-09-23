@@ -29,16 +29,41 @@ export function routedModel(options: { prefer?: string } = {}) {
           (await readDefaultModel());
         const model = pickModel(provider, models, requested);
         if (!model) throw new Error(`${PROVIDERS[provider].label} returned no compatible models.`);
+
+        const hasImages = ctx.messages.some(
+          (message) =>
+            Array.isArray(message.content) &&
+            message.content.some(
+              (part) =>
+                part.type === "image" ||
+                (part.type === "file" && part.mediaType.startsWith("image/")),
+            ),
+        );
+        if (hasImages && !model.vision)
+          throw new Error(
+            "The selected model cannot read images. Choose a model marked Vision and retry.",
+          );
+        const profileReasoning = ctx.session.auth.current?.attributes.agentReasoning;
+        const reasoning =
+          !options.prefer &&
+          (profileReasoning === "provider-default" ||
+            profileReasoning === "low" ||
+            profileReasoning === "medium" ||
+            profileReasoning === "high")
+            ? profileReasoning
+            : undefined;
         const contextWindow = model.contextWindow ?? undefined;
         if (provider === "gateway")
           return {
             model: createGateway({ apiKey })(model.id),
             modelContextWindowTokens: contextWindow,
+            ...(reasoning ? { reasoning } : {}),
           };
         return {
           model: openRouterModel(apiKey, model),
           // OpenRouter models are not in eve's Gateway metadata catalog.
           modelContextWindowTokens: contextWindow ?? 128_000,
+          ...(reasoning ? { reasoning } : {}),
         };
       },
     },

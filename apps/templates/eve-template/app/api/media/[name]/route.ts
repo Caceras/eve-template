@@ -9,8 +9,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
   return new Response(new Uint8Array(media.data), {
     headers: {
       "Content-Type": media.mediaType,
-      // Names are random and never reused, so the file never changes.
-      "Cache-Control": "private, max-age=31536000, immutable",
+      // Private media must be re-authorized after sign-out.
+      "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });

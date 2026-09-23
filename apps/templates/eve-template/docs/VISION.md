@@ -16,25 +16,25 @@ extensions), and Ægentica adds only product UI and glue.
 
 Last reviewed: 23 September 2026.
 
-| Pillar                                                          | sol0 reached                          | Ægentica today                                                                                              |
-| --------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Work survives a closed tab or a device switch (sol0 "Stage 1")  | Never reached                         | Built into eve's durable sessions                                                                           |
-| One safe way to act: every consequential action behind approval | Partial                               | eve approvals on all effectful tools (`write_file`, GitHub writes); no grants table or credential vault yet |
-| Chat, model choice, AI Gateway and OpenRouter                   | Yes                                   | Yes, with instant provider switching                                                                        |
-| Same conversations on every device                              | Yes                                   | Yes (SQLite on the server volume)                                                                           |
-| Scheduled tasks with phone notifications                        | Phone delivery never confirmed        | Tasks page, runs saved as chats, Web Push, Telegram mirror                                                  |
-| Tools: sandbox, files, web search and fetch                     | Yes                                   | Built into eve                                                                                              |
-| Skills                                                          | 7                                     | eve skills, including sol0's research, PR review and failing-check skills, plus a daily briefing            |
-| Memory                                                          | Its own audit: "probably not running" | eve file memory with a Memory page to view, edit and import                                                 |
-| Subagents                                                       | Experimental                          | Researcher and reviewer subagents; no no-code agent builder                                                 |
-| GitHub                                                          | Built, not confirmed                  | Official github-tools extension, token in Settings, writes need approval                                    |
-| Gmail, Calendar, Drive                                          | Built, not confirmed                  | Not yet                                                                                                     |
-| Delegating coding to Claude Code or Codex                       | Turned off                            | Not yet                                                                                                     |
-| Image generation, spoken replies, widgets                       | Yes                                   | Images through the active provider, shown in chat; dictation and read-aloud with device voices; no widgets  |
-| Live voice conversation                                         | Never confirmed end to end            | Dictation plus automatic read-aloud; no real-time voice room                                                |
-| Mac desktop app, local file tools, Chrome extension             | Unsigned, not confirmed               | Not planned yet; the PWA covers desktop and phone                                                           |
-| Stewards: goals kept on track with checked outcomes             | Never reached                         | Not yet; Tasks is the base                                                                                  |
-| Hosting                                                         | Vercel (disabled)                     | Own server: HostUp VPS with Dokploy                                                                         |
+| Pillar                                                          | sol0 reached                          | Ægentica today                                                                                                                    |
+| --------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Work survives a closed tab or a device switch (sol0 "Stage 1")  | Never reached                         | Built into eve's durable sessions                                                                                                 |
+| One safe way to act: every consequential action behind approval | Partial                               | Tool-specific eve approvals (`write_file`, GitHub writes, profile creation); no per-profile permission grants                     |
+| Chat, model choice, AI Gateway and OpenRouter                   | Yes                                   | Yes, with instant provider switching                                                                                              |
+| Same conversations on every device                              | Yes                                   | Yes (SQLite on the server volume)                                                                                                 |
+| Scheduled tasks with phone notifications                        | Phone delivery never confirmed        | Tasks page, runs saved as chats, Web Push, Telegram mirror                                                                        |
+| Tools: sandbox, files, web search and fetch                     | Yes                                   | Built into eve                                                                                                                    |
+| Skills                                                          | 7                                     | eve skills, including sol0's research, PR review and failing-check skills, plus a daily briefing                                  |
+| Memory                                                          | Its own audit: "probably not running" | eve file memory with a Memory page to view, edit and import                                                                       |
+| Subagents                                                       | Experimental                          | Researcher/reviewer plus saved profile creation, editing, selection and background delegation; not arbitrary runtime provisioning |
+| GitHub                                                          | Built, not confirmed                  | Official github-tools extension, token in Settings, writes need approval                                                          |
+| Gmail, Calendar, Drive                                          | Built, not confirmed                  | Not yet                                                                                                                           |
+| Delegating coding to Claude Code or Codex                       | Turned off                            | Not yet                                                                                                                           |
+| Image generation, spoken replies, widgets                       | Yes                                   | Images through the active provider with a private gallery; main-chat attachments; device dictation/read-aloud; no widgets         |
+| Live voice conversation                                         | Never confirmed end to end            | Dictation plus automatic read-aloud; no real-time voice room                                                                      |
+| Mac desktop app, local file tools, Chrome extension             | Unsigned, not confirmed               | Not planned yet; the PWA covers desktop and phone                                                                                 |
+| Stewards: goals kept on track with checked outcomes             | Never reached                         | Not yet; Tasks is the base                                                                                                        |
+| Hosting                                                         | Vercel (disabled)                     | Own server: HostUp VPS with Dokploy                                                                                               |
 
 ## Next, in order
 
@@ -59,3 +59,7 @@ Last reviewed: 23 September 2026.
   model saying so.
 - Chat is home, not a prison: pages such as Tasks and Memory exist where they
   serve better than a message stream.
+
+## Product release boundary
+
+Saved profiles, mode switching, attachments, image management and global search are implemented without a second runtime. This is still one private operator workspace. Arbitrary code installation, separate agent identities, per-agent capability grants, native real-time audio/video, public multi-tenancy and fully autonomous software-factory deployments remain outside this release. See [AGENTS_AND_ORCHESTRATION](./AGENTS_AND_ORCHESTRATION.md) and [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md); do not mark these broader goals complete based on UI alone.

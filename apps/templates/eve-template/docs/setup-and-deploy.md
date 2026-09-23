@@ -348,3 +348,7 @@ Run `pnpm build:eve && pnpm build`, then `pnpm start`. The self-hosted start scr
 Persistent data (chat history, memory, encrypted settings and eve's workflow data) lives under `.eve/.workflow-data`; mount it on a volume and set `EVE_MEMORY_DIR` inside it. [SELF_HOSTING.md](./SELF_HOSTING.md) and [production-release.md](./production-release.md) cover the variables, the volume layout and post-deploy checks.
 
 For a custom HTTPS domain, set `BETTER_AUTH_URL` to that origin. If `EVE_CHAT_PASSWORD` is configured, password auth is the preferred self-hosted sign-in mode even when optional Vercel OAuth variables are also present.
+
+## HostUp / Dokploy production
+
+This fork's product runs on HostUp with Dokploy. Follow [SELF_HOSTING](./SELF_HOSTING.md), not the upstream Vercel quick-start, for the production app. Preserve its data volume and signing secret. See [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) for deployment identity, DNS/TLS and credential-dependent acceptance. Saved agents and image management need no new external service.

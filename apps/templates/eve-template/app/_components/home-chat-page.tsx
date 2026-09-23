@@ -15,6 +15,7 @@ import { ChatComposer } from "@/components/chat/composer";
 import { getChatMessageLengthError } from "@/lib/chat/limits";
 import { createProvisionalChatId, writePendingChatMessage } from "@/lib/chat/provisional-chat";
 import type { SetupStatus } from "@/lib/chat/types";
+import { moveComposerDraft } from "@/lib/chat/composer-draft";
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
   isBusy: false,
@@ -63,7 +64,7 @@ export function HomeChatPage() {
   }, [clientError]);
 
   const handleSubmit = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const message = text.trim();
 
       if (!message || submittingRef.current) {
@@ -97,9 +98,19 @@ export function HomeChatPage() {
       setDraft("");
 
       const provisionalChatId = createProvisionalChatId();
+      try {
+        await moveComposerDraft("new", provisionalChatId);
+      } catch (error) {
+        submittingRef.current = false;
+        setSubmitting(false);
+        setDraft(message);
+        setClientError(error instanceof Error ? error.message : "Could not preserve your draft.");
+        return;
+      }
       const didStoreMessage = writePendingChatMessage(provisionalChatId, message);
 
       if (!didStoreMessage) {
+        await moveComposerDraft(provisionalChatId, "new").catch(() => {});
         submittingRef.current = false;
         setSubmitting(false);
         setDraft(message);

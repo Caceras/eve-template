@@ -208,3 +208,20 @@ This matrix is the coverage contract for the Ultimate Eve Template. â€œIncludedâ
 ## Drift guard
 
 The generated surface file records every current public package export and official registry item. CI should run `pnpm eve:surface:check` after upstream changes. A diff means this matrix and/or UI should be reviewed before calling the template current.
+
+## Operator product surfaces
+
+| Capability                              | Coverage                                  | Boundary                                                            |
+| --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------- |
+| Saved agents                            | Implemented in `/agents`                  | 64 encrypted operator profiles; not separate tenants or deployments |
+| Profile instructions and reference text | Dynamic user-role context                 | No permission grants or retrieval index                             |
+| Profile model / reasoning choice        | Main chat through existing router         | The active provider must support the model                          |
+| Profile creation in chat                | `create_saved_agent`, approval required   | Operator only; editing remains in the form                          |
+| Saved-profile delegation                | Background eve workflow                   | Compiled researcher, current conversation model                     |
+| Main-chat files                         | Structured eve client content             | Four files / 6 MB; unsent drafts stay on this device                |
+| Chat / Research / Image                 | Per-turn composer intent                  | One runtime; generation requires working credentials                |
+| Image library                           | Authenticated `/images`                   | Existing volume; bounded scan, confirmed deletion                   |
+| Global command search                   | Cmd/Ctrl+K                                | Shared pages/actions and up to 100 recent chats                     |
+| Capability directory                    | Searchable Runtime / Included / Directory | Declarations and registry availability are not connection tests     |
+
+Real execution remains unverified until a working model key is supplied and live turns complete. Runtime is the source of truth for effective capabilities; static entries in this matrix cannot assert credential success.

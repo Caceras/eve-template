@@ -1,5 +1,27 @@
 export const productLibrary = [
   {
+    category: "Agent workflows",
+    title: "Create and delegate to saved agents",
+    description:
+      "Save instructions, reference context and a preferred model; choose a profile in chat or delegate focused work.",
+    status: "Included",
+    example:
+      "Open Agents, create a profile, then choose Chat. Or ask to list saved agents and delegate a research task.",
+    requirements:
+      "One operator workspace; profiles do not grant permissions. Delegation uses the compiled researcher and current conversation model. Model execution requires a working key.",
+    path: "subagents",
+  },
+  {
+    category: "Memory and files",
+    title: "Browse your generated images",
+    description: "View, save and delete images stored on the server volume.",
+    status: "Included",
+    example: "Open Images. Choose Create to start an image prompt in the main composer.",
+    requirements:
+      "Signed-in operator access. A working provider key is needed for generation, not browsing. Deletion also removes the image from linked conversations.",
+    path: "tools/overview",
+  },
+  {
     category: "Conversations",
     title: "Research a question",
     description:
@@ -78,9 +100,9 @@ export const productLibrary = [
     description:
       "Bring images, PDFs and text into a conversation, and use a workspace for generated files.",
     status: "Included",
-    example: "Open Channels and use the attachment control.",
+    example: "Attach or paste an image, PDF or text in the main composer.",
     requirements:
-      "Uploads are limited to 10 MB. The lightweight sandbox is not a full browser or arbitrary Linux environment; workspace files are not guaranteed to survive a deployment.",
+      "Main chat accepts four files / 6 MB total; unsent drafts stay on this device. The lightweight sandbox is not a full browser or arbitrary Linux environment; workspace files are not guaranteed to survive a deployment.",
     path: "sandbox",
   },
   {

@@ -1,22 +1,11 @@
 "use client";
 
-import {
-  ArrowRightIcon,
-  BookOpenIcon,
-  BlocksIcon,
-  BrainIcon,
-  CalendarClockIcon,
-  EllipsisIcon,
-  ListRestartIcon,
-  KeyRoundIcon,
-  PanelLeftIcon,
-  PlusIcon,
-  RadioTowerIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ArrowRightIcon, EllipsisIcon, PanelLeftIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { COMMAND_EVENT, workspacePages } from "@/lib/navigation";
+import { SearchIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
@@ -65,16 +54,9 @@ export function ChatSidebar({
 }) {
   const authDisabled = !setupStatus.appReady;
   const router = useRouter();
-  const [pathname, setPathname] = useState("/");
+  const pathname = usePathname();
   const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const syncPathname = () => setPathname(window.location.pathname || "/");
-    syncPathname();
-    window.addEventListener("popstate", syncPathname);
-    return () => window.removeEventListener("popstate", syncPathname);
-  }, []);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -104,45 +86,34 @@ export function ChatSidebar({
         className,
       )}
     >
-      <div className="flex flex-col gap-1 px-2 pt-2 pb-2">
-        <div className="flex items-center justify-between">
-          <button
-            aria-label="New session"
-            className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            onClick={() => {
-              onNewChat();
-              onNavigate?.(null);
-            }}
-            type="button"
+      <div className="flex max-h-[72dvh] shrink-0 flex-col gap-1 overflow-y-auto px-2 pb-2 pt-2">
+        <div className="mb-2 flex h-10 items-center justify-between px-2">
+          <Link
+            href="/"
+            onClick={() => onNavigate?.(null)}
+            className="flex items-center gap-2 text-sm font-medium"
           >
-            <img
-              alt=""
-              aria-hidden
-              className="size-4 select-none invert dark:invert-0"
-              draggable={false}
-              src="/aegentica.svg"
-            />
-          </button>
-          {onToggleSidebar ? (
+            <img alt="" aria-hidden className="size-5 invert dark:invert-0" src="/aegentica.svg" />
+            Ægentica
+          </Link>
+          {onToggleSidebar && (
             <Button
               aria-label="Close sidebar"
-              className="text-muted-foreground/55 hover:text-muted-foreground"
+              className="size-10 text-muted-foreground"
               onClick={onToggleSidebar}
-              size="icon-sm"
-              type="button"
+              size="icon"
               variant="ghost"
             >
               <PanelLeftIcon className="size-4" />
             </Button>
-          ) : null}
+          )}
         </div>
         <button
           className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-left text-sm transition-colors md:h-8",
+            "flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm md:min-h-9",
             newSessionActive ? activeRowClass : inactiveRowClass,
           )}
           onClick={() => {
-            setPathname("/");
             router.push("/");
             onNewChat();
             onNavigate?.(null);
@@ -151,116 +122,36 @@ export function ChatSidebar({
           type="button"
         >
           <PlusIcon className="size-4" />
-          New session
+          New chat
         </button>
-        <Link
-          href="/tasks"
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/tasks" ? activeRowClass : inactiveRowClass,
-          )}
-          aria-current={pathname === "/tasks" ? "page" : undefined}
+        <button
+          className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground hover:bg-muted/50 md:min-h-9"
           onClick={() => {
-            setPathname("/tasks");
             onNavigate?.();
+            window.dispatchEvent(new Event(COMMAND_EVENT));
           }}
+          type="button"
         >
-          <CalendarClockIcon className="size-4" />
-          Tasks
-        </Link>
-        <Link
-          href="/memory"
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/memory" ? activeRowClass : inactiveRowClass,
-          )}
-          aria-current={pathname === "/memory" ? "page" : undefined}
-          onClick={() => {
-            setPathname("/memory");
-            onNavigate?.();
-          }}
-        >
-          <BrainIcon className="size-4" />
-          Memory
-        </Link>
-        <Link
-          href="/settings"
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname.startsWith("/settings") ? activeRowClass : inactiveRowClass,
-          )}
-          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-          onClick={() => {
-            setPathname("/settings");
-            onNavigate?.();
-          }}
-        >
-          <KeyRoundIcon className="size-4" />
-          Settings
-        </Link>
-        <Link
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/capabilities" ? activeRowClass : inactiveRowClass,
-          )}
-          aria-current={pathname === "/capabilities" ? "page" : undefined}
-          href="/capabilities"
-          onClick={() => {
-            setPathname("/capabilities");
-            onNavigate?.();
-          }}
-        >
-          <BlocksIcon className="size-4" />
-          Agent
-        </Link>
-        <Link
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/native" || pathname.startsWith("/native/")
-              ? activeRowClass
-              : inactiveRowClass,
-          )}
-          aria-current={
-            pathname === "/native" || pathname.startsWith("/native/") ? "page" : undefined
-          }
-          href="/native"
-          onClick={() => {
-            setPathname("/native");
-            onNavigate?.();
-          }}
-        >
-          <RadioTowerIcon className="size-4" />
-          Channels
-        </Link>
-        <Link
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/session" ? activeRowClass : inactiveRowClass,
-          )}
-          aria-current={pathname === "/session" ? "page" : undefined}
-          href="/session"
-          onClick={() => {
-            setPathname("/session");
-            onNavigate?.();
-          }}
-        >
-          <ListRestartIcon className="size-4" />
-          Sessions
-        </Link>
-        <Link
-          href="/library"
-          aria-current={pathname === "/library" ? "page" : undefined}
-          onClick={() => {
-            setPathname("/library");
-            onNavigate?.();
-          }}
-          className={cn(
-            "flex h-11 items-center gap-2 rounded-md px-2 text-sm transition-colors md:h-8",
-            pathname === "/library" ? activeRowClass : inactiveRowClass,
-          )}
-        >
-          <BookOpenIcon className="size-4" /> Library
-        </Link>
+          <SearchIcon className="size-4" />
+          Search<span className="ml-auto text-[10px] opacity-60">Ctrl / ⌘ K</span>
+        </button>
+        <nav aria-label="Workspace" className="mt-2 grid gap-0.5">
+          {workspacePages.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => onNavigate?.()}
+              aria-current={pathname === href ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm md:min-h-9",
+                pathname === href ? activeRowClass : inactiveRowClass,
+              )}
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -281,11 +172,10 @@ export function ChatSidebar({
                   key={chat.id}
                 >
                   <Link
-                    className="flex h-9 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
+                    className="flex h-11 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
                     aria-current={active ? "page" : undefined}
                     href={`/chat/${chat.id}`}
                     onClick={() => {
-                      setPathname(`/chat/${chat.id}`);
                       onNavigate?.(chat.id);
                     }}
                   >
@@ -296,7 +186,7 @@ export function ChatSidebar({
                     <DropdownMenuTrigger asChild>
                       <Button
                         aria-label="Chat actions"
-                        className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity hover:bg-muted group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                        className="absolute top-1/2 right-1 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                         size="icon-xs"
                         type="button"
                         variant="ghost"

@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { AgentChatBootstrapSync } from "@/app/_components/agent-chat-bootstrap-sync";
 import { AgentChatShell } from "@/app/_components/agent-chat-shell";
+import { CommandMenu } from "@/app/_components/command-menu";
 import { listChatsPageByUser } from "@/lib/db/queries";
 import { getServerViewer } from "@/lib/session";
 import { getInitialSetupStatus, getSetupStatus } from "@/lib/setup";
@@ -17,6 +18,7 @@ export default function ChatLayout({ children }: { readonly children: ReactNode 
       viewer={null}
     >
       {children}
+      <CommandMenu />
       <div className="hidden" aria-hidden>
         <Suspense fallback={null}>
           <ResolvedChatBootstrap />

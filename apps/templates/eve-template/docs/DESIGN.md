@@ -1,6 +1,6 @@
 # Design contract
 
-This file is the visual and product-UX contract for Ægentica on ai-chat.se. Read it before changing any user-facing UI.
+This file is the visual and product-UX contract for Ægentica on the HostUp / Dokploy deployment. Read it before changing any user-facing UI.
 
 ## Brand
 
@@ -39,7 +39,7 @@ When extending the template, preserve the original visual language and add capab
 Primary navigation uses short nouns:
 
 - **New session** — starts the primary persisted chat.
-- **Agent** — shows the effective compiled agent, included scaffolds, and installable Eve ecosystem.
+- **Agents** — creates and manages saved profiles. **Capabilities** shows the compiled agent, included scaffolds and official registry.
 - **Channels** — channel surfaces and delivery paths. The current web channel is one implementation, not the whole concept.
 - **Sessions** — advanced durable-session inspection and control.
 
@@ -47,19 +47,22 @@ Do not use labels such as "Eve capabilities", "Native Web Chat", "Session lifecy
 
 ## Capability truth
 
-The Agent surface must keep three scopes visibly separate:
+The Capabilities surface must keep three scopes visibly separate:
 
-### Active
+### Runtime
+
 Capabilities reported by the live compiled agent/runtime. Source of truth: Eve Client `info()`.
 
 Examples: tools, skills, instructions, connections, channels, memory, schedules, hooks, subagents, sandbox, workspace and composition metadata.
 
 ### Included
+
 Scaffolds and examples physically present in this repository even if they are not active for the current caller/session.
 
 Current included areas include tools, packaged/dynamic skills, workflows/background tasks, subagents, connections, channels, profile memory, schedules, hooks, sandbox workspace and evals.
 
-### Available
+### Directory
+
 The broader official Eve registry and package surface that can be added/configured. This must never be presented as already active.
 
 ## Visual grammar
@@ -94,29 +97,32 @@ Before shipping a user-facing UI change:
 9. Verify every capability that existed before the change is still discoverable after the change.
 10. Do not call the work complete if the live deployment differs from the committed UI.
 
-
 ## Surface patterns
 
 Every secondary surface must feel like a first-party extension of chat, not a separate admin app.
 
 ### Agent
-- Use three scopes only: **Overview**, **Included**, **Available**.
-- Overview prioritizes live runtime truth and compact capability rows.
+
+- Use three scopes only: **Runtime**, **Included**, **Directory**.
+- Runtime prioritizes live runtime truth and compact capability rows.
 - Included explains repository scaffolds without pretending they are active.
-- Available is a searchable registry list, not a marketplace card grid.
+- Directory is a searchable registry list, not a marketplace card grid.
 - Prefer rows, compact metrics and grouped lists over dashboard tiles.
 
 ### Channels
+
 - Present channels as delivery surfaces for the same agent identity.
 - The current web implementation is one channel, not a second product or second agent.
 - Match the primary composer, conversation width, message rhythm and mobile safe-area behavior.
 
 ### Sessions
+
 - Treat session controls as an advanced utility.
 - Keep destructive lifecycle actions visually secondary and explicit.
 - Empty states should explain the next action rather than show raw developer terminology.
 
 ### Authentication
+
 - One obvious sign-in action.
 - No simultaneous "Log in" / "Sign up" split for password-protected self-hosted deployments.
 - Password auth UI must look like part of the product shell, not a generic auth starter.
@@ -135,6 +141,7 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 ## Completion bar
 
 A polish pass is incomplete if any of these remain:
+
 - starter-template promotional UI in the primary product experience;
 - inconsistent composer implementations;
 - mismatched loading skeletons;
@@ -142,3 +149,11 @@ A polish pass is incomplete if any of these remain:
 - capability pages that read like raw debug output;
 - visible functionality whose label describes implementation instead of user intent;
 - a runtime that builds successfully but is not healthy after deployment.
+
+## Orchestration surface contract
+
+The sidebar uses `lib/navigation.ts`: Agents, Capabilities, Tasks, Images, Memory, Connections, Sessions, Guide and Settings. Chat remains primary. Agents is the profile editor; Capabilities is the live/source/registry inspector. Preserve all existing utility routes and both existing chat surfaces.
+
+Capability scopes are now **Runtime / Included / Directory**. Runtime means a live declaration, never a successful credential test. Category tabs are All, Tools, Skills, Agents, Apps, Channels and More. Details show known access policy and maintainer instructions without fake install buttons.
+
+The main composer groups agent, intent mode and attachments above the text area and keeps model, voice and send/stop controls discoverable. Modal surfaces reuse Radix Dialog, with accessible title/description and bounded viewport scrolling. Errors must retain drafts and indicate recovery. No decorative dashboards, capability removal, invented images, hidden native selects or misleading success toasts.

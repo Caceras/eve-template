@@ -1,578 +1,485 @@
 "use client";
-
-import { useChatShell } from "@/app/_components/chat-shell-context";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIcon,
   BlocksIcon,
-  BotIcon,
-  BrainIcon,
-  CableIcon,
-  CalendarClockIcon,
-  CheckCircle2Icon,
-  CircleAlertIcon,
-  DatabaseIcon,
-  FolderCogIcon,
-  GitBranchIcon,
-  HardDriveIcon,
-  RadioTowerIcon,
   RefreshCwIcon,
   SearchIcon,
+  ArrowUpRightIcon,
   ShieldCheckIcon,
-  SparklesIcon,
-  WrenchIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useChatShell } from "./chat-shell-context";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { eveSurface } from "@/lib/eve-surface.generated";
 import { cn } from "@/lib/utils";
 
-interface RuntimeInfo {
-  readonly version?: number;
-  readonly mode?: string;
-  readonly agent?: {
-    readonly name?: string;
-    readonly description?: string;
-    readonly model?: { readonly id?: string; readonly endpoint?: { readonly connected?: boolean } };
+type Scope = "runtime" | "included" | "directory";
+type Category = "All" | "Tools" | "Skills" | "Agents" | "Apps" | "Channels" | "More";
+type Item = {
+  name: string;
+  description: string;
+  category: Category;
+  group: string;
+  scope: Scope;
+  source?: string;
+  docs?: string;
+  access: string;
+  details?: Record<string, unknown>;
+};
+const categories: Category[] = ["All", "Tools", "Skills", "Agents", "Apps", "Channels", "More"];
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+const array = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const text = (value: unknown) => (typeof value === "string" ? value : "");
+const pair = (value: unknown) => [...array(record(value).static), ...array(record(value).dynamic)];
+function entry(value: unknown, category: Category, group: string): Item {
+  const r = record(value);
+  const annotations = record(r.annotations);
+  const readOnly = r.readOnlyHint ?? annotations.readOnlyHint;
+  return {
+    name:
+      typeof value === "string"
+        ? value
+        : text(r.name) ||
+          text(r.connectionName) ||
+          text(r.slug) ||
+          text(r.slot) ||
+          text(r.id) ||
+          text(r.logicalPath) ||
+          text(r.path) ||
+          text(r.route) ||
+          group,
+    description:
+      text(r.description) ||
+      text(r.summary) ||
+      text(r.cron) ||
+      text(r.backendKind) ||
+      text(r.urlPath) ||
+      "Declared by the runtime. Open the guide for configuration and usage.",
+    category,
+    group,
+    scope: "runtime",
+    details: r,
+    source: text(r.sourcePath) || text(r.logicalPath) || text(r.path),
+    access:
+      r.requiresApproval === true
+        ? "Approval required by the compiled tool policy"
+        : readOnly === true
+          ? "Declared read-only"
+          : readOnly === false
+            ? "May make changes; follow configured approval policy"
+            : "Access policy is not specified in this listing. Listing a capability does not grant permission.",
   };
-  readonly tools?: { readonly static?: readonly unknown[]; readonly dynamic?: readonly unknown[] };
-  readonly skills?: { readonly static?: readonly unknown[]; readonly dynamic?: readonly unknown[] };
-  readonly instructions?: {
-    readonly static?: readonly unknown[];
-    readonly dynamic?: readonly unknown[];
-  };
-  readonly connections?: readonly unknown[];
-  readonly hooks?: readonly unknown[];
-  readonly memories?: readonly unknown[];
-  readonly schedules?: readonly unknown[];
-  readonly channels?: {
-    readonly routes?: readonly unknown[];
-    readonly shadowed?: readonly unknown[];
-  };
-  readonly subagents?: { readonly local?: readonly unknown[]; readonly total?: number };
-  readonly remoteAgents?: { readonly entries?: readonly unknown[]; readonly total?: number };
-  readonly sandbox?: unknown;
-  readonly workspace?: {
-    readonly resourceRoot?: string | null;
-    readonly rootEntries?: readonly unknown[];
-  };
-  readonly composition?: {
-    readonly disabled?: readonly unknown[];
-    readonly shadowed?: readonly unknown[];
-  };
-  readonly diagnostics?: { readonly discoveryErrors?: number; readonly discoveryWarnings?: number };
 }
-
-type AgentView = "overview" | "included" | "available";
-
-const iconClass = "size-4";
-const INCLUDED_AREAS = [
-  ["Tools", "Typed and dynamic tools, approvals, filesystem, search and workflow scaffolds."],
-  ["Skills", "Flat, packaged and dynamic skill loading."],
-  ["Workflows", "Blocking, background and runtime-generated workflows."],
-  ["Subagents", "Visible, hidden and conditional child-agent patterns."],
-  ["Connections", "MCP, OpenAPI and dynamic connection scaffolds."],
-  ["Channels", "HTTP, Slack, MCP and custom channel examples."],
-  ["Memory", "Cross-session profile memory and durable session state."],
-  ["Schedules", "Heartbeat and scheduled-action scaffolds."],
-  ["Hooks", "Global lifecycle and audit hooks."],
-  ["Sandbox", "Seeded workspace and Ægentica sandbox tooling."],
-  ["Evals", "Smoke, HITL, state, delegation and workflow evals."],
-] as const;
-
+const included: Item[] = [
+  [
+    "Tools",
+    "Typed tools and approval flows",
+    "Typed and dynamic tools, web and file tools, image creation and durable workflow tools.",
+  ],
+  [
+    "Skills",
+    "Progressive skill loading",
+    "Flat, packaged and dynamic playbooks, loaded on demand.",
+  ],
+  [
+    "Agents",
+    "Delegation",
+    "Compiled researcher and reviewer agents, background review and saved profile delegation.",
+  ],
+  [
+    "Apps",
+    "Connections",
+    "MCP, OpenAPI and Vercel Connect examples. Credentials and explicit configuration may be required.",
+  ],
+  [
+    "Channels",
+    "Communication channels",
+    "Web chat, owner-paired Telegram, and reference custom channel patterns.",
+  ],
+  [
+    "More",
+    "Memory, state and scheduling",
+    "Cross-session memory, durable session state, tasks, schedules and lifecycle hooks.",
+  ],
+  [
+    "More",
+    "Sandbox and evaluation",
+    "The configured just-bash backend, evaluation fixtures and upstream test patterns; not an unrestricted host terminal.",
+  ],
+].map(([category, name, description]) => ({
+  category: category as Category,
+  name: name!,
+  description: description!,
+  group: "Scaffold",
+  scope: "included",
+  access: "Included source is not proof that an external service is connected.",
+}));
 export function EveCapabilities() {
-  const { requestSignIn } = useChatShell();
-  const [needsLogin, setNeedsLogin] = useState(false);
-  const [info, setInfo] = useState<RuntimeInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { viewer, requestSignIn } = useChatShell();
+  const router = useRouter();
+  const [scope, setScope] = useState<Scope>("runtime");
+  const [category, setCategory] = useState<Category>("All");
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<AgentView>("overview");
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const [info, setInfo] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Item | null>(null);
+  const load = useCallback(async () => {
+    if (!viewer) {
       setInfo(null);
-      setNeedsLogin(false);
-      const response = await fetch("/eve/v1/info");
-      if (response.status === 401) {
-        setNeedsLogin(true);
-        return;
-      }
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/eve/v1/info", { cache: "no-store" });
       if (!response.ok)
-        throw new Error("Agent status could not be loaded. Try refreshing in a moment.");
-      setInfo((await response.json()) as RuntimeInfo);
-    } catch (value) {
-      setError(value instanceof Error ? value.message : "Could not inspect the Ægentica agent.");
+        throw new Error(
+          response.status === 401
+            ? "Sign in to inspect this runtime."
+            : "Runtime inspection is unavailable. Retry in a moment.",
+        );
+      setInfo(record(await response.json()));
+    } catch (error) {
+      setInfo(null);
+      setError(error instanceof Error ? error.message : "Could not inspect runtime.");
     } finally {
       setLoading(false);
     }
-  };
-
+  }, [viewer]);
   useEffect(() => {
     void load();
-  }, []);
-
-  const registryItems = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return eveSurface.registryItems;
-    return eveSurface.registryItems.filter((item) =>
-      `${item.name} ${item.title} ${item.description} ${item.category}`
-        .toLowerCase()
-        .includes(normalized),
+  }, [load]);
+  const runtime = useMemo(() => {
+    if (!info) return [];
+    const groups: [Category, string, unknown[]][] = [
+      ["Tools", "Tools", pair(info.tools)],
+      ["Skills", "Skills", pair(info.skills)],
+      ["Agents", "Local agents", array(record(info.subagents).local)],
+      ["Agents", "Remote agents", array(record(info.remoteAgents).entries)],
+      ["Apps", "Connections", array(info.connections)],
+      ["Channels", "Routes", array(record(info.channels).routes)],
+      ["More", "Instructions", pair(info.instructions)],
+      ["More", "Memory", array(info.memories)],
+      ["More", "Schedules", array(info.schedules)],
+      ["More", "Hooks", array(info.hooks)],
+      ["More", "Sandbox", info.sandbox ? [info.sandbox] : []],
+      ["More", "Workspace", array(record(info.workspace).rootEntries)],
+      ["More", "Disabled", array(record(info.composition).disabled)],
+      ["More", "Shadowed", array(record(info.composition).shadowed)],
+      ["Channels", "Shadowed routes", array(record(info.channels).shadowed)],
+      ["More", "Kernel effects", array(info.kernelEffects)],
+      ["More", "Instrumentation", info.instrumentation ? [info.instrumentation] : []],
+    ];
+    return groups.flatMap(([category, group, entries]) =>
+      entries.map((value) => entry(value, category, group)),
     );
-  }, [query]);
-
-  const groups = useMemo(() => {
-    const map = new Map<string, typeof registryItems>();
-    for (const item of registryItems) {
-      const current = map.get(item.category) ?? [];
-      map.set(item.category, [...current, item]);
+  }, [info]);
+  const directory = useMemo<Item[]>(
+    () =>
+      eveSurface.registryItems.map((item) => ({
+        name: item.title,
+        description: item.description,
+        group: item.category,
+        scope: "directory",
+        source: item.name,
+        docs: item.docs ?? undefined,
+        details: { implementation: item.implementation, requirements: item.requires },
+        category: item.category.includes("channel")
+          ? "Channels"
+          : item.category.includes("skill")
+            ? "Skills"
+            : item.category.includes("agent")
+              ? "Agents"
+              : item.category.includes("connection")
+                ? "Apps"
+                : item.category.includes("tool")
+                  ? "Tools"
+                  : "More",
+        access:
+          "Available from the official eve registry. Not installed or connected by this view.",
+      })),
+    [],
+  );
+  const inventory = scope === "runtime" ? runtime : scope === "included" ? included : directory;
+  const filtered = inventory.filter(
+    (item) =>
+      (category === "All" || item.category === category) &&
+      `${item.name} ${item.description} ${item.source || ""} ${item.group}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
+  function ask(item: Item) {
+    try {
+      window.sessionStorage.setItem(
+        "eve-chat-draft",
+        `Help me understand and use ${item.name}${item.source ? ` (${item.source})` : ""}. First check whether it is configured, which permissions it needs, and what is safe to do. Do not claim it is connected from a registry listing.`,
+      );
+      setSelected(null);
+      router.push("/");
+    } catch {
+      setError("Could not prepare the draft. Start a chat and ask about this capability.");
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [registryItems]);
-
-  const activeGroups = [
-    ["Tools", <WrenchIcon className={iconClass} />, pairEntries(info?.tools)],
-    ["Skills", <SparklesIcon className={iconClass} />, pairEntries(info?.skills)],
-    ["Instructions", <BrainIcon className={iconClass} />, pairEntries(info?.instructions)],
-    ["Connections", <CableIcon className={iconClass} />, info?.connections ?? []],
-    ["Channel routes", <RadioTowerIcon className={iconClass} />, info?.channels?.routes ?? []],
-    ["Memory", <DatabaseIcon className={iconClass} />, info?.memories ?? []],
-    ["Schedules", <CalendarClockIcon className={iconClass} />, info?.schedules ?? []],
-    ["Hooks", <ActivityIcon className={iconClass} />, info?.hooks ?? []],
-    ["Local agents", <BotIcon className={iconClass} />, info?.subagents?.local ?? []],
-    ["Remote agents", <RadioTowerIcon className={iconClass} />, info?.remoteAgents?.entries ?? []],
-    ["Sandbox", <HardDriveIcon className={iconClass} />, info?.sandbox ? [info.sandbox] : []],
-    ["Workspace", <FolderCogIcon className={iconClass} />, info?.workspace?.rootEntries ?? []],
-    ["Disabled", <ShieldCheckIcon className={iconClass} />, info?.composition?.disabled ?? []],
-    ["Shadowed", <FolderCogIcon className={iconClass} />, info?.composition?.shadowed ?? []],
-  ] as const;
-
+  }
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl px-4 pb-16 pt-16 sm:px-6 sm:pt-14">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
-              <BlocksIcon className={iconClass} />
-              Agent
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Agent</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              See what your agent can do, check its connection, and explore more possibilities.{" "}
-              <Link href="/library" className="underline underline-offset-4">
-                Read the guide
-              </Link>
+      <div className="mx-auto max-w-4xl px-4 pb-16 pt-16 sm:px-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Capabilities</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Discover the tools, skills and connections behind your agents.
             </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <Badge className="h-7 gap-1.5 rounded-md px-2.5 font-normal" variant="outline">
-              <span
+          <Button
+            aria-label="Refresh runtime"
+            disabled={loading || !viewer}
+            variant="outline"
+            className="size-11 shrink-0"
+            size="icon"
+            onClick={() => void load()}
+          >
+            <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-lg bg-muted p-1" aria-label="Capability source">
+            {(
+              [
+                ["runtime", "Runtime"],
+                ["included", "Included"],
+                ["directory", "Directory"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={scope === id}
+                onClick={() => {
+                  setScope(id);
+                  setCategory("All");
+                }}
                 className={cn(
-                  "size-1.5 rounded-full",
-                  needsLogin
-                    ? "bg-muted-foreground"
-                    : error
-                      ? "bg-destructive"
-                      : loading
-                        ? "bg-muted-foreground/40"
-                        : "bg-emerald-500",
+                  "min-h-10 rounded-md px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring",
+                  scope === id ? "bg-background shadow-sm" : "text-muted-foreground",
                 )}
-              />
-              {needsLogin
-                ? "Sign in to inspect"
-                : error
-                  ? "Status unavailable"
-                  : loading
-                    ? "Checking agent"
-                    : "Runtime live"}
-            </Badge>
-            <Button
-              aria-label="Refresh runtime"
-              disabled={loading}
-              onClick={() => void load()}
-              size="icon-sm"
-              type="button"
-              variant="outline"
-            >
-              <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} />
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-7 inline-flex rounded-lg bg-muted/70 p-1">
-          <ViewButton active={view === "overview"} onClick={() => setView("overview")}>
-            Overview
-          </ViewButton>
-          <ViewButton active={view === "included"} onClick={() => setView("included")}>
-            Included
-          </ViewButton>
-          <ViewButton active={view === "available"} onClick={() => setView("available")}>
-            Available
-          </ViewButton>
-        </div>
-
-        {needsLogin && view === "overview" ? (
-          <div className="mt-6 rounded-xl border p-6">
-            <h2 className="text-base font-medium">Get to know your agent</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Sign in to see your agent’s live capabilities. You can explore Included, Available and
-              the library without signing in.
-            </p>
-            <Button className="mt-4" onClick={() => requestSignIn()}>
-              Sign in
-            </Button>
-          </div>
-        ) : null}
-        {error ? (
-          <div className="mt-6 flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/[0.035] p-4 text-sm">
-            <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-            <div className="min-w-0">
-              <p className="font-medium">Runtime inspection unavailable</p>
-              <p className="mt-1 break-words text-muted-foreground">{error}</p>
-            </div>
-          </div>
-        ) : null}
-
-        {view === "overview" && !needsLogin ? (
-          <div className="mt-6 space-y-6">
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Metric
-                detail={info?.agent?.model?.id ?? "Live compiled agent"}
-                icon={<BotIcon className={iconClass} />}
-                label="Runtime"
-                value={info?.agent?.name ?? (loading ? "Loading…" : "Unavailable")}
-              />
-              <Metric
-                detail="static + dynamic"
-                icon={<WrenchIcon className={iconClass} />}
-                label="Tools"
-                value={info ? String(countPair(info.tools)) : "—"}
-              />
-              <Metric
-                detail="static + dynamic"
-                icon={<SparklesIcon className={iconClass} />}
-                label="Skills"
-                value={info ? String(countPair(info.skills)) : "—"}
-              />
-              <Metric
-                detail="local + remote"
-                icon={<GitBranchIcon className={iconClass} />}
-                label="Agents"
-                value={
-                  info
-                    ? String((info.subagents?.total ?? 0) + (info.remoteAgents?.total ?? 0))
-                    : "—"
-                }
-              />
-            </section>
-
-            {info ? (
-              <div className="rounded-lg border px-4 py-3 text-sm leading-6">
-                <span className="font-medium">Model selection: </span>
-                Choose a model in the message composer.{" "}
-                <Link href="/settings" className="underline underline-offset-4">
-                  Switch between AI Gateway and OpenRouter in Settings
-                </Link>
-                .
-                <p className="text-muted-foreground">
-                  The capabilities below are declared by the agent. External services require their
-                  own connection and a successful test.
-                </p>
-              </div>
-            ) : null}
-            <section>
-              <SectionHeading
-                description="Declared by the live runtime. Connections listed here are not necessarily authenticated."
-                title="Agent capabilities"
-              />
-              <div className="overflow-hidden rounded-xl border bg-card">
-                {info ? (
-                  activeGroups.map(([title, icon, entries], index) => (
-                    <CapabilityRow
-                      entries={entries}
-                      icon={icon}
-                      key={title}
-                      last={index === activeGroups.length - 1}
-                      title={title}
-                    />
-                  ))
-                ) : (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    {loading
-                      ? "Loading agent capabilities…"
-                      : "Agent capabilities are currently unknown."}
-                  </p>
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-xl border bg-card">
-              <div className="flex items-center gap-2 border-b px-4 py-3 text-sm font-medium">
-                <ShieldCheckIcon className={iconClass} />
-                Runtime
-              </div>
-              <div className="grid gap-px bg-border sm:grid-cols-3">
-                <Diagnostic label="Agent info" value={`v${info?.version ?? "—"}`} />
-                <Diagnostic label="Mode" value={info?.mode ?? "—"} />
-                <Diagnostic
-                  label="Discovery"
-                  value={
-                    info
-                      ? `${info.diagnostics?.discoveryErrors ?? 0} errors · ${info.diagnostics?.discoveryWarnings ?? 0} warnings`
-                      : "—"
-                  }
-                />
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {view === "included" ? (
-          <div className="mt-6">
-            <SectionHeading
-              description="Present in this repository. Some capabilities still require credentials, caller permissions or explicit configuration before becoming active."
-              title="Included scaffolds"
-            />
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <div className="grid gap-px bg-border sm:grid-cols-2">
-                {INCLUDED_AREAS.map(([title, detail]) => (
-                  <div className="bg-background p-4 sm:p-5" key={title}>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2Icon className="size-4 text-muted-foreground" />
-                      <p className="text-sm font-medium">{title}</p>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {view === "available" ? (
-          <div className="mt-6 space-y-6">
-            <section>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <SectionHeading
-                  description={`${eveSurface.registryItems.length} official registry items available to add or configure in Ægentica.`}
-                  title="Capability registry"
-                />
-                <div className="relative w-full sm:w-72">
-                  <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search registry"
-                    value={query}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 overflow-hidden rounded-xl border bg-card">
-                {groups.length ? (
-                  groups.map(([category, items], groupIndex) => (
-                    <div className={cn(groupIndex > 0 && "border-t")} key={category}>
-                      <div className="flex items-center justify-between bg-muted/30 px-4 py-2.5">
-                        <p className="text-xs font-medium capitalize text-muted-foreground">
-                          {category}
-                        </p>
-                        <span className="text-[11px] text-muted-foreground">{items.length}</span>
-                      </div>
-                      <div className="divide-y">
-                        {items.map((item) => (
-                          <div
-                            className="grid gap-3 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                            key={item.name}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <p className="truncate text-sm font-medium">{item.title}</p>
-                                <Badge className="shrink-0 font-normal" variant="secondary">
-                                  {item.implementation ?? "registry"}
-                                </Badge>
-                              </div>
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                                {item.description}
-                              </p>
-                            </div>
-                            <code className="truncate text-[11px] text-muted-foreground sm:max-w-56">
-                              Add {item.name}
-                            </code>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No registry items match “{query}”.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section>
-              <SectionHeading
-                description={`${eveSurface.packageExports.length} public package entrypoints exposed by the underlying agent framework.`}
-                title="Package surface"
-              />
-              <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-4">
-                {eveSurface.packageExports.map((entry) => (
-                  <Badge className="font-mono font-normal" key={entry} variant="outline">
-                    {entry}
-                  </Badge>
-                ))}
-              </div>
-            </section>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ViewButton({
-  active,
-  children,
-  onClick,
-}: {
-  readonly active: boolean;
-  readonly children: ReactNode;
-  readonly onClick: () => void;
-}) {
-  return (
-    <button
-      className={cn(
-        "h-8 rounded-md px-3 text-sm transition-[background-color,color,box-shadow]",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function SectionHeading({
-  description,
-  title,
-}: {
-  readonly description: string;
-  readonly title: string;
-}) {
-  return (
-    <div className="mb-3">
-      <h2 className="text-sm font-medium">{title}</h2>
-      <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function Metric({
-  detail,
-  icon,
-  label,
-  value,
-}: {
-  readonly detail: string;
-  readonly icon: ReactNode;
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-3 truncate text-lg font-semibold tracking-tight">{value}</div>
-      <div className="mt-1 truncate text-xs text-muted-foreground">{detail}</div>
-    </div>
-  );
-}
-
-function CapabilityRow({
-  entries,
-  icon,
-  last,
-  title,
-}: {
-  readonly entries: readonly unknown[];
-  readonly icon: ReactNode;
-  readonly last: boolean;
-  readonly title: string;
-}) {
-  return (
-    <div className={cn("grid gap-3 px-4 py-3.5 sm:grid-cols-[10rem_1fr]", !last && "border-b")}>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground">{icon}</span>
-        <span className="font-medium">{title}</span>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground sm:ml-1">
-          {entries.length}
-        </span>
-      </div>
-      <div className="min-w-0">
-        {entries.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {entries.slice(0, 12).map((entry, index) => (
-              <Badge
-                className="max-w-full font-normal"
-                key={`${entryName(entry)}-${index}`}
-                variant="outline"
               >
-                <span className="truncate">{entryName(entry)}</span>
-              </Badge>
+                {label}
+              </button>
             ))}
-            {entries.length > 12 ? (
-              <Badge className="font-normal" variant="secondary">
-                +{entries.length - 12}
-              </Badge>
-            ) : null}
+          </div>
+          <Link
+            className="ml-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            href="/agents"
+          >
+            Your agents
+            <ArrowUpRightIcon className="size-4" />
+          </Link>
+        </div>
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">
+          {scope === "runtime"
+            ? "Declared by the live runtime, not a connection or credential test. Session-specific dynamic tools can change during a turn."
+            : scope === "included"
+              ? "Source patterns in this repository. Some need configuration before they can run."
+              : `${directory.length} official registry entries. Adding one is a maintainer operation, not a one-click connection.`}
+        </p>
+        <div className="relative mt-5">
+          <SearchIcon className="absolute left-3 top-3 size-4 text-muted-foreground" />
+          <Input
+            className="h-11 pl-9"
+            aria-label="Search capabilities"
+            placeholder="Search tools, skills, agents, apps..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="mt-3 flex gap-1 overflow-x-auto pb-2" aria-label="Capability category">
+          {categories.map((label) => (
+            <button
+              type="button"
+              key={label}
+              aria-pressed={category === label}
+              onClick={() => setCategory(label)}
+              className={cn(
+                "min-h-10 shrink-0 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring",
+                category === label
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {error && (
+          <p className="my-3 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+        {scope === "runtime" && !viewer ? (
+          <div className="mt-4 rounded-xl border p-6">
+            <h2 className="font-medium">Inspect your running agent</h2>
+            <p className="my-3 text-sm text-muted-foreground">
+              Sign in for live capabilities. Included patterns and the official directory are
+              public.
+            </p>
+            <Button onClick={() => requestSignIn()}>Sign in</Button>
+          </div>
+        ) : loading && scope === "runtime" ? (
+          <p className="py-8 text-sm text-muted-foreground" role="status">
+            Inspecting runtime...
+          </p>
+        ) : filtered.length ? (
+          <div className="mt-3 divide-y overflow-hidden rounded-xl border">
+            {filtered.map((item, index) => (
+              <button
+                key={`${item.group}-${item.name}-${index}`}
+                className="flex min-h-20 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                onClick={() => setSelected(item)}
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <BlocksIcon className="size-4 text-muted-foreground" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{item.name}</span>
+                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                    {item.description}
+                  </span>
+                </span>
+                <Badge variant="outline" className="hidden shrink-0 font-normal sm:flex">
+                  {item.group}
+                </Badge>
+                <ArrowUpRightIcon className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
           </div>
         ) : (
-          <span className="text-xs text-muted-foreground">None active</span>
+          <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {error
+              ? "Runtime information could not be retrieved."
+              : "No capabilities match this view."}
+          </div>
         )}
+        {scope === "runtime" && info && (
+          <details className="mt-4 rounded-lg border px-4 py-3 text-sm">
+            <summary className="cursor-pointer font-medium">Runtime diagnostics</summary>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <dt>Environment</dt>
+              <dd>{text(info.mode) || "Unknown"}</dd>
+              <dt>Discovery errors</dt>
+              <dd>{String(record(info.diagnostics).discoveryErrors ?? "Unknown")}</dd>
+              <dt>Discovery warnings</dt>
+              <dd>{String(record(info.diagnostics).discoveryWarnings ?? "Unknown")}</dd>
+              <dt>Model routing</dt>
+              <dd>{text(record(record(record(info.agent).model).routing).kind) || "Unknown"}</dd>
+              <dt>Registry snapshot</dt>
+              <dd>eve {eveSurface.eveVersion}</dd>
+            </dl>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Inspect Sessions for live events and outcomes. API credentials are not tested by this
+              view.
+            </p>
+          </details>
+        )}
+        <div className="mt-5 flex items-start gap-2 text-xs leading-5 text-muted-foreground">
+          <ShieldCheckIcon className="mt-0.5 size-4 shrink-0" />
+          <p>
+            External writes follow each tool's approval policy. Adding a profile or opening a
+            capability does not grant new permissions.{" "}
+            <Link href="/settings/integrations" className="underline underline-offset-4">
+              Manage connections
+            </Link>
+          </p>
+        </div>
+        <Dialog
+          open={Boolean(selected)}
+          onOpenChange={(open) => {
+            if (!open) setSelected(null);
+          }}
+        >
+          <DialogContent className="max-h-[85dvh] max-w-xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="break-words pr-6">{selected?.name}</DialogTitle>
+              <DialogDescription>
+                {selected?.scope === "runtime"
+                  ? "Declared by the runtime"
+                  : selected?.scope === "included"
+                    ? "Included source pattern"
+                    : "Official registry entry"}
+              </DialogDescription>
+            </DialogHeader>
+            {selected && (
+              <>
+                <p className="text-sm leading-6">{selected.description}</p>
+                <div className="rounded-lg bg-muted p-4 text-sm">
+                  <p className="font-medium">Access</p>
+                  <p className="mt-1 leading-6 text-muted-foreground">{selected.access}</p>
+                </div>
+                {selected.source && (
+                  <div>
+                    <p className="mb-1 text-xs text-muted-foreground">
+                      {selected.scope === "directory" ? "Registry identifier" : "Source"}
+                    </p>
+                    <code className="break-all text-xs">{selected.source}</code>
+                  </div>
+                )}
+                {selected.scope === "directory" && selected.source && (
+                  <div>
+                    <p className="mb-2 text-sm">Maintainer setup</p>
+                    <code className="block overflow-x-auto rounded-lg bg-muted p-3 text-xs">
+                      pnpm exec eve add {selected.source}
+                    </code>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      Review generated code, configure credentials and approvals, rebuild, then
+                      deploy through Dokploy.
+                    </p>
+                  </div>
+                )}
+                {selected.details && (
+                  <details className="rounded-lg border p-3 text-sm">
+                    <summary className="cursor-pointer font-medium">
+                      Configuration and schemas
+                    </summary>
+                    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs leading-5">
+                      {JSON.stringify(selected.details, null, 2)}
+                    </pre>
+                  </details>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" className="min-h-11" onClick={() => ask(selected)}>
+                    Ask in chat
+                  </Button>
+                  {selected.docs?.startsWith("/") && (
+                    <Button asChild variant="outline" className="min-h-11">
+                      <a
+                        href={`https://eve.dev/docs${selected.docs}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Official documentation
+                        <ArrowUpRightIcon className="size-4" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
-}
-
-function Diagnostic({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <div className="bg-background px-4 py-3.5">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm">{value}</p>
-    </div>
-  );
-}
-
-function pairEntries(
-  value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"],
-) {
-  return [...(value?.static ?? []), ...(value?.dynamic ?? [])];
-}
-
-function countPair(
-  value: RuntimeInfo["tools"] | RuntimeInfo["skills"] | RuntimeInfo["instructions"],
-) {
-  return (value?.static?.length ?? 0) + (value?.dynamic?.length ?? 0);
-}
-
-function entryName(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (!value || typeof value !== "object") return "unknown";
-  const record = value as Record<string, unknown>;
-  for (const key of ["name", "id", "logicalPath", "sourceId", "path", "route"]) {
-    if (typeof record[key] === "string") return record[key] as string;
-  }
-  return "capability";
 }
