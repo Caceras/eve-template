@@ -91,12 +91,10 @@ export async function profileAttributes(request: Request): Promise<Record<string
       ...attributes,
       agentProfileError: "This saved agent no longer exists. Choose another agent in the composer.",
     };
-  return {
-    ...attributes,
-    agentProfileId: profile.id,
-    agentProfileName: profile.name,
-    agentProfileInstructions: profileInstructions(profile),
-    agentReasoning: profile.reasoning,
-    ...(profile.model ? { chatModel: profile.model } : {}),
-  };
+  attributes.agentProfileId = profile.id;
+  attributes.agentProfileName = profile.name;
+  attributes.agentProfileInstructions = profileInstructions(profile);
+  attributes.agentReasoning = profile.reasoning;
+  if (profile.model) attributes.chatModel = profile.model;
+  return attributes;
 }

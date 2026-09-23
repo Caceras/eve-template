@@ -733,13 +733,12 @@ export function AgentChatSession({
       try {
         startFinalizingTurn();
         const draft = await readComposerDraft(activeChatIdRef.current ?? "new");
-        await agent.respond(responses, {
-          headers: {
-            ...modelRequestHeaders(),
-            "x-aegentica-mode": draft.mode,
-            ...(draft.profileId ? { "x-aegentica-profile": draft.profileId } : {}),
-          },
-        });
+        const headers: Record<string, string> = {
+          ...modelRequestHeaders(),
+          "x-aegentica-mode": draft.mode,
+        };
+        if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
+        await agent.respond(responses, { headers });
       } catch (error) {
         stopFinalizingTurn();
         setClientError(error instanceof Error ? error.message : "Failed to send response.");

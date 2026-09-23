@@ -134,11 +134,11 @@ export async function composerTurn(
         "The selected model cannot read images. Choose a model marked Vision; your attachments are saved.",
       );
   }
-  const headers = {
+  const headers: Record<string, string> = {
     ...modelRequestHeaders(),
     "x-aegentica-mode": draft.mode,
-    ...(draft.profileId ? { "x-aegentica-profile": draft.profileId } : {}),
   };
+  if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
   if (!draft.files.length) return { message: text, headers };
   const parts: UserContent = [{ type: "text", text }];
   for (const file of draft.files)

@@ -40,7 +40,17 @@ for n in $(seq 1 60); do
   sleep 2
 done
 if test "$ready" != 1; then cat "$QA_ARTIFACTS/server.log"; exit 1; fi
-run_check browser node scripts/test-product-browser.mjs
+if node scripts/test-product-browser.mjs > "$QA_ARTIFACTS/browser.log" 2>&1; then
+  echo 'PASS: browser'
+else
+  tail -100 "$QA_ARTIFACTS/browser.log"
+  NODE_ENV=development BETTER_AUTH_URL=http://localhost:3001 pnpm exec next dev --port 3001 > "$QA_ARTIFACTS/hydration-server.log" 2>&1 &
+  debug_server=$!
+  node scripts/diagnose-hydration.mjs > "$QA_ARTIFACTS/hydration.log" 2>&1 || true
+  kill "$debug_server" 2>/dev/null || true
+  echo 'FAIL: browser'
+  exit 1
+fi
 node --input-type=module -e '
 import { readFileSync } from "node:fs";
 const result=JSON.parse(readFileSync(process.env.QA_ARTIFACTS+"/browser-results.json","utf8"));

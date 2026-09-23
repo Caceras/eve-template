@@ -13,50 +13,25 @@ export function routedModel(options: { prefer?: string } = {}) {
         const provider = await readActiveProvider();
         const { apiKey } = await readProviderKey(provider);
         if (!apiKey)
-          throw new Error(
-            `No ${PROVIDERS[provider].label} API key is configured. Add one in Settings.`,
-          );
+          throw new Error(`No ${PROVIDERS[provider].label} API key is configured. Add one in Settings.`);
         const { models } = await getCatalog(provider);
-        const requested =
-          options.prefer ??
-          ctx.session.auth.current?.attributes.chatModel ??
-          (await readDefaultModel());
+        const requested = options.prefer ?? ctx.session.auth.current?.attributes.chatModel ?? (await readDefaultModel());
         const model = pickModel(provider, models, requested);
         if (!model) throw new Error(`${PROVIDERS[provider].label} returned no compatible models.`);
-        const hasImages = ctx.messages.some(
-          (message) =>
-            Array.isArray(message.content) &&
-            message.content.some(
-              (part) =>
-                part.type === "image" ||
-                (part.type === "file" && part.mediaType.startsWith("image/")),
-            ),
-        );
+        const hasImages = ctx.messages.some((message) => Array.isArray(message.content) && message.content.some((part) => part.type === "image" || (part.type === "file" && part.mediaType.startsWith("image/"))));
         if (hasImages && !model.vision)
-          throw new Error(
-            "The selected model cannot read images. Choose a model marked Vision and retry.",
-          );
+          throw new Error("The selected model cannot read images. Choose a model marked Vision and retry.");
         const profileReasoning = ctx.session.auth.current?.attributes.agentReasoning;
-        const reasoning: AgentReasoningDefinition | undefined =
-          !options.prefer &&
-          (profileReasoning === "provider-default" ||
-            profileReasoning === "low" ||
-            profileReasoning === "medium" ||
-            profileReasoning === "high")
-            ? profileReasoning
-            : undefined;
+        const reasoning: AgentReasoningDefinition | undefined = !options.prefer && (profileReasoning === "provider-default" || profileReasoning === "low" || profileReasoning === "medium" || profileReasoning === "high") ? profileReasoning : undefined;
         const contextWindow = model.contextWindow ?? undefined;
-        if (provider === "gateway")
-          return {
-            model: createGateway({ apiKey })(model.id),
-            modelContextWindowTokens: contextWindow,
-            ...(reasoning ? { reasoning } : {}),
-          };
-        return {
+        const selection = provider === "gateway" ? {
+          model: createGateway({ apiKey })(model.id),
+          modelContextWindowTokens: contextWindow,
+        } : {
           model: openRouterModel(apiKey, model),
           modelContextWindowTokens: contextWindow ?? 128_000,
-          ...(reasoning ? { reasoning } : {}),
         };
+        return reasoning ? { ...selection, reasoning } : selection;
       },
     },
   });
