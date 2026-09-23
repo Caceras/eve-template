@@ -16,20 +16,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  source:
-    name: Product source and documentation
+  environment:
+    name: Reproducible product environment
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Package public source for isolated review
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install locked product dependencies
+        working-directory: apps/templates/eve-template
+        run: pnpm install --frozen-lockfile
+      - name: Prepare offline validation tools
         run: |
-          git archive --format=tar.gz --output=aegentica-source.tar.gz HEAD
+          mkdir -p validation-tools/bin
+          cp "$(command -v node)" validation-tools/bin/node
+          cd validation-tools
+          npm init -y > /dev/null
+          npm install --save-exact @playwright/test@latest
+          PLAYWRIGHT_BROWSERS_PATH=./browsers npx playwright install chromium
+          cd ..
+          tar -czf aegentica-validation.tar.gz apps/templates/eve-template/node_modules validation-tools
       - uses: actions/upload-artifact@v4
         with:
-          name: aegentica-source-${{ github.sha }}
-          path: aegentica-source.tar.gz
+          name: aegentica-validation-${{ github.sha }}
+          path: aegentica-validation.tar.gz
           retention-days: 1
           if-no-files-found: error
