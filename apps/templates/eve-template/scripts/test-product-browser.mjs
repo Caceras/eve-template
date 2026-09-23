@@ -30,7 +30,7 @@ const snapshot = async (name) => {
 async function navigate(path = "/") {
   const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" });
   assert.equal(response.status(), 200, path);
-  await page.locator("main").waitFor();
+  await page.getByRole("main").waitFor();
   return response;
 }
 async function check(name, work) {
