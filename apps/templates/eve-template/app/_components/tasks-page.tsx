@@ -12,6 +12,16 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -203,6 +213,7 @@ export function TasksPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [deleteTask, setDeleteTask] = useState<Task | null>(null);
   const router = useRouter();
 
   const createWithAgent = () => {
@@ -324,14 +335,14 @@ export function TasksPage() {
             </div>
             <div
               aria-label="Filter tasks"
-              className="mt-3 flex gap-1 overflow-x-auto"
+              className="mt-3 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="tablist"
             >
               {FILTERS.map((item) => (
                 <button
                   aria-selected={filter === item.value}
                   className={cn(
-                    "h-11 shrink-0 rounded-md px-3 text-sm transition-colors md:h-8",
+                    "h-11 shrink-0 snap-start rounded-md px-3 text-sm transition-colors md:h-8",
                     filter === item.value
                       ? "bg-muted/70 text-foreground"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -404,8 +415,8 @@ export function TasksPage() {
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
-                          className="text-destructive"
-                          onSelect={() => void act("delete", task)}
+                          variant="destructive"
+                          onSelect={() => setDeleteTask(task)}
                         >
                           Delete
                         </DropdownMenuItem>
@@ -428,6 +439,37 @@ export function TasksPage() {
           </p>
         )}
       </div>
+      <AlertDialog
+        open={Boolean(deleteTask)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTask(null);
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTask
+                ? `“${deleteTask.title}” will stop running and be removed. Previous result chats stay in your history.`
+                : "This task will be removed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11 md:h-9">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11 md:h-9"
+              variant="destructive"
+              onClick={() => {
+                if (!deleteTask) return;
+                void act("delete", deleteTask);
+                setDeleteTask(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <TaskDialog
         draft={draft}
         onClose={() => setDraft(null)}
