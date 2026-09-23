@@ -5,13 +5,7 @@ import { getCatalog } from "@/lib/provider-catalog";
 import { openRouterModel } from "@/lib/openrouter-model";
 import { readActiveProvider, readDefaultModel, readProviderKey } from "@/lib/provider-settings";
 
-/**
- * Routes every model step through the provider and key currently saved in
- * Settings, so switching provider, key or model applies to the next step
- * without restarting eve. `prefer` pins a model when the active provider
- * offers it; otherwise the caller's composer choice, then the operator's saved
- * default (for Telegram and schedules), then the provider default.
- */
+/** Resolve the current provider, key and chosen model at every model step. */
 export function routedModel(options: { prefer?: string } = {}) {
   return defineDynamic({
     events: {
@@ -29,7 +23,6 @@ export function routedModel(options: { prefer?: string } = {}) {
           (await readDefaultModel());
         const model = pickModel(provider, models, requested);
         if (!model) throw new Error(`${PROVIDERS[provider].label} returned no compatible models.`);
-
         const hasImages = ctx.messages.some(
           (message) =>
             Array.isArray(message.content) &&
@@ -61,7 +54,6 @@ export function routedModel(options: { prefer?: string } = {}) {
           };
         return {
           model: openRouterModel(apiKey, model),
-          // OpenRouter models are not in eve's Gateway metadata catalog.
           modelContextWindowTokens: contextWindow ?? 128_000,
           ...(reasoning ? { reasoning } : {}),
         };

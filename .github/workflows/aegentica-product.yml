@@ -45,75 +45,11 @@ jobs:
           git rev-parse HEAD > /tmp/aegentica-qa/revision.txt
           git archive --format=tar.gz --output=/tmp/aegentica-qa/source.tar.gz HEAD
       - name: Install locked product dependencies
-        id: install
         working-directory: apps/templates/eve-template
         run: pnpm install --frozen-lockfile
-      - name: Deterministic product regression checks
-        id: unit
-        continue-on-error: true
+      - name: Check production product
         working-directory: apps/templates/eve-template
-        run: |
-          failed=0
-          for name in agent-profiles chat-store github-settings image-generation media-library memory-store models openrouter-model production provider-settings push-and-task-runner telegram-and-schedules; do
-            echo "Checking $name"
-            if node "scripts/test-$name.mjs" > "/tmp/aegentica-qa/test-$name.log" 2>&1; then
-              echo "PASS $name"
-            else
-              echo "FAIL $name"
-              tail -80 "/tmp/aegentica-qa/test-$name.log"
-              failed=1
-            fi
-          done
-          exit "$failed"
-      - name: Compile eve
-        id: eve
-        continue-on-error: true
-        working-directory: apps/templates/eve-template
-        run: |
-          pnpm build:eve > /tmp/aegentica-qa/build-eve.log 2>&1 || { tail -100 /tmp/aegentica-qa/build-eve.log; exit 1; }
-      - name: Typecheck product
-        id: types
-        continue-on-error: true
-        working-directory: apps/templates/eve-template
-        run: |
-          pnpm typecheck > /tmp/aegentica-qa/typecheck.log 2>&1 || { cat /tmp/aegentica-qa/typecheck.log; exit 1; }
-      - name: Build Next.js production
-        id: build
-        continue-on-error: true
-        working-directory: apps/templates/eve-template
-        run: |
-          pnpm build > /tmp/aegentica-qa/build-next.log 2>&1 || { tail -100 /tmp/aegentica-qa/build-next.log; exit 1; }
-      - name: Install isolated browser test tooling
-        if: steps.build.outcome == 'success' && steps.eve.outcome == 'success'
-        run: |
-          npm install --prefix /tmp/aegentica-browser --save-exact playwright@1.63.0
-          node /tmp/aegentica-browser/node_modules/playwright/cli.js install --with-deps chromium
-      - name: Browser acceptance on disposable local data
-        id: browser
-        if: steps.build.outcome == 'success' && steps.eve.outcome == 'success'
-        continue-on-error: true
-        working-directory: apps/templates/eve-template
-        run: |
-          export EVE_SESSION_SECRET="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))")"
-          export EVE_CHAT_PASSWORD="$(node -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))")"
-          export EVE_CHAT_USERNAME=Riki
-          export BETTER_AUTH_URL=http://localhost:3000
-          export EVE_MEMORY_DIR=/tmp/aegentica-state/memory
-          export EVE_CHAT_DB_PATH=/tmp/aegentica-state/chats.sqlite
-          export PLAYWRIGHT_MODULE=/tmp/aegentica-browser/node_modules/playwright/index.mjs
-          export QA_ARTIFACTS=/tmp/aegentica-qa
-          mkdir -p /tmp/aegentica-state/memory
-          node scripts/start-self-hosted.mjs > /tmp/aegentica-qa/server.log 2>&1 &
-          server=$!
-          trap 'kill "$server" 2>/dev/null || true' EXIT
-          ready=0
-          for n in $(seq 1 60); do
-            if curl -fsS http://localhost:3000/api/health > /tmp/aegentica-qa/health.json; then ready=1; break; fi
-            sleep 2
-          done
-          if test "$ready" != 1; then cat /tmp/aegentica-qa/server.log; exit 1; fi
-          node scripts/test-product-browser.mjs > /tmp/aegentica-qa/browser.log 2>&1 || { cat /tmp/aegentica-qa/browser.log; exit 1; }
-          cat /tmp/aegentica-qa/browser.log
+        run: bash scripts/check-product.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -121,14 +57,3 @@ jobs:
           path: /tmp/aegentica-qa
           retention-days: 3
           if-no-files-found: warn
-      - name: Enforce all release checks
-        if: always()
-        env:
-          INSTALL: ${{ steps.install.outcome }}
-          UNIT: ${{ steps.unit.outcome }}
-          EVE: ${{ steps.eve.outcome }}
-          TYPES: ${{ steps.types.outcome }}
-          BUILD: ${{ steps.build.outcome }}
-          BROWSER: ${{ steps.browser.outcome }}
-        run: |
-          node -e "for(const key of ['INSTALL','UNIT','EVE','TYPES','BUILD','BROWSER']) { console.log(key,process.env[key]); if(process.env[key]!=='success') process.exitCode=1; }"
