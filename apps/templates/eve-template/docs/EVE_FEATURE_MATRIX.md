@@ -153,7 +153,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | --------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
 | Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold                                               |
-| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → App & notifications                         |
+| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → Notifications                         |
 | Slack                                                           | Included/configurable                  | Chat Template                                                                             |
 | MCP server channel                                              | Included local-only                    | `channels/mcp.ts`                                                                         |
 | custom HTTP channel                                             | Included but token-disabled by default | `channels/demo.ts`                                                                        |
@@ -222,6 +222,8 @@ The generated surface file records every current public package export and offic
 | Chat / Research / Image                 | Per-turn composer intent                  | One runtime; generation requires working credentials                |
 | Image library                           | Authenticated `/images`                   | Existing volume; bounded scan, confirmed deletion                   |
 | Global command search                   | Cmd/Ctrl+K                                | Shared pages/actions and up to 100 recent chats                     |
-| Capability directory                    | Searchable Runtime / Included / Directory | Declarations and registry availability are not connection tests     |
+| Capability directory                    | Searchable Live / Built in / Explore | Declarations and registry availability are not connection tests     |
 
 Real execution remains unverified until a working model key is supplied and live turns complete. Runtime is the source of truth for effective capabilities; static entries in this matrix cannot assert credential success.
+
+The primary persisted composer also exposes Eve's documented active-turn steering (`turnPolicy: "steer"`) while retaining durable cancellation. The AI Elements Live session remains an advanced surface rather than a duplicate sidebar destination.

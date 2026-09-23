@@ -7,12 +7,12 @@ lets the operator see and edit what it remembers.
 
 ## Install the app
 
-- **Android (Chrome)**: open the site, then **Settings → App & notifications → Install**,
+- **Android (Chrome)**: open the site, then **Settings → Notifications → Install**,
   or the browser menu's **Install app**.
 - **iPhone and iPad (Safari)**: tap **Share → Add to Home Screen**. Notifications
   on iOS work only from the installed app (iOS 16.4 or later).
 - **Desktop (Chrome, Edge)**: the install icon in the address bar, or
-  **Settings → App & notifications → Install**.
+  **Settings → Notifications → Install**.
 
 The installed app opens in its own window with shortcuts for **New chat**,
 **Tasks** and **Settings** (long-press the icon on Android). The manifest is
@@ -27,7 +27,7 @@ only (`app/_components/pwa-registration.tsx`).
 
 ## Notifications
 
-**Settings → App & notifications → Turn on** asks the browser for permission and
+**Settings → Notifications → Turn on** asks the browser for permission and
 registers the device for [Web Push](https://developer.mozilla.org/docs/Web/API/Push_API).
 **Send test** delivers a test notification to every registered device. Turn
 notifications on separately on each device that should receive them.
@@ -91,14 +91,12 @@ browser's storage (`lib/voice/preferences.ts`); the speech helpers are in
 
 ## Settings
 
-Settings has four sections with a side menu (a scrolling row on phones):
-**Models** (providers, keys and the default model), **Voice**, **App &
-notifications** (install and notifications for this device) and
-**Integrations**. Integrations lists what Ægentica can use in the shape of a
+Settings has five sections with a side menu (a contained, snap-scrolling row on phones):
+**AI & models** (providers, keys and the default model), **Voice**, **Notifications**
+(install and notifications for this device), **Connections**, and **Security**. Integrations lists what Ægentica can use in the shape of a
 plugin directory: built-in tools (web search, image creation, files and code,
 voice, memory, tasks), accounts (GitHub and Telegram, set up in place) and work
-apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory**
-opens the Agent page with everything eve can install.
+apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory** opens Capabilities → Explore with the official Eve registry surface.
 
 ## Memory
 
@@ -155,6 +153,8 @@ The main persisted chat now has the same attachment path as eve's official clien
 
 Choose Chat, Research or Image beside the agent selector without changing conversation. Research and Image supply turn instructions; they are not new runtimes or fake modality endpoints. Image uses the existing `generate_image` tool. Voice retains the device dictation/read-aloud/hands-free loop, not native real-time audio/video.
 
+While a durable turn is submitted or streaming, the primary composer remains available for a correction. Sending that correction uses Eve's documented `turnPolicy: "steer"`, so it stays in the same turn; Stop still calls Eve's durable `cancel()`. Normal input remains blocked while resuming, finalizing or waiting on authorization/HITL. This matches the capability already exposed by the advanced Live session instead of hiding it there.
+
 `/agents` creates saved profiles and `/images` lists generated images, with authenticated details, prompt/model metadata when present, save and confirmed deletion. Older images without metadata remain readable. The gallery scans at most 3,000 directory entries / 1,000 image files and pages 48 at a time; the limit is disclosed. Media responses are private and `no-store`, including after sign-out. Deleting an image also removes it from chats referencing that file.
 
-The sidebar uses shared navigation metadata. Global Search (Cmd/Ctrl+K) includes pages, actions, settings and up to 100 recent conversations. Mobile navigation uses the existing Radix Dialog for focus trapping and Escape handling, closes on navigation, and closes when resized to desktop. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).
+The sidebar uses shared navigation metadata. Global Search (Cmd/Ctrl+K) includes pages, actions, settings and up to 100 recent conversations. The advanced AI Elements Live session remains searchable without becoming a second primary chat. Mobile navigation uses the shadcn/Radix Sheet primitive for focus management and Escape handling, has one internal scroll owner, supports a left-edge swipe to open and a left swipe to close, closes on navigation, and closes when resized to desktop. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).
