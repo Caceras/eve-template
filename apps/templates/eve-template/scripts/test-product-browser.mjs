@@ -60,7 +60,13 @@ try {
   await page.getByRole("button", { name: "Sign in", exact: true }).first().waitFor();
   await snapshot("desktop-logged-out");
   await check("password sign-in through the actual UI", async () => {
-    await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+    // A click that lands before hydration is dropped; retry until the dialog opens.
+    const username = page.getByLabel("Username", { exact: true });
+    for (let attempt = 0; !(await username.isVisible()); attempt++) {
+      assert(attempt < 10, "sign-in dialog opens");
+      await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+      await username.waitFor({ timeout: 3000 }).catch(() => {});
+    }
     await page
       .getByLabel("Username", { exact: true })
       .fill(process.env.EVE_CHAT_USERNAME || "Riki");
