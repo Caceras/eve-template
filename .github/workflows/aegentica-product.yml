@@ -2,7 +2,7 @@ name: Aegentica product
 
 on:
   push:
-    branches: [main, codex/aegentica-orchestration-release]
+    branches: [main]
     paths:
       - apps/templates/eve-template/**
       - apps/templates/eve-chat-template/**
