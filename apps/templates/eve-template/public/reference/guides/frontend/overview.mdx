@@ -172,7 +172,7 @@ supplied `session` remains externally owned and is never replaced by prewarming 
 
 `data.messages` are eve-owned `EveMessage[]`. Common text, reasoning, file, and dynamic-tool parts follow the [AI SDK `UIMessage`](https://ai-sdk.dev/docs/reference/ai-sdk-core/ui-message) rendering convention, but the types are not interchangeable. eve also exposes authorization and HITL metadata, and a file part's URL can be absent. Adapt those parts before passing messages to an API typed as `UIMessage[]`.
 
-When the root agent delegates, its stream emits `subagent.called` with the child's `childSessionId`, then `subagent.completed` when the parent records a successful result, for both blocking and background invocations. A background working receipt appears in `action.result`, without a completion event. The child session can remain available for reuse. Task notifications wake the parent with completion, failure, or cancellation. Detailed child progress lives on the child session's stream instead of being flattened into the root `data.messages`. Use the lower-level [TypeScript client](../client/overview#sessions) to attach to that ID when your UI needs live subagent activity. See [What the parent sees](../../subagents#what-the-parent-sees) for the complete contract.
+When the root agent delegates, its stream emits `subagent.called` with the child's `childSessionId`, then `subagent.completed` when the parent records a successful result, for both blocking and background invocations. A background working receipt appears in `action.result`, without a completion event. The child session can remain available for reuse. Task notifications wake the parent with completion, failure, or cancellation. Detailed child progress lives on the child session's stream instead of being flattened into the root `data.messages`. When your UI needs live subagent activity, attach a [client session](../client/overview#sessions) to the parent and pass the `subagent.called` event from `events` to [`streamSubagent()`](../client/streaming#follow-a-subagent). It follows local and remote children through the parent, so the browser never calls a remote deployment directly. See [What the parent sees](../../subagents#what-the-parent-sees) for the complete contract.
 
 ## Sending and streaming
 
@@ -218,7 +218,7 @@ received attachment as a `file` part on the user message. The part includes `med
 
 ## Human-in-the-loop prompts
 
-Tools opt into approval with `approval`, and the model can also ask a question with `ask_question` — see [Human-in-the-loop](/docs/human-in-the-loop) for the server-side model. Either way the stream emits an `input.requested` event, and the pending request rides on a `dynamic-tool` part at `part.toolMetadata?.eve?.inputRequest`. Scan every message because an unrelated turn can add newer messages while an approval stays open, then answer through the same session with `respond()`:
+Tools opt into approval with `approval`, and workflow tools such as the opt-in `ask_question` tool ask the user a question with `ctx.ask()` — see [Human-in-the-loop](/docs/human-in-the-loop) for the server-side model. Either way the stream emits an `input.requested` event, and the pending request rides on a `dynamic-tool` part at `part.toolMetadata?.eve?.inputRequest`. Scan every message because an unrelated turn can add newer messages while an approval stays open, then answer through the same session with `respond()`:
 
 ```tsx
 const pendingRequests = agent.data.messages

@@ -3,7 +3,7 @@ title: "Terminal UI"
 description: "Use eve locally or connect to a deployed agent from an interactive terminal UI."
 ---
 
-`eve dev` starts a local development server and opens an interactive terminal UI. Use it to talk to your agent, approve tool calls, answer its questions, and configure local development.
+`eve dev` starts a local development server and opens an interactive terminal UI. Use it to talk to your agent, approve tool calls, answer its questions, and configure local development. When `eve dev` starts a local server, self-modification is available by default; see [Self-Modification](./self-modification).
 
 ```bash
 eve dev
@@ -71,7 +71,7 @@ Changes apply together after the final choice, then the picker returns to chat. 
 
 A successful login or model change takes effect on the next prompt.
 
-OpenAI, ChatGPT, and Gateway connections default to `gpt-5.6-luna-fast`; Anthropic defaults to `claude-sonnet-5`. An explicitly authored compatible model stays selected. If a new default is unavailable, eve offers the connection's available models. Dynamic or custom model expressions must be edited in `agent.ts`.
+Gateway connections default to `spacexai/grok-4.7`; OpenAI and ChatGPT default to `gpt-6-luna-fast`; Anthropic defaults to `claude-sonnet-5`. An explicitly authored compatible model stays selected. If a new default is unavailable, eve offers the connection's available models. Dynamic or custom model expressions must be edited in `agent.ts`.
 
 ## Add an integration
 
