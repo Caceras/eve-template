@@ -1,19 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { PointerEventHandler } from "react";
+import type { TouchEventHandler } from "react";
 
 type Gesture = {
-  pointerId: number;
   x: number;
   y: number;
 };
 
-const OPEN_EDGE_PX = 24;
 const OPEN_DISTANCE_PX = 64;
 const CLOSE_DISTANCE_PX = 72;
 const DIRECTION_RATIO = 1.25;
 
+// Touch events, not pointer events: browsers fire `pointercancel` as soon as a
+// finger starts panning, so a pointer-based swipe never completes on a phone.
+// The open swipe starts anywhere, because Android's system back gesture owns
+// the screen edge and never delivers edge swipes to the page.
 export function useMobileSidebarSwipe({
   open,
   onOpenChange,
@@ -24,63 +26,51 @@ export function useMobileSidebarSwipe({
   const surfaceStart = useRef<Gesture | null>(null);
   const drawerStart = useRef<Gesture | null>(null);
 
-  const onSurfacePointerDown = useCallback<PointerEventHandler<HTMLDivElement>>(
+  const onSurfaceTouchStart = useCallback<TouchEventHandler<HTMLDivElement>>(
     (event) => {
+      surfaceStart.current = null;
+      const touch = event.touches[0];
       if (
         open ||
-        !event.isPrimary ||
-        event.clientX > OPEN_EDGE_PX ||
-        !window.matchMedia("(max-width: 767px)").matches
+        event.touches.length !== 1 ||
+        !touch ||
+        !window.matchMedia("(max-width: 767px)").matches ||
+        startsInsideHorizontalGesture(event.target)
       ) {
         return;
       }
 
-      surfaceStart.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
+      surfaceStart.current = { x: touch.clientX, y: touch.clientY };
     },
     [open],
   );
 
-  const onDrawerPointerDown = useCallback<PointerEventHandler<HTMLDivElement>>(
+  const onDrawerTouchStart = useCallback<TouchEventHandler<HTMLDivElement>>(
     (event) => {
-      if (!open || !event.isPrimary) return;
+      drawerStart.current = null;
+      const touch = event.touches[0];
+      if (!open || event.touches.length !== 1 || !touch) return;
 
-      drawerStart.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
+      drawerStart.current = { x: touch.clientX, y: touch.clientY };
     },
     [open],
   );
 
   useEffect(() => {
-    const finishGesture = (event: PointerEvent) => {
+    const finishGesture = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
       const surface = surfaceStart.current;
+      const drawer = drawerStart.current;
       surfaceStart.current = null;
+      drawerStart.current = null;
+      if (!touch || hasTextSelection()) return;
 
-      if (surface && surface.pointerId === event.pointerId) {
-        const dx = event.clientX - surface.x;
-        const dy = Math.abs(event.clientY - surface.y);
-
-        if (!open && dx >= OPEN_DISTANCE_PX && dx >= dy * DIRECTION_RATIO) {
-          onOpenChange(true);
-        }
+      if (surface && !open && isHorizontalSwipe(surface, touch, OPEN_DISTANCE_PX)) {
+        onOpenChange(true);
       }
 
-      const drawer = drawerStart.current;
-      drawerStart.current = null;
-
-      if (drawer && drawer.pointerId === event.pointerId) {
-        const dx = event.clientX - drawer.x;
-        const dy = Math.abs(event.clientY - drawer.y);
-
-        if (open && dx <= -CLOSE_DISTANCE_PX && Math.abs(dx) >= dy * DIRECTION_RATIO) {
-          onOpenChange(false);
-        }
+      if (drawer && open && isHorizontalSwipe(drawer, touch, -CLOSE_DISTANCE_PX)) {
+        onOpenChange(false);
       }
     };
 
@@ -89,21 +79,51 @@ export function useMobileSidebarSwipe({
       drawerStart.current = null;
     };
 
-    window.addEventListener("pointerup", finishGesture, true);
-    window.addEventListener("pointercancel", cancelGesture, true);
+    window.addEventListener("touchend", finishGesture, true);
+    window.addEventListener("touchcancel", cancelGesture, true);
 
     return () => {
-      window.removeEventListener("pointerup", finishGesture, true);
-      window.removeEventListener("pointercancel", cancelGesture, true);
+      window.removeEventListener("touchend", finishGesture, true);
+      window.removeEventListener("touchcancel", cancelGesture, true);
     };
   }, [onOpenChange, open]);
 
   return {
     surfaceHandlers: {
-      onPointerDown: onSurfacePointerDown,
+      onTouchStart: onSurfaceTouchStart,
     },
     drawerHandlers: {
-      onPointerDown: onDrawerPointerDown,
+      onTouchStart: onDrawerTouchStart,
     },
   };
+}
+
+function isHorizontalSwipe(start: Gesture, end: Touch, distance: number) {
+  const dx = end.clientX - start.x;
+  const dy = Math.abs(end.clientY - start.y);
+  const travelled = distance > 0 ? dx >= distance : dx <= distance;
+
+  return travelled && Math.abs(dx) >= dy * DIRECTION_RATIO;
+}
+
+function hasTextSelection() {
+  const selection = window.getSelection();
+  return Boolean(selection && !selection.isCollapsed);
+}
+
+// Carousels, code blocks, tables, sliders and text fields keep their own
+// horizontal gestures; menu triggers already open on touch-down.
+function startsInsideHorizontalGesture(target: EventTarget | null) {
+  for (let node = target instanceof Element ? target : null; node; node = node.parentElement) {
+    if (node.matches("input, textarea, [contenteditable=''], [contenteditable='true'], [role='slider'], [aria-haspopup]")) {
+      return true;
+    }
+
+    const { overflowX } = getComputedStyle(node);
+    if ((overflowX === "auto" || overflowX === "scroll") && node.scrollWidth > node.clientWidth) {
+      return true;
+    }
+  }
+
+  return false;
 }

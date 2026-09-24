@@ -4,7 +4,7 @@ import { demoSessionState } from "../lib/session-state";
 
 export default defineTool({
   description:
-    "Demonstrate Eve durable per-session state by incrementing a counter and optionally storing a short session-only note.",
+    "Demonstrate eve durable per-session state by incrementing a counter and optionally storing a short session-only note.",
   inputSchema: z.object({
     note: z.string().max(200).optional(),
   }),

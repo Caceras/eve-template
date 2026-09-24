@@ -12,7 +12,7 @@ export default defineDynamic({
             spec: "https://petstore3.swagger.io/api/v3/openapi.json",
             operations: { allow: ["getPetById", "findPetsByStatus"] },
             description:
-              "Caller-gated OpenAPI connection used to demonstrate Eve dynamic connection composition.",
+              "Caller-gated OpenAPI connection used to demonstrate eve dynamic connection composition.",
           })
         : null,
   },

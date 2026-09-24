@@ -106,8 +106,13 @@ export default function RootLayout({ children }: { readonly children: ReactNode 
           <TooltipProvider>{children}</TooltipProvider>
         </ThemeProvider>
         <PwaRegistration />
-        <Analytics />
-        <SpeedInsights />
+        {/* These scripts are served only by Vercel hosting; self-hosted builds would 404. */}
+        {process.env.VERCEL ? (
+          <>
+            <Analytics />
+            <SpeedInsights />
+          </>
+        ) : null}
       </body>
     </html>
   );

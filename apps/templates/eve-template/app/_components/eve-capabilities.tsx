@@ -294,7 +294,7 @@ export function EveCapabilities() {
             ? "What this running Ægentica instance can currently expose. Connections may still need credentials or approval."
             : scope === "included"
               ? "Capabilities already included in the product, with configuration where needed."
-              : `${directory.length} official Eve capabilities you can add when you need them.`}
+              : `${directory.length} official eve capabilities you can add when you need them.`}
         </p>
         <div className="relative mt-5">
           <SearchIcon className="absolute left-3 top-3 size-4 text-muted-foreground" />
@@ -355,7 +355,7 @@ export function EveCapabilities() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{item.name}</span>
-                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                  <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                     {item.description}
                   </span>
                 </span>

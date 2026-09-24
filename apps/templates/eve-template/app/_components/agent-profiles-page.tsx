@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -171,17 +170,6 @@ export function AgentProfilesPage() {
             <span className="hidden sm:inline">Create agent</span>
             <span className="sm:hidden">Create</span>
           </Button>
-        </div>
-        <div className="mt-6 flex flex-wrap gap-3 text-sm">
-          <Link className="text-muted-foreground underline underline-offset-4" href="/capabilities">
-            Tools, skills &amp; capabilities
-          </Link>
-          <Link className="text-muted-foreground underline underline-offset-4" href="/session">
-            Inspect activity
-          </Link>
-          <Link className="text-muted-foreground underline underline-offset-4" href="/tasks">
-            Scheduled tasks
-          </Link>
         </div>
         {error && !open && (
           <p className="mt-4 text-sm text-destructive" role="alert">

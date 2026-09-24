@@ -22,5 +22,5 @@ const snapshot = {
   registryItems: items.sort((a, b) => a.name.localeCompare(b.name)),
 };
 
-writeFileSync(join(templateRoot, 'lib/eve-surface.generated.ts'), `// Generated from the checked-out Eve source. Do not edit by hand.\nexport const eveSurface = ${JSON.stringify(snapshot, null, 2)} as const;\n`);
-console.log(`Synced Eve ${snapshot.eveVersion}: ${snapshot.packageExports.length} public exports, ${snapshot.registryItems.length} registry items.`);
+writeFileSync(join(templateRoot, 'lib/eve-surface.generated.ts'), `// Generated from the checked-out eve source. Do not edit by hand.\nexport const eveSurface = ${JSON.stringify(snapshot, null, 2)} as const;\n`);
+console.log(`Synced eve ${snapshot.eveVersion}: ${snapshot.packageExports.length} public exports, ${snapshot.registryItems.length} registry items.`);

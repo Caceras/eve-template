@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquareIcon, PlusIcon, AudioLinesIcon, BellIcon, SearchIcon } from "lucide-react";
+import { MessageSquareIcon, PlusIcon, AudioLinesIcon, BellIcon } from "lucide-react";
 import {
   CommandDialog,
   CommandInput,
@@ -17,7 +17,7 @@ import { listClientChatsPage } from "@/lib/chat/persistence-client";
 import type { ChatListItem } from "@/lib/chat/types";
 export function CommandMenu() {
   const router = useRouter();
-  const { viewer, setupStatus, desktopSidebarOpen } = useChatShell();
+  const { viewer, setupStatus } = useChatShell();
   const [open, setOpen] = useState(false);
   const [chats, setChats] = useState<ChatListItem[]>([]);
   const [notice, setNotice] = useState("");
@@ -72,15 +72,6 @@ export function CommandMenu() {
   }
   return (
     <>
-      <button
-        type="button"
-        className={`absolute left-14 top-2.5 z-20 flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring ${desktopSidebarOpen ? "md:left-3" : "md:left-14"}`}
-        aria-label="Search pages and conversations"
-        title="Search (Cmd/Ctrl K)"
-        onClick={() => setOpen(true)}
-      >
-        <SearchIcon className="size-4" />
-      </button>
       <CommandDialog
         open={open}
         onOpenChange={setOpen}

@@ -94,7 +94,7 @@ export function ProductLibrary() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Eve documentation
+                        eve documentation
                         <ArrowUpRightIcon className="size-3" />
                       </a>
                     </div>
@@ -109,7 +109,7 @@ export function ProductLibrary() {
           </p>
         ) : null}
         <footer className="border-t pt-5 text-xs leading-6 text-muted-foreground">
-          Eve 0.63.0 reference snapshot · documentation by Vercel and contributors, Apache-2.0.{" "}
+          eve 0.63.0 reference snapshot · documentation by Vercel and contributors, Apache-2.0.{" "}
           <a className="underline underline-offset-4" href="/reference/NOTICE.txt">
             Attribution
           </a>{" "}
