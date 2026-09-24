@@ -40,9 +40,11 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#151515" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
   viewportFit: "cover",
+  // Android shrinks the layout above the keyboard, so the composer stays in view.
+  interactiveWidget: "resizes-content",
 };
 
 export const metadata: Metadata = {

@@ -15,7 +15,7 @@ lets the operator see and edit what it remembers.
   **Settings → Notifications → Install**.
 
 The installed app opens in its own window with shortcuts for **New chat**,
-**Tasks** and **Settings** (long-press the icon on Android). The manifest is
+**Agents**, **Tasks** and **Settings** (long-press the icon on Android). The manifest is
 `app/manifest.ts`; the icons, including a maskable one for Android's adaptive
 shapes, are generated from the Æ monogram by `app/icons/[file]/route.tsx`.
 Screenshots in `public/screenshots/` give Android and desktop Chrome the richer
@@ -25,10 +25,19 @@ second one, and it follows the device's orientation.
 Once installed on Android, Ægentica appears in the system **Share** sheet.
 Shared text or a link opens a new chat with it already in the message box
 (`app/_components/home-chat-page.tsx`); if the app is signed out, the draft
-waits until sign-in.
+waits until sign-in. Shared photos, PDFs and text files (up to four) arrive as
+attachments of that new chat, with the same size and type checks as the
+attachment button. The service worker receives the share at `/share`;
+`app/share/route.ts` only answers before the worker is running and keeps the
+text.
+
+On Android the page shrinks above the on-screen keyboard
+(`interactive-widget=resizes-content`), so the message box stays visible while
+typing.
 
 `public/sw.js` is a deliberately small service worker. It shows notifications,
-opens the right chat when one is tapped, and serves a branded offline page
+badges the app icon until the app is opened again, opens the right chat when a
+notification is tapped, and serves a branded offline page
 (`public/offline.html`) when a page cannot load. Navigation preload starts each
 page request while the worker boots. It does not cache the app itself, so a
 deploy is visible on the next load. It is registered in production

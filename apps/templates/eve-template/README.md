@@ -8,18 +8,18 @@ It is built on [eve](https://eve.dev), Vercel's framework for durable agents, an
 
 ## What it does
 
-| Area             | What you get                                                                                                                                        | Docs                                                       |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Chat             | Streaming chat that resumes after refresh, stop, attachments, reasoning and tool cards, approvals and questions                                     | [how-the-chatbot-works](./docs/how-the-chatbot-works.md)   |
-| Models           | Vercel AI Gateway or OpenRouter, keys saved encrypted in Settings, instant switching, full model catalog picker                                     | [SELF_HOSTING](./docs/SELF_HOSTING.md)                     |
-| Everywhere       | Installable app (PWA) that appears in the Android share sheet, notifications, chat history stored on the server so every device sees the same chats | [WEB_APP](./docs/WEB_APP.md)                               |
-| Images and voice | Image creation with the active provider, shown in the chat; dictation in the message box; replies read aloud with a chosen voice and speed          | [WEB_APP](./docs/WEB_APP.md#images-and-voice)              |
-| Memory           | Long-term memory shared by app, Telegram and tasks; see, edit and import it on the Memory page                                                      | [WEB_APP](./docs/WEB_APP.md#memory)                        |
-| Tasks            | Reminders, briefings and recurring jobs; each run is saved as a chat and sent as a notification                                                     | [WEB_APP](./docs/WEB_APP.md#tasks)                         |
-| GitHub           | Repositories, pull requests, issues and failing checks through the official GitHub tools extension; every change asks first                         | [GITHUB](./docs/GITHUB.md)                                 |
-| Skills           | Research, pull-request review, failing-check investigation, daily briefing, deep research, trip planning                                            | [agent/skills](./agent/skills)                             |
-| Telegram         | Optional private bot linked to your account, same agent and memory                                                                                  | [TELEGRAM_AND_SCHEDULES](./docs/TELEGRAM_AND_SCHEDULES.md) |
-| Tools            | Web search and fetch, a sandbox with bash and files, subagents (researcher, reviewer), workflows                                                    | [EVE_FEATURE_MATRIX](./docs/EVE_FEATURE_MATRIX.md)         |
+| Area             | What you get                                                                                                                                                                 | Docs                                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Chat             | Streaming chat that resumes after refresh, stop, attachments, reasoning and tool cards, approvals and questions                                                              | [how-the-chatbot-works](./docs/how-the-chatbot-works.md)   |
+| Models           | Vercel AI Gateway or OpenRouter, keys saved encrypted in Settings, instant switching, full model catalog picker                                                              | [SELF_HOSTING](./docs/SELF_HOSTING.md)                     |
+| Everywhere       | Installable app (PWA) that receives text, photos and PDFs from the Android share sheet, notifications, chat history stored on the server so every device sees the same chats | [WEB_APP](./docs/WEB_APP.md)                               |
+| Images and voice | Image creation with the active provider, shown in the chat; dictation in the message box; replies read aloud with a chosen voice and speed                                   | [WEB_APP](./docs/WEB_APP.md#images-and-voice)              |
+| Memory           | Long-term memory shared by app, Telegram and tasks; see, edit and import it on the Memory page                                                                               | [WEB_APP](./docs/WEB_APP.md#memory)                        |
+| Tasks            | Reminders, briefings and recurring jobs; each run is saved as a chat and sent as a notification                                                                              | [WEB_APP](./docs/WEB_APP.md#tasks)                         |
+| GitHub           | Repositories, pull requests, issues and failing checks through the official GitHub tools extension; every change asks first                                                  | [GITHUB](./docs/GITHUB.md)                                 |
+| Skills           | Research, pull-request review, failing-check investigation, daily briefing, deep research, trip planning                                                                     | [agent/skills](./agent/skills)                             |
+| Telegram         | Optional private bot linked to your account, same agent and memory                                                                                                           | [TELEGRAM_AND_SCHEDULES](./docs/TELEGRAM_AND_SCHEDULES.md) |
+| Tools            | Web search and fetch, a sandbox with bash and files, subagents (researcher, reviewer), workflows                                                                             | [EVE_FEATURE_MATRIX](./docs/EVE_FEATURE_MATRIX.md)         |
 
 Where this stands against the original sol0 vision, and what comes next, is in [VISION](./docs/VISION.md).
 
@@ -34,7 +34,7 @@ Where this stands against the original sol0 vision, and what comes next, is in [
 - `/settings`: Models (providers and model), Voice, Notifications (install and notifications), Connections (built-in tools, GitHub, Telegram, work apps), Security (password)
 - `/capabilities`: live runtime declarations (not credential tests), what this repository includes (Included), and what eve can install (Available)
 - `/native`: eve's current official `channel/web` scaffold, kept as a reference surface
-- `/session`: inspect and control durable sessions
+- `/session` (Activity): pick a conversation (or paste a session ID) to inspect its durable event stream and cancel, compact, clear or reset it
 - `/library`: product guide
 
 ## Run it

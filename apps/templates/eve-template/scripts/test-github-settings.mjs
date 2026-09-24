@@ -51,7 +51,7 @@ try {
     403,
   );
   assert.deepEqual(await (await call()).json(), { connected: false });
-  await assert.rejects(githubToken(), /Settings → Integrations → GitHub/);
+  await assert.rejects(githubToken(), /Settings → Connections → GitHub/);
   assert.equal((await call({ action: "connect", token: "nope" })).status, 400);
   assert.equal((await call({ action: "connect", token: "ghp_" + "B".repeat(36) })).status, 422);
   const connected = await (await call({ action: "connect", token })).json();

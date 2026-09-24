@@ -118,6 +118,15 @@ button:disabled,
   cursor: not-allowed;
 }
 
+/* On phones a horizontal swipe opens or closes the navigation drawer; keep the
+   browser's overscroll history navigation from competing with it. */
+@media (max-width: 767px) {
+  html,
+  body {
+    overscroll-behavior-x: none;
+  }
+}
+
 html[data-eve-chat-sidebar="closed"] [data-desktop-sidebar] {
   width: 0;
 }

@@ -9,15 +9,56 @@ import {
   SquareIcon,
   WandSparklesIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { ActiveChat, ChatListItem } from "@/lib/chat/types";
+import { useChatShell } from "./chat-shell-context";
 
 export function EveSessionLab() {
+  const { viewer } = useChatShell();
+  const [chats, setChats] = useState<ChatListItem[]>([]);
+  const [chatId, setChatId] = useState("");
   const [sessionId, setSessionId] = useState("");
-  const [status, setStatus] = useState("Enter a session ID to inspect its durable event stream.");
+  const [status, setStatus] = useState(
+    "Choose a conversation or paste a session ID to inspect its durable event stream.",
+  );
   const [events, setEvents] = useState<unknown[]>([]);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!viewer) return;
+    let cancelled = false;
+    void fetch("/api/chats", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { chats: [] }))
+      .then((data: { chats?: ChatListItem[] }) => !cancelled && setChats(data.chats ?? []))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [viewer]);
+
+  const chooseChat = async (id: string) => {
+    setChatId(id);
+    const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, { cache: "no-store" });
+    const data = (await response.json().catch(() => ({}))) as { chat?: ActiveChat | null };
+    const next = data.chat?.session?.sessionId;
+    if (!next) {
+      setSessionId("");
+      setEvents([]);
+      setStatus("This conversation has no durable session yet. Send it a message first.");
+      return;
+    }
+    setSessionId(next);
+    await inspect(next);
+  };
 
   const withSession = async (operation: (session: ClientSession) => Promise<unknown>) => {
     const id = sessionId.trim();
@@ -34,8 +75,7 @@ export function EveSessionLab() {
     }
   };
 
-  const inspect = async () => {
-    const id = sessionId.trim();
+  const inspect = async (id = sessionId.trim()) => {
     if (!id) return;
     setBusy(true);
     try {
@@ -59,22 +99,46 @@ export function EveSessionLab() {
         <div className="max-w-2xl">
           <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Inspect a durable conversation by session ID and manage its low-level lifecycle when
-            needed.
+            Inspect a conversation&apos;s durable event stream and manage its low-level lifecycle
+            when needed.
           </p>
         </div>
 
         <div className="mt-7 rounded-xl border bg-card p-4 sm:p-5">
-          <Input
-            onChange={(event) => setSessionId(event.target.value)}
-            placeholder="wrun_…"
-            value={sessionId}
-          />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Select disabled={busy || chats.length === 0} onValueChange={chooseChat} value={chatId}>
+              <SelectTrigger aria-label="Conversation" className="h-11 w-full md:h-9">
+                <SelectValue
+                  placeholder={chats.length ? "Choose a conversation" : "No conversations yet"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {chats.map((chat) => (
+                  <SelectItem key={chat.id} value={chat.id}>
+                    {chat.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="Session ID"
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="h-11 font-mono text-xs md:h-9"
+              onChange={(event) => {
+                setChatId("");
+                setSessionId(event.target.value);
+              }}
+              placeholder="Session ID"
+              spellCheck={false}
+              value={sessionId}
+            />
+          </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void inspect()}
-              className="justify-start sm:justify-center"
+              className="h-11 justify-start sm:justify-center md:h-8"
               size="sm"
               variant="outline"
             >
@@ -83,7 +147,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.cancel())}
-              className="justify-start sm:justify-center"
+              className="h-11 justify-start sm:justify-center md:h-8"
               size="sm"
               variant="outline"
             >
@@ -92,7 +156,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.compact())}
-              className="justify-start sm:justify-center"
+              className="h-11 justify-start sm:justify-center md:h-8"
               size="sm"
               variant="outline"
             >
@@ -101,7 +165,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.clear())}
-              className="justify-start sm:justify-center"
+              className="h-11 justify-start sm:justify-center md:h-8"
               size="sm"
               variant="outline"
             >
@@ -114,7 +178,7 @@ export function EveSessionLab() {
                   session.reset({ reason: "Requested from Ægentica Activity" }),
                 )
               }
-              className="justify-start sm:justify-center"
+              className="h-11 justify-start sm:justify-center md:h-8"
               size="sm"
               variant="outline"
             >

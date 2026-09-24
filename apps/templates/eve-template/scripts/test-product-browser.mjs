@@ -229,6 +229,32 @@ try {
       await snapshot("mobile-" + (route.slice(1).replaceAll("/", "-") || "chat"));
     }
   });
+  await check("share target attaches files and keeps shared text", async () => {
+    const fallback = await context.request.post(origin + "/share", {
+      multipart: { title: "Shared note", text: "From the share sheet" },
+      maxRedirects: 0,
+    });
+    assert.equal(fallback.status(), 303);
+    assert.equal(fallback.headers().location, "/?title=Shared+note&text=From+the+share+sheet");
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await navigate();
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    const landed = await page.evaluate(async () => {
+      const form = new FormData();
+      form.append("text", "Look at this");
+      form.append("files", new File(["Shared fixture"], "shared.txt", { type: "text/plain" }));
+      form.append("files", new File(["MZ"], "skip.exe", { type: "application/x-msdownload" }));
+      const response = await fetch("/share", { method: "POST", body: form });
+      return response.url;
+    });
+    assert.equal(new URL(landed).search, "?text=Look+at+this");
+    await navigate();
+    await page.getByRole("button", { name: "Remove shared.txt", exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Remove skip.exe" }).count(), 0);
+    await page.getByRole("button", { name: "Remove shared.txt", exact: true }).click();
+  });
   await check("logout denies private data and clears drafts", async () => {
     const response = await context.request.post(origin + "/api/password-auth/logout", {
       headers: { Origin: origin },

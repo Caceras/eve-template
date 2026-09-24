@@ -48,15 +48,16 @@ async function connected(path: string) {
 
 /** Everything Ægentica can use, in the shape of a plugin directory. */
 export function IntegrationsSettings() {
-  const { setupStatus } = useChatShell();
+  const { setupStatus, viewer } = useChatShell();
   const [query, setQuery] = useState("");
   const [accounts, setAccounts] = useState({ github: false, telegram: false });
 
   useEffect(() => {
+    if (!viewer) return;
     void Promise.all([connected("/api/settings/github"), connected("/api/settings/telegram")]).then(
       ([github, telegram]) => setAccounts({ github, telegram }),
     );
-  }, []);
+  }, [viewer]);
 
   const configured = new Set<ConfiguredConnection>(setupStatus.configuredConnections ?? []);
   const workApp = (
