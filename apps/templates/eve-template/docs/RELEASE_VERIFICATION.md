@@ -4,11 +4,11 @@ Release identifier: `polish-2026-09-24b`. The health response distinguishes this
 
 ## Required checks
 
-The read-only product workflow installs the template's frozen lockfile on Node 24 and runs `bash scripts/check-product.sh`: thirteen isolated regression scripts, eve compilation, Next.js type generation and checking, a Next.js production build, and Playwright Chromium acceptance. Explicit exit handling prevents successful log pipelines from concealing failed commands. CI has no production credentials or production data.
+The read-only product workflow installs the template's frozen lockfile on Node 24 and runs `bash scripts/check-product.sh`: the isolated regression scripts (`pnpm test`), eve compilation, Next.js type generation and checking, a Next.js production build, and Playwright Chromium acceptance. Explicit exit handling prevents successful log pipelines from concealing failed commands. CI has no production credentials or production data.
 
 The existing root workflow checks framework lint, invariants, documentation and framework tests. A failure predating the release requires baseline evidence; it must not simply be dismissed. The main baseline `a82f3045ba8edeac3328913932465da8b65bbabb` already has a failing `test-tui` job in run `35804349097` (job `107001675492`). Product changes do not modify that framework TUI. New product failures remain release blockers.
 
-Browser acceptance uses the actual production build with isolated storage and generated credentials. It covers UI password sign-in, logged-out private API denial, saved-agent creation/editing/selection, the model picker, Cmd/Ctrl+K navigation, utility routes, attachment persistence across provisional-to-canonical chat navigation and rejected sends, mobile focus trapping, viewport overflow, logout and password rotation. Old cookies must fail after a password change while saved profiles remain intact. Uncaught browser errors fail acceptance; screenshots and JSON results are artifacts.
+Browser acceptance uses the actual production build with isolated storage, generated credentials and eve's deterministic mock model (`AEGENTICA_TEST_MODEL=mock`, from `eve/evals`), so a real chat turn streams a tool card and reply that must survive a reload. It covers UI password sign-in, logged-out private API denial, saved-agent creation/editing/selection, the model picker, Cmd/Ctrl+K navigation, utility routes, attachment persistence across provisional-to-canonical chat navigation and rejected sends, mobile focus trapping, viewport overflow, logout and password rotation. Old cookies must fail after a password change while saved profiles remain intact. Uncaught browser errors fail acceptance; screenshots and JSON results are artifacts.
 
 ## Runtime contracts
 

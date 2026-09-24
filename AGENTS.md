@@ -3,6 +3,9 @@
 Guidance for coding agents (and humans) working in this repository. For setup,
 PR workflow, and release process, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+Working on the Ægentica product? Start with
+[`apps/templates/eve-template/AGENTS.md`](./apps/templates/eve-template/AGENTS.md).
+
 ## About eve
 
 eve is a filesystem-first framework for durable backend AI agents. You author

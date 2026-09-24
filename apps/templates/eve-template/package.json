@@ -24,7 +24,11 @@
     "eve:info": "eve info",
     "eve:surface": "node scripts/sync-eve-surface.mjs",
     "eve:surface:check": "node scripts/check-eve-surface.mjs",
-    "start:next": "next start"
+    "start:next": "next start",
+    "test": "node --test 'scripts/test-!(*-browser).mjs'",
+    "check": "pnpm test && pnpm typecheck",
+    "check:full": "bash scripts/check-product.sh",
+    "qa:tour": "node scripts/qa-tour.mjs"
   },
   "dependencies": {
     "@github-tools/eve-extension": "0.7.4",

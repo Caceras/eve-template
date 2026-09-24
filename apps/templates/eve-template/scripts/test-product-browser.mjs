@@ -2,17 +2,13 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { launchBrowser } from "./browser.mjs";
 const origin = process.env.CHECK_ORIGIN || "http://localhost:3000";
 if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname))
   throw new Error("Browser fixture requires localhost.");
-const modulePath = process.env.PLAYWRIGHT_MODULE;
-if (!modulePath)
-  throw new Error("Set PLAYWRIGHT_MODULE to the separately installed playwright/index.mjs.");
-const { chromium } = await import(pathToFileURL(resolve(modulePath)).href);
 const output = resolve(process.env.QA_ARTIFACTS || "/tmp/aegentica-qa");
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser({ headless: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
   reducedMotion: "reduce",
@@ -260,6 +256,21 @@ try {
     await page.getByRole("button", { name: "Remove shared.txt", exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Remove skip.exe" }).count(), 0);
     await page.getByRole("button", { name: "Remove shared.txt", exact: true }).click();
+  });
+  await check("a chat turn streams a tool card and reply that survive reload", async () => {
+    // check-product.sh starts the server with eve's deterministic mock model.
+    assert.equal(process.env.AEGENTICA_TEST_MODEL, "mock", "Set AEGENTICA_TEST_MODEL=mock.");
+    const reply = page.getByText("Mock reply: What is the weather in Stockholm?", { exact: true });
+    const composer = page.getByRole("textbox", { name: "Message Ægentica", exact: true });
+    await composer.fill("What is the weather in Stockholm?");
+    // The Send button enables only once the composer state holds the text.
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    await page.getByText("Used get weather", { exact: true }).waitFor();
+    await reply.waitFor();
+    await page.waitForURL(/\/chat\/(?!new-)/);
+    await snapshot("desktop-chat-reply");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await reply.waitFor();
   });
   await check("logout denies private data and clears drafts", async () => {
     const response = await context.request.post(origin + "/api/password-auth/logout", {

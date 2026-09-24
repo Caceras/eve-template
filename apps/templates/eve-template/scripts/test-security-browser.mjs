@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { launchBrowser } from "./browser.mjs";
 const origin = process.env.CHECK_ORIGIN || "http://localhost:3000";
 if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname))
   throw new Error("Local fixture only.");
-const { chromium } = await import(pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href);
 const output = resolve(process.env.QA_ARTIFACTS || "/tmp/aegentica-qa");
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
 const errors = [];

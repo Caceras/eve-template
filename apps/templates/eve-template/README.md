@@ -52,17 +52,13 @@ Production (single container, as on ai-chat.se): `pnpm build:eve && pnpm build`,
 ## Checks
 
 ```bash
-pnpm typecheck
-node scripts/test-chat-store.mjs
-node scripts/test-telegram-and-schedules.mjs
-node scripts/test-provider-settings.mjs
-node scripts/test-openrouter-model.mjs
-node scripts/test-github-settings.mjs
-node scripts/test-memory-store.mjs         # Node 24
-node scripts/test-push-and-task-runner.mjs # Node 24
-node scripts/test-image-generation.mjs     # Node 24
-pnpm eval                                  # eve evals
+pnpm check        # all regression scripts (node --test, ~3s) and typecheck
+pnpm check:full   # the CI release check: builds, then browser acceptance against an isolated server
+pnpm qa:tour      # screenshots every route on phone and desktop, light and dark, against a running local server
+pnpm eval         # eve evals
 ```
+
+Browser checks run real chat turns with eve's deterministic mock model (`AEGENTICA_TEST_MODEL=mock`), so they need no provider key. Never set that variable on a deployment.
 
 ## How it relates to eve
 

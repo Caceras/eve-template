@@ -12,6 +12,9 @@ import {
 import { enforceLoginLimit } from "../lib/login-limit.ts";
 import { durableMemory } from "../agent/lib/durable-memory.ts";
 
+// These assertions cover the built-in defaults, so ignore credentials set in the shell.
+delete process.env.EVE_CHAT_USERNAME;
+delete process.env.EVE_CHAT_PASSWORD;
 process.env.EVE_SESSION_SECRET = randomBytes(32).toString("hex");
 assert.equal(await verifyChatPassword("1010", "Riki"), true);
 assert.equal(await verifyChatPassword("wrong", "Riki"), false);
