@@ -257,7 +257,8 @@ try {
     const reply = page.getByText("Mock reply: What is the weather in Stockholm?", { exact: true });
     const composer = page.getByRole("textbox", { name: "Message Ægentica", exact: true });
     await composer.fill("What is the weather in Stockholm?");
-    await composer.press("Enter");
+    // The Send button enables only once the composer state holds the text.
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
     await page.getByText("Used get weather", { exact: true }).waitFor();
     await reply.waitFor();
     await page.waitForURL(/\/chat\/(?!new-)/);
