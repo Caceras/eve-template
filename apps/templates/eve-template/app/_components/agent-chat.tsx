@@ -1,5 +1,4 @@
 "use client";
-import { ModelPicker } from "@/components/chat/model-picker";
 import { modelRequestHeaders } from "@/lib/chat/model-preference";
 import { composerTurn, clearComposerFiles, readComposerDraft } from "@/lib/chat/composer-draft";
 
@@ -19,12 +18,8 @@ import type { EveMessage } from "eve/react";
 import { defaultMessageReducer } from "eve/react";
 import { useEveAgent } from "@/lib/chat/use-reliable-eve-agent";
 import {
-  AlertCircleIcon,
-  ChevronDownIcon,
   ExternalLinkIcon,
-  LockIcon,
   PlugIcon,
-  XIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -34,10 +29,9 @@ import {
   ChatConversationContent,
   ChatScrollButton,
 } from "@/components/chat/conversation";
-import { IntegrationsMenu } from "@/components/chat/integrations-menu";
 import { AgentMessage } from "@/components/chat/message";
+import { ErrorToast } from "@/components/chat/error-toast";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isChatTurnSettledEvent } from "@/lib/chat/events";
 import { getChatMessageLengthError } from "@/lib/chat/limits";
 import {
@@ -67,6 +61,7 @@ export type AgentChatController = {
 };
 
 export type AgentChatControllerStatus = {
+  readonly canSteer: boolean;
   readonly disabledReason?: string;
   readonly isBusy: boolean;
   readonly isDisabled: boolean;
@@ -74,6 +69,7 @@ export type AgentChatControllerStatus = {
 };
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
+  canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
@@ -488,6 +484,12 @@ export function AgentChatSession({
     hasLocalPendingUserMessage ||
     (!isWaitingForAuthorization &&
       (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming"));
+  const canSteer =
+    !isResuming &&
+    !hasLocalPendingUserMessage &&
+    !isWaitingForAuthorization &&
+    !isFinalizingTurn &&
+    (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming");
   const isTurnBlocked = isBusy || isFinalizingTurn;
   const pendingMessage = pendingUserMessage
     ? createPendingUserMessage(displayChatId, pendingUserMessage)
@@ -572,7 +574,9 @@ export function AgentChatSession({
     async (text: string, draftHandlers: DraftHandlers) => {
       const message = text.trim();
 
-      if (!message || isTurnBlocked || localPendingUserMessageRef.current) {
+      const steering = canSteer;
+
+      if (!message || (isTurnBlocked && !steering) || localPendingUserMessageRef.current) {
         return;
       }
 
@@ -619,7 +623,9 @@ export function AgentChatSession({
       setResumedEvents([]);
       setIsResuming(false);
       showLocalPendingMessage();
-      onPendingUserMessageSettled?.(message);
+      if (!steering) {
+        onPendingUserMessageSettled?.(message);
+      }
 
       try {
         ready = await prepareSend(message);
@@ -645,21 +651,25 @@ export function AgentChatSession({
         return;
       }
 
-      try {
-        const updated = await markClientChatPendingMessage(storageMode, {
-          chatId,
-          message,
-        });
-        touchChat(updated);
-      } catch (error) {
-        restoreAfterFailedSend(
-          error instanceof Error ? error.message : "Failed to save pending message.",
-        );
-        return;
+      if (!steering) {
+        try {
+          const updated = await markClientChatPendingMessage(storageMode, {
+            chatId,
+            message,
+          });
+          touchChat(updated);
+        } catch (error) {
+          restoreAfterFailedSend(
+            error instanceof Error ? error.message : "Failed to save pending message.",
+          );
+          return;
+        }
       }
 
       try {
-        startFinalizingTurn();
+        if (!steering) {
+          startFinalizingTurn();
+        }
         const turn = await composerTurn(chatId, message);
         await agent.send(turn.message, {
           headers: turn.headers,
@@ -668,6 +678,7 @@ export function AgentChatSession({
             setupStatus.connectionsAvailable,
             setupStatus.configuredConnections,
           ),
+          turnPolicy: steering ? "steer" : undefined,
         });
         // Clearing local attachment previews must not turn an accepted send into a retry.
         await clearComposerFiles(chatId).catch(() => {});
@@ -676,13 +687,16 @@ export function AgentChatSession({
           return;
         }
 
-        stopFinalizingTurn();
-        void clearClientChatPendingMessage(storageMode, chatId);
+        if (!steering) {
+          stopFinalizingTurn();
+          void clearClientChatPendingMessage(storageMode, chatId);
+        }
         restoreAfterFailedSend(error instanceof Error ? error.message : "Failed to send message.");
       }
     },
     [
       agent,
+      canSteer,
       clearLocalPendingUserMessage,
       disabledReason,
       enabledConnections,
@@ -1040,6 +1054,7 @@ export function AgentChatSession({
         stop: () => void agent.cancel(),
       },
       {
+        canSteer,
         disabledReason,
         isBusy,
         isDisabled: !isSetupReady || isWaitingForAuthorization || isFinalizingTurn,
@@ -1048,6 +1063,7 @@ export function AgentChatSession({
     );
   }, [
     agent.cancel,
+    canSteer,
     disabledReason,
     isBusy,
     isFinalizingTurn,
@@ -1608,86 +1624,6 @@ export function EmptyChatBody({ composer }: { readonly composer?: ReactNode }) {
       </div>
     </div>
   );
-}
-
-export function ErrorToast({
-  message,
-  onDismiss,
-}: {
-  readonly message: string;
-  readonly onDismiss: () => void;
-}) {
-  return (
-    <div
-      aria-live="assertive"
-      className="fixed top-3 right-3 z-50 flex w-[calc(100vw-1.5rem)] max-w-sm items-start gap-3 rounded-md border border-destructive/30 bg-background/95 p-3 text-sm shadow-lg backdrop-blur sm:top-4 sm:right-4"
-      role="alert"
-    >
-      <AlertCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">Request failed</p>
-        <p className="mt-0.5 text-muted-foreground">{message}</p>
-      </div>
-      <Button
-        aria-label="Dismiss error"
-        className="-mt-1 -mr-1 text-muted-foreground hover:text-foreground"
-        onClick={onDismiss}
-        size="icon-xs"
-        type="button"
-        variant="ghost"
-      >
-        <XIcon className="size-3.5" />
-      </Button>
-    </div>
-  );
-}
-
-export function ComposerFooterControls({ setupStatus }: { readonly setupStatus: SetupStatus }) {
-  const { enabledConnections, setConnectionEnabled } = useChatShell();
-
-  return (
-    <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
-      <ModelPicker />
-      <ComposerHint setupStatus={setupStatus} />
-      {setupStatus.connectionsAvailable ? (
-        <IntegrationsMenu
-          enabledConnections={enabledConnections}
-          onConnectionEnabledChange={setConnectionEnabled}
-          setupStatus={setupStatus}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function ComposerHint({ setupStatus }: { readonly setupStatus: SetupStatus }) {
-  if (!setupStatus.appReady) {
-    const reason = getSetupRequiredReason(setupStatus);
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-md px-2 text-[15px] text-muted-foreground/50"
-            tabIndex={0}
-          >
-            <LockIcon className="size-3.5 shrink-0" />
-            <span className="truncate">Setup required</span>
-            <ChevronDownIcon className="size-3.5 shrink-0" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{reason}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return null;
-}
-
-function getSetupRequiredReason(setupStatus: SetupStatus) {
-  return setupStatus.missing.length
-    ? `Finish setup. Missing: ${setupStatus.missing.join(", ")}.`
-    : "Finish setup before chatting.";
 }
 
 function hasLatestUserMessage(

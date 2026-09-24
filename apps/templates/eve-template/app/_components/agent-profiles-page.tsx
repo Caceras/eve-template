@@ -177,7 +177,7 @@ export function AgentProfilesPage() {
             Tools, skills &amp; capabilities
           </Link>
           <Link className="text-muted-foreground underline underline-offset-4" href="/session">
-            Inspect sessions
+            Inspect activity
           </Link>
           <Link className="text-muted-foreground underline underline-offset-4" href="/tasks">
             Scheduled tasks

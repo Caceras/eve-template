@@ -1,5 +1,5 @@
 "use client";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 import { CheckIcon, MenuIcon, PanelLeftIcon, UploadIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -37,6 +37,7 @@ import { importBrowserChats } from "@/lib/chat/browser-import";
 import { deleteClientChat, listClientChats } from "@/lib/chat/persistence-client";
 import type { ChatListItem, SetupStatus, Viewer } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
+import { useMobileSidebarSwipe } from "@/lib/chat/mobile-sidebar-swipe";
 
 export function AgentChatShell({
   children,
@@ -70,6 +71,10 @@ export function AgentChatShell({
   const activeChatIdRef = useRef(activeChatId);
   const setupReady = setupStatusState.appReady;
   const router = useRouter();
+  const { drawerHandlers, surfaceHandlers } = useMobileSidebarSwipe({
+    open: mobileSidebarOpen,
+    onOpenChange: setMobileSidebarOpen,
+  });
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -87,21 +92,6 @@ export function AgentChatShell({
       setSidebarDocumentHint(saved);
     }
   }, []);
-
-  useEffect(() => {
-    if (!mobileSidebarOpen) {
-      return;
-    }
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMobileSidebarOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [mobileSidebarOpen]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -354,7 +344,7 @@ export function AgentChatShell({
   return (
     <ChatShellProvider value={contextValue}>
       <SidebarCookieScript />
-      <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      <div className="flex h-dvh overflow-hidden bg-background text-foreground" data-mobile-swipe-surface {...surfaceHandlers}>
         <div
           data-desktop-sidebar
           className={cn(
@@ -399,8 +389,9 @@ export function AgentChatShell({
 
         <Dialog open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
           <DialogContent
+            {...drawerHandlers}
             showCloseButton={false}
-            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 p-0 sm:max-w-[21rem]"
+            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
           >
             <DialogTitle className="sr-only">Workspace navigation</DialogTitle>
             <DialogDescription className="sr-only">

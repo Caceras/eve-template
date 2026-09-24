@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, BookOpenIcon, SearchIcon } from "lucide-react";
+import { ArrowUpRightIcon, SearchIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { productLibrary } from "@/lib/product-library";
@@ -20,14 +20,10 @@ export function ProductLibrary() {
   const categories = [...new Set(items.map((item) => item.category))];
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 pb-16 pt-20 sm:px-8">
-        <BookOpenIcon className="mb-4 size-6" />
-        <h1 className="text-2xl font-semibold tracking-tight">
-          A little guidance. More possibilities.
-        </h1>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-          Learn what you can try with Ægentica, what needs a connection, and how to take your work
-          further.
+      <div className="mx-auto max-w-4xl px-4 pb-16 pt-16 sm:px-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Explore</h1>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          Practical ways to use the capabilities already built into Ægentica, plus what needs setup.
         </p>
         <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <span>
@@ -39,13 +35,14 @@ export function ProductLibrary() {
             set up
           </span>
           <span>
-            <strong className="font-medium text-foreground">Available</strong> · can be added
+            <strong className="font-medium text-foreground">Needs setup / Available</strong> ·
+            requires configuration or an optional capability
           </span>
         </div>
         <p className="mt-3 text-xs leading-5 text-muted-foreground">
           Configuration does not guarantee every workflow has been tested.{" "}
           <Link className="underline underline-offset-4" href="/capabilities">
-            Check live agent status
+            Inspect live capabilities
           </Link>
           .
         </p>
@@ -53,7 +50,7 @@ export function ProductLibrary() {
           <SearchIcon className="absolute left-3 top-3.5 size-4 text-muted-foreground" />
           <Input
             aria-label="Search the library"
-            placeholder="Search conversations, memory, connections…"
+            placeholder="Search what Ægentica can do"
             className="h-11 pl-9"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -97,7 +94,7 @@ export function ProductLibrary() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Read the framework guide
+                        Eve documentation
                         <ArrowUpRightIcon className="size-3" />
                       </a>
                     </div>
@@ -112,7 +109,7 @@ export function ProductLibrary() {
           </p>
         ) : null}
         <footer className="border-t pt-5 text-xs leading-6 text-muted-foreground">
-          Built on eve 0.63.0. Framework documentation by Vercel and contributors, Apache-2.0.{" "}
+          Eve 0.63.0 reference snapshot · documentation by Vercel and contributors, Apache-2.0.{" "}
           <a className="underline underline-offset-4" href="/reference/NOTICE.txt">
             Attribution
           </a>{" "}

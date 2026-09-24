@@ -50,10 +50,9 @@ export function EveSessionLab() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-16 sm:px-6 sm:pt-14">
         <div className="max-w-2xl">
-          <p className="text-sm text-muted-foreground">Advanced</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sessions</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Inspect durable Ægentica sessions and perform low-level lifecycle actions without leaving the product shell.
+            Inspect a durable conversation by session ID and manage its low-level lifecycle when needed.
           </p>
         </div>
 
@@ -76,7 +75,7 @@ export function EveSessionLab() {
             <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.clear())} className="justify-start sm:justify-center" size="sm" variant="outline">
               <EraserIcon className="size-4" /> Clear context
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.reset({ reason: "Requested from Ægentica Sessions" }))} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.reset({ reason: "Requested from Ægentica Activity" }))} className="justify-start sm:justify-center" size="sm" variant="outline">
               <ListRestartIcon className="size-4" /> Reset
             </Button>
           </div>

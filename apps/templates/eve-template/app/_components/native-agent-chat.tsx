@@ -115,7 +115,7 @@ export function NativeAgentChat({
   };
 
   const composer = (
-    <PromptInput data-chat-composer onSubmit={handleSubmit}>
+    <PromptInput data-chat-composer globalDrop onSubmit={handleSubmit}>
       <PromptInputTextarea
         disabled={isResuming}
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
@@ -189,14 +189,14 @@ export function NativeAgentChat({
           <div className="flex flex-col items-center gap-3 text-center">
             <img
               alt="Ægentica"
-              className="size-16 select-none invert sm:size-20 md:size-24 dark:invert-0"
+              className="size-12 select-none invert dark:invert-0"
               draggable={false}
               src="/aegentica.svg"
             />
             <span className="sr-only">{AGENT_NAME}</span>
           </div>
         )}
-        <div className="w-full [&_[data-slot=input-group]]:rounded-[20px] [&_[data-slot=input-group]]:border-black/[0.06] [&_[data-slot=input-group]]:bg-white/92 [&_[data-slot=input-group]]:shadow-[0_10px_40px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] [&_[data-slot=input-group]]:backdrop-blur-xl dark:[&_[data-slot=input-group]]:border-white/[0.08] dark:[&_[data-slot=input-group]]:bg-white/[0.06]">
+        <div className="w-full [&_[data-slot=input-group]]:rounded-[22px] [&_[data-slot=input-group]]:border-border/75 [&_[data-slot=input-group]]:bg-background/96 [&_[data-slot=input-group]]:shadow-[0_8px_30px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.03)] [&_[data-slot=input-group]]:backdrop-blur-2xl dark:[&_[data-slot=input-group]]:bg-background/92 [&_[data-slot=input-group-button]]:min-h-11 [&_[data-slot=input-group-button]]:min-w-11 md:[&_[data-slot=input-group-button]]:min-h-9 md:[&_[data-slot=input-group-button]]:min-w-9">
           {composer}
         </div>
       </div>

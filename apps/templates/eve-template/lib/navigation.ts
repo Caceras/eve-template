@@ -41,12 +41,6 @@ export const systemWorkspacePages = [
     keywords: "GitHub Telegram MCP integrations channels",
   },
   {
-    href: "/native",
-    label: "Channels",
-    icon: RadioTowerIcon,
-    keywords: "web chat steering attachment communication",
-  },
-  {
     href: "/session",
     label: "Activity",
     icon: ListRestartIcon,
@@ -66,5 +60,18 @@ export const systemWorkspacePages = [
   },
 ] as const;
 
-export const workspacePages = [...primaryWorkspacePages, ...systemWorkspacePages] as const;
+export const advancedWorkspacePages = [
+  {
+    href: "/native",
+    label: "Live session",
+    icon: RadioTowerIcon,
+    keywords: "advanced web channel steering attachment communication durable session",
+  },
+] as const;
+
+export const workspacePages = [
+  ...primaryWorkspacePages,
+  ...systemWorkspacePages,
+  ...advancedWorkspacePages,
+] as const;
 export const COMMAND_EVENT = "aegentica:command-menu";

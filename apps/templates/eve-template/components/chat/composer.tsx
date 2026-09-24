@@ -27,6 +27,7 @@ import { canDictate, startDictation, stopSpeaking } from "@/lib/voice/speech";
 const MAX_TEXTAREA_HEIGHT = 168;
 
 export function ChatComposer({
+  allowSteering = false,
   autoFocus = true,
   className,
   disabled = false,
@@ -41,6 +42,7 @@ export function ChatComposer({
   placeholder = "Ask Ægentica anything...",
   value,
 }: {
+  readonly allowSteering?: boolean;
   readonly autoFocus?: boolean;
   readonly className?: string;
   readonly disabled?: boolean;
@@ -58,7 +60,7 @@ export function ChatComposer({
   const composerId = useId();
   const [workspace, setWorkspace] = useState({ hasFiles: false, busy: false });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const textareaDisabled = disabled || isBusy || isPreparing;
+  const textareaDisabled = disabled || isPreparing || (isBusy && !allowSteering);
   const trimmedValue = value.trim();
   const isOverMaxLength = getChatMessageLength(trimmedValue) > maxLength;
   const [dictationSupported, setDictationSupported] = useState(false);
@@ -169,7 +171,7 @@ export function ChatComposer({
     if (
       !text ||
       disabled ||
-      isBusy ||
+      (isBusy && !allowSteering) ||
       isPreparing ||
       workspace.busy ||
       getChatMessageLength(text) > maxLength
@@ -179,7 +181,7 @@ export function ChatComposer({
 
     stopDictationRef.current?.();
     void onSubmit(text);
-  }, [disabled, isBusy, isPreparing, maxLength, onSubmit, value, workspace]);
+  }, [allowSteering, disabled, isBusy, isPreparing, maxLength, onSubmit, value, workspace]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -227,7 +229,7 @@ export function ChatComposer({
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={listening ? "Listening…" : placeholder}
+        placeholder={listening ? "Listening…" : isBusy && allowSteering ? "Add a correction…" : placeholder}
         ref={textareaRef}
         rows={1}
         value={value}
@@ -284,15 +286,31 @@ export function ChatComposer({
             </Button>
           ) : null}
           {isBusy ? (
-            <Button
-              aria-label="Stop response"
-              className="size-11 rounded-full md:size-9 bg-foreground text-background shadow-none hover:bg-foreground/85"
-              onClick={onStop}
-              size="icon-sm"
-              type="button"
-            >
-              <SquareIcon className="size-3 fill-current" />
-            </Button>
+            <>
+              {allowSteering &&
+              !workspace.busy &&
+              (workspace.hasFiles || trimmedValue.length > 0) &&
+              !isOverMaxLength ? (
+                <Button
+                  aria-label="Steer current turn"
+                  className="size-11 rounded-full bg-foreground text-background shadow-sm transition-transform hover:scale-[1.03] hover:bg-foreground/90 active:scale-[0.97] md:size-9"
+                  size="icon-xs"
+                  title="Send this as a correction to the active turn"
+                  type="submit"
+                >
+                  <ArrowUpIcon className="size-4" />
+                </Button>
+              ) : null}
+              <Button
+                aria-label="Stop response"
+                className="size-11 rounded-full bg-foreground text-background shadow-none hover:bg-foreground/85 md:size-9"
+                onClick={onStop}
+                size="icon-sm"
+                type="button"
+              >
+                <SquareIcon className="size-3 fill-current" />
+              </Button>
+            </>
           ) : isPreparing ? (
             <Button
               aria-label="Preparing chat"
@@ -324,7 +342,10 @@ export function ChatComposer({
     </form>
   );
 
-  if (!disabledReason || (!disabled && !isBusy && !isPreparing)) {
+  if (
+    !disabledReason ||
+    (!disabled && (!isBusy || allowSteering) && !isPreparing)
+  ) {
     return form;
   }
 

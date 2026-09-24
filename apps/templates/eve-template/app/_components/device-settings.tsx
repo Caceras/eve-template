@@ -53,8 +53,8 @@ export function NotificationSettings() {
   return (
     <SettingsShell
       section="notifications"
-      title="App & notifications"
-      description="Install Ægentica on this phone or computer and choose whether it may notify you."
+      title="Notifications"
+      description="Install Ægentica on this device and decide when it may notify you."
     >
       <DeviceSettings />
     </SettingsShell>

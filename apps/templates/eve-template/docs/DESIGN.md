@@ -36,12 +36,20 @@ When extending the template, preserve the original visual language and add capab
 
 ## Product IA
 
-Primary navigation uses short nouns:
+Chat is the home surface. The sidebar exposes the user's durable objects first:
 
-- **New session** — starts the primary persisted chat.
-- **Agents** — creates and manages saved profiles. **Capabilities** shows the compiled agent, included scaffolds and official registry.
-- **Channels** — channel surfaces and delivery paths. The current web channel is one implementation, not the whole concept.
-- **Sessions** — advanced durable-session inspection and control.
+- **New chat** — starts the primary persisted conversation.
+- **Agents** — saved instructions, context and model preferences.
+- **Tasks** — scheduled and recurring work.
+- **Images** — generated media kept on the server.
+- **Memory** — durable operator preferences and facts.
+- **Capabilities** — live runtime truth, built-in scaffolds and the official Eve ecosystem.
+- **Connections** — accounts and external services.
+- **Activity** — advanced session/run inspection.
+- **Explore** — user-oriented examples grounded in capabilities already present.
+- **Settings** — models, voice, notifications, connections and security.
+
+The AI Elements-based **Live session** route remains available through command search as an advanced Eve-client surface, but it is not a second primary chat in the sidebar.
 
 Do not use labels such as "Eve capabilities", "Native Web Chat", "Session lifecycle", "Web channel", "demo", "lab", or similarly implementation-oriented names in primary navigation.
 
@@ -49,19 +57,19 @@ Do not use labels such as "Eve capabilities", "Native Web Chat", "Session lifecy
 
 The Capabilities surface must keep three scopes visibly separate:
 
-### Runtime
+### Live (internal scope: Runtime)
 
 Capabilities reported by the live compiled agent/runtime. Source of truth: Eve Client `info()`.
 
 Examples: tools, skills, instructions, connections, channels, memory, schedules, hooks, subagents, sandbox, workspace and composition metadata.
 
-### Included
+### Built in (internal scope: Included)
 
 Scaffolds and examples physically present in this repository even if they are not active for the current caller/session.
 
 Current included areas include tools, packaged/dynamic skills, workflows/background tasks, subagents, connections, channels, profile memory, schedules, hooks, sandbox workspace and evals.
 
-### Directory
+### Explore (internal scope: Directory)
 
 The broader official Eve registry and package surface that can be added/configured. This must never be presented as already active.
 
@@ -75,6 +83,15 @@ The broader official Eve registry and package surface that can be added/configur
 - Buttons: existing Button variants and sizes; no bespoke pill styles unless upstream already uses them.
 - Icons: Lucide, usually `size-4`; icons support labels rather than replace understandable labels.
 - Motion: subtle state transition only; never decorative motion that competes with chat.
+
+## Component convergence
+
+- **Eve chat-template is canonical for the persisted chat.** A generic AI Elements component is not automatically a reason to replace an Eve chat component. The current official template still owns its chat conversation, markdown, message and composer patterns.
+- **AI Elements are canonical where already used.** The advanced Live session uses AI Elements `Conversation`, `Message`, `PromptInput`, `Reasoning`, `Question` and `Tool` primitives instead of recreating them.
+- **shadcn/Radix provide interaction primitives.** Use Dialog for dialogs, Command for global search, DropdownMenu for action menus and the existing form primitives instead of hand-rolling focus, keyboard or overlay behavior. For mobile navigation, reuse the repo's existing drawer/sheet primitive when one exists; otherwise keep the current Radix Dialog and isolate swipe behavior in a small tested adapter rather than adding a second component stack.
+- **Divergence must pay for itself.** Keep differences that implement persistence, self-hosting, saved agents, multimodality, mobile quality or another documented product requirement. Remove duplicated keyboard handlers, duplicate scroll owners, stale labels and alternate UI paths that do not add capability.
+- Do not copy a registry component into a second local implementation just to restyle it. Extend the existing component with class names or a thin product wrapper.
+
 
 ## Authentication
 
@@ -138,6 +155,13 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 - Prefer short, calm product copy: "Message Ægentica", "Sign in", "No session loaded", "Runtime live".
 - Avoid exposing internal route names, implementation jargon, registry mechanics or framework concepts unless the surface is specifically for advanced inspection.
 
+- On coarse pointers, important tap targets are approximately 44px; desktop may remain denser.
+- Mobile navigation supports the obvious menu button plus a left-edge swipe to open and a left swipe on the drawer to close. Gestures are additive: no essential action is swipe-only.
+- Do not hide destructive or important actions behind long-press. Long-press remains available for normal browser behavior on links and media.
+- Horizontal rows that intentionally scroll use contained overscroll/snap behavior; vertical surfaces have one clear scroll owner.
+- Drag/drop may enhance desktop file workflows, but mobile file selection always has an explicit attachment control.
+
+
 ## Completion bar
 
 A polish pass is incomplete if any of these remain:
@@ -152,8 +176,8 @@ A polish pass is incomplete if any of these remain:
 
 ## Orchestration surface contract
 
-The sidebar uses `lib/navigation.ts`: Agents, Capabilities, Tasks, Images, Memory, Connections, Sessions, Guide and Settings. Chat remains primary. Agents is the profile editor; Capabilities is the live/source/registry inspector. Preserve all existing utility routes and both existing chat surfaces.
+The sidebar uses `lib/navigation.ts`: Agents, Tasks, Images and Memory are primary workspace objects; Capabilities, Connections, Activity, Explore and Settings are secondary system surfaces. The advanced AI Elements Live session remains searchable but does not compete with the persisted chat in primary navigation.
 
-Capability scopes are now **Runtime / Included / Directory**. Runtime means a live declaration, never a successful credential test. Category tabs are All, Tools, Skills, Agents, Apps, Channels and More. Details show known access policy and maintainer instructions without fake install buttons.
+Capability UI labels are **Live / Built in / Explore**, backed by the internal runtime / included / directory scopes. Live means a runtime declaration, never a successful credential test. Category tabs are All, Tools, Skills, Agents, Connections, Channels and System. Details show known access policy and maintainer instructions without fake install buttons.
 
-The main composer groups agent, intent mode and attachments above the text area and keeps model, voice and send/stop controls discoverable. Modal surfaces reuse Radix Dialog, with accessible title/description and bounded viewport scrolling. Errors must retain drafts and indicate recovery. No decorative dashboards, capability removal, invented images, hidden native selects or misleading success toasts.
+The main composer groups agent, intent mode and attachments above the text area and keeps model, voice and send/stop controls discoverable. During an active Eve turn the composer remains available for a documented `turnPolicy: "steer"` correction while Stop still cancels the durable turn. Modal and drawer surfaces reuse shadcn/Radix primitives, with accessible titles/descriptions and bounded viewport scrolling. Errors retain drafts and indicate recovery. No decorative dashboards, capability removal, invented images, hidden native selects or misleading success toasts.

@@ -22,7 +22,7 @@ const RELATED = [
   { href: "/memory", label: "Memory", icon: BrainIcon },
   { href: "/tasks", label: "Tasks", icon: CalendarClockIcon },
 ];
-const rowClass = "flex h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm transition-colors md:h-9";
+const rowClass = "flex h-11 shrink-0 snap-start items-center gap-2 rounded-lg px-2.5 text-sm transition-colors md:h-9";
 
 export function SettingsShell({ section, title, description, actions, children }: {
   readonly section: SettingsSection;
@@ -35,7 +35,7 @@ export function SettingsShell({ section, title, description, actions, children }
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-16 pt-16 sm:px-6 md:flex-row md:gap-12">
-        <nav aria-label="Settings" className="-mx-4 flex gap-1 overflow-x-auto px-4 md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0">
+        <nav aria-label="Settings" className="-mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0">
           <p className="hidden px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/70 md:block">Settings</p>
           {SECTIONS.map((item) => (
             <Link aria-current={item.id === section ? "page" : undefined} className={cn(rowClass, item.id === section ? "bg-foreground/[0.055] text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground")} href={item.href} key={item.id}>

@@ -5,10 +5,20 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { COMMAND_EVENT, primaryWorkspacePages, systemWorkspacePages } from "@/lib/navigation";
 import { SearchIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthDisplayLoggedIn, AuthDisplayLoggedOut } from "@/components/auth/auth-display";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +67,7 @@ export function ChatSidebar({
   const pathname = usePathname();
   const newSessionActive = activeChatId === null && pathname === "/";
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [deleteChat, setDeleteChat] = useState<ChatListItem | null>(null);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -86,8 +97,9 @@ export function ChatSidebar({
         className,
       )}
     >
-      <div className="flex max-h-[72dvh] shrink-0 flex-col gap-1 overflow-y-auto px-2 pb-2 pt-2">
-        <div className="mb-2 flex h-10 items-center justify-between px-2">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex flex-col gap-1 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <div className="sticky top-0 z-10 mb-2 flex h-10 items-center justify-between bg-background/95 px-2 backdrop-blur">
           <Link
             href="/"
             onClick={() => onNavigate?.(null)}
@@ -107,34 +119,39 @@ export function ChatSidebar({
               <PanelLeftIcon className="size-4" />
             </Button>
           )}
-        </div>
-        <button
-          className={cn(
-            "flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm md:min-h-9",
-            newSessionActive ? activeRowClass : inactiveRowClass,
-          )}
-          onClick={() => {
-            router.push("/");
-            onNewChat();
-            onNavigate?.(null);
-          }}
-          aria-current={newSessionActive ? "page" : undefined}
-          type="button"
-        >
-          <PlusIcon className="size-4" />
-          New chat
-        </button>
-        <button
-          className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground hover:bg-muted/50 md:min-h-9"
-          onClick={() => {
-            onNavigate?.();
-            window.dispatchEvent(new Event(COMMAND_EVENT));
-          }}
-          type="button"
-        >
-          <SearchIcon className="size-4" />
-          Search<span className="ml-auto rounded border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-60">⌘K</span>
-        </button>
+          </div>
+          <Button
+            aria-current={newSessionActive ? "page" : undefined}
+            className={cn(
+              "min-h-11 w-full justify-start gap-2 rounded-lg px-2 text-sm font-normal md:min-h-9",
+              newSessionActive ? activeRowClass : inactiveRowClass,
+            )}
+            onClick={() => {
+              router.push("/");
+              onNewChat();
+              onNavigate?.(null);
+            }}
+            type="button"
+            variant="ghost"
+          >
+            <PlusIcon className="size-4" />
+            New chat
+          </Button>
+          <Button
+            className="min-h-11 w-full justify-start gap-2 rounded-lg px-2 text-sm font-normal text-muted-foreground hover:bg-muted/50 hover:text-foreground md:min-h-9"
+            onClick={() => {
+              onNavigate?.();
+              window.dispatchEvent(new Event(COMMAND_EVENT));
+            }}
+            type="button"
+            variant="ghost"
+          >
+            <SearchIcon className="size-4" />
+            Search
+            <span className="ml-auto hidden rounded border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-60 md:inline-flex">
+              Ctrl/⌘ K
+            </span>
+          </Button>
         <nav aria-label="Workspace" className="mt-3 grid gap-0.5">
           <p className="px-2 pb-1 pt-1 text-[11px] font-medium text-muted-foreground/60">
             Workspace
@@ -173,9 +190,9 @@ export function ChatSidebar({
             </Link>
           ))}
         </nav>
-      </div>
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="px-2 py-2">
         {chats.length ? (
           <div>
             <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">
@@ -207,7 +224,7 @@ export function ChatSidebar({
                     <DropdownMenuTrigger asChild>
                       <Button
                         aria-label="Chat actions"
-                        className="absolute top-1/2 right-1 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                        className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:right-1 md:size-7 md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                         size="icon-xs"
                         type="button"
                         variant="ghost"
@@ -217,10 +234,7 @@ export function ChatSidebar({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" sideOffset={6}>
                       <DropdownMenuItem
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          void onDeleteChat(chat.id);
-                        }}
+                        onSelect={() => setDeleteChat(chat)}
                         variant="destructive"
                       >
                         <Trash2Icon className="size-4" />
@@ -238,19 +252,21 @@ export function ChatSidebar({
             {isLoadingMore ? (
               <p className="text-xs text-muted-foreground">Loading more...</p>
             ) : (
-              <button
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              <Button
+                className="h-10 px-2 text-xs font-normal text-muted-foreground hover:text-foreground md:h-8"
                 onClick={() => void onLoadMoreChats?.()}
                 type="button"
+                variant="ghost"
               >
                 Load more
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
       </div>
+      </div>
 
-      <div className="border-t border-border px-2 py-3">
+      <div className="border-t border-border/70 px-2 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {viewer ? (
           <UserMenu authMode={setupStatus.authMode} viewer={viewer} />
         ) : isLoadingChats ? (
@@ -274,6 +290,38 @@ export function ChatSidebar({
           />
         )}
       </div>
+
+      <AlertDialog
+        open={Boolean(deleteChat)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteChat(null);
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteChat
+                ? `“${deleteChat.title}” will be removed from your chat history. This cannot be undone.`
+                : "This conversation will be removed. This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11 md:h-9">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11 md:h-9"
+              variant="destructive"
+              onClick={() => {
+                if (!deleteChat) return;
+                void onDeleteChat(deleteChat.id);
+                setDeleteChat(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }
@@ -288,18 +336,19 @@ function SidebarSignInButton({
   readonly onSignIn?: () => void;
 }) {
   return (
-    <button
-      className="flex h-10 w-full items-center justify-between rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 md:h-8"
+    <Button
+      className="h-11 w-full justify-between rounded-md px-2 text-sm font-normal text-muted-foreground hover:bg-muted/50 hover:text-foreground md:h-8"
       disabled={authDisabled}
       onClick={() => {
         onSignIn?.();
         onNavigate?.();
       }}
       type="button"
+      variant="ghost"
     >
       <span className="min-w-0">Sign in</span>
       <ArrowRightIcon className="size-3.5" />
-    </button>
+    </Button>
   );
 }
 

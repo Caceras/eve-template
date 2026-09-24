@@ -40,7 +40,7 @@ export const productLibrary = [
       "Open a recent conversation to return to its context and follow a response already in progress.",
     status: "Included",
     example:
-      "Start a conversation, return to New session, then select the conversation under Recent.",
+      "Start a conversation, return to New chat, then select the conversation under Recent.",
     requirements: "History is saved on your server, so the desktop and the installed app share it.",
     path: "guides/client/continuations",
   },
@@ -50,7 +50,7 @@ export const productLibrary = [
     description:
       "Add direction while work is running, or stop a response when you want to change course.",
     status: "Included",
-    example: "Open Channels to try the advanced conversation controls.",
+    example: "While Ægentica is responding, type a correction and send it to steer the same turn, or tap Stop.",
     requirements: "Stopping generation does not undo tool actions already completed.",
     path: "guides/client/messages",
   },
@@ -155,7 +155,7 @@ export const productLibrary = [
     status: "Configured",
     example: "Open Tasks → New task, or ask: “Every weekday at 8, give me a short briefing.”",
     requirements:
-      "Turn on notifications in Settings → App & notifications on each phone or computer that should be told.",
+      "Turn on notifications in Settings → Notifications on each phone or computer that should be told.",
     path: "patterns/dynamic-scheduling",
   },
   {
@@ -166,7 +166,7 @@ export const productLibrary = [
     status: "Needs setup",
     example: "Ask: “Review the latest pull request in my repository and tell me what could break.”",
     requirements:
-      "Add a GitHub token in Settings → Integrations → GitHub. Anything that changes GitHub asks for your approval first.",
+      "Add a GitHub token in Settings → Connections → GitHub. Anything that changes GitHub asks for your approval first.",
     path: "extensions",
   },
   {
@@ -174,7 +174,7 @@ export const productLibrary = [
     title: "Connect your work apps",
     description: "Add access to tools and context from services such as Linear, Notion and Sentry.",
     status: "Needs setup",
-    example: "Open Agent → Available to find a supported integration.",
+    example: "Open Connections for configured accounts, or Capabilities → Explore for the broader directory.",
     requirements:
       "These accounts are not connected. Each integration needs credentials and permissions; a catalog entry is not an active connection.",
     path: "connections",
@@ -184,7 +184,7 @@ export const productLibrary = [
     title: "Reach other channels",
     description: "Use the same agent through Slack, messaging platforms or a custom application.",
     status: "Available",
-    example: "Explore the channel catalog under Agent → Available.",
+    example: "Open Capabilities → Explore and filter Channels.",
     requirements:
       "Channels need their own accounts, credentials and routing. The web app is the configured entry point here.",
     path: "channels/custom",
@@ -216,7 +216,7 @@ export const productLibrary = [
     description:
       "Inspect a live session, test agent behavior and trace a task before using it for important work.",
     status: "Included",
-    example: "Open Sessions for advanced controls or read the evaluation guide.",
+    example: "Open Activity for advanced controls or read the evaluation guide.",
     requirements:
       "Reset and clear change a session’s context. External monitoring services require their own setup.",
     path: "evals/overview",
