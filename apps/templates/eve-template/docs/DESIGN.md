@@ -152,6 +152,8 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 - Keep drawers mounted when practical so opening/closing feels continuous rather than janky.
 - Respect safe-area insets for top chrome and bottom composers.
 - A stop control must actually cancel generation; never render a fake disabled stop icon.
+- Error toasts sit below the top bar so navigation stays tappable while one is shown; an error that names Settings links there.
+- One search control per layout: the top bar shows Search only when the sidebar (which has its own Search row) is hidden.
 - Skeletons must mirror the current production layout closely enough that hydration does not visually jump.
 - Prefer short, calm product copy: "Message Ægentica", "Sign in", "No session loaded", "Runtime live".
 - Avoid exposing internal route names, implementation jargon, registry mechanics or framework concepts unless the surface is specifically for advanced inspection.

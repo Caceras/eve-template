@@ -403,7 +403,11 @@ export function AgentChatShell({
               ) : null}
               <Button
                 aria-label="Search pages and conversations"
-                className="size-10 rounded-full md:rounded-md"
+                // The expanded desktop sidebar has its own Search row.
+                className={cn(
+                  "size-10 rounded-full md:rounded-md",
+                  desktopSidebarOpen && "md:hidden",
+                )}
                 onClick={() => window.dispatchEvent(new Event(COMMAND_EVENT))}
                 size="icon-sm"
                 title="Search (Cmd/Ctrl K)"
