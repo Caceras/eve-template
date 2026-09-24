@@ -88,7 +88,7 @@ The broader official Eve registry and package surface that can be added/configur
 
 - **Eve chat-template is canonical for the persisted chat.** A generic AI Elements component is not automatically a reason to replace an Eve chat component. The current official template still owns its chat conversation, markdown, message and composer patterns.
 - **AI Elements are canonical where already used.** The advanced Live session uses AI Elements `Conversation`, `Message`, `PromptInput`, `Reasoning`, `Question` and `Tool` primitives instead of recreating them.
-- **shadcn/Radix provide interaction primitives.** Use Dialog for dialogs, Sheet for mobile drawers, Command for global search, DropdownMenu for action menus and the existing form primitives instead of hand-rolling focus, keyboard or overlay behavior.
+- **shadcn/Radix provide interaction primitives.** Use Dialog for dialogs, Command for global search, DropdownMenu for action menus and the existing form primitives instead of hand-rolling focus, keyboard or overlay behavior. For mobile navigation, reuse the repo's existing drawer/sheet primitive when one exists; otherwise keep the current Radix Dialog and isolate swipe behavior in a small tested adapter rather than adding a second component stack.
 - **Divergence must pay for itself.** Keep differences that implement persistence, self-hosting, saved agents, multimodality, mobile quality or another documented product requirement. Remove duplicated keyboard handlers, duplicate scroll owners, stale labels and alternate UI paths that do not add capability.
 - Do not copy a registry component into a second local implementation just to restyle it. Extend the existing component with class names or a thin product wrapper.
 
