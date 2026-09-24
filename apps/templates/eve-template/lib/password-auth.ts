@@ -16,24 +16,37 @@ export type PasswordRecord = {
   changedAt: string;
 };
 
+export function operatorUsername() {
+  return process.env.EVE_CHAT_USERNAME?.trim() || TEMPORARY_USERNAME;
+}
+
 export function getChatPassword() {
   return process.env.EVE_CHAT_PASSWORD?.trim() || TEMPORARY_PASSWORD;
 }
 
 /** Same path as secure-settings.settingsDirectory; also usable in standalone auth. */
 function readPasswordRecord(): PasswordRecord | undefined {
-  const directory = process.env.EVE_SETTINGS_DIR || join(
-    process.env.EVE_MEMORY_DIR ? dirname(process.env.EVE_MEMORY_DIR) : ".eve/.workflow-data",
-    "settings",
-  );
+  const directory =
+    process.env.EVE_SETTINGS_DIR ||
+    join(
+      process.env.EVE_MEMORY_DIR ? dirname(process.env.EVE_MEMORY_DIR) : ".eve/.workflow-data",
+      "settings",
+    );
   const file = join(directory, PASSWORD_RECORD_NAME);
   try {
     if (statSync(file).size > 2048) throw new Error("Invalid password settings.");
     const value = JSON.parse(readFileSync(file, "utf8")) as Partial<PasswordRecord>;
-    if (value.version !== 1 || typeof value.salt !== "string" || !/^[a-f0-9]{32}$/.test(value.salt)
-      || typeof value.digest !== "string" || !/^[a-f0-9]{64}$/.test(value.digest)
-      || typeof value.revision !== "string" || !/^[a-f0-9]{64}$/.test(value.revision)
-      || typeof value.changedAt !== "string" || !Number.isFinite(Date.parse(value.changedAt)))
+    if (
+      value.version !== 1 ||
+      typeof value.salt !== "string" ||
+      !/^[a-f0-9]{32}$/.test(value.salt) ||
+      typeof value.digest !== "string" ||
+      !/^[a-f0-9]{64}$/.test(value.digest) ||
+      typeof value.revision !== "string" ||
+      !/^[a-f0-9]{64}$/.test(value.revision) ||
+      typeof value.changedAt !== "string" ||
+      !Number.isFinite(Date.parse(value.changedAt))
+    )
       throw new Error("Invalid password settings.");
     return value as PasswordRecord;
   } catch (error) {
@@ -46,7 +59,7 @@ export function passwordSettings() {
   const stored = readPasswordRecord();
   const environment = Boolean(process.env.EVE_CHAT_PASSWORD?.trim());
   return {
-    username: process.env.EVE_CHAT_USERNAME?.trim() || TEMPORARY_USERNAME,
+    username: operatorUsername(),
     source: stored ? "saved" : environment ? "environment" : "legacy",
     requiresChange: !stored && (!environment || getChatPassword().length < 16),
     changedAt: stored?.changedAt ?? null,
@@ -64,9 +77,13 @@ export function isChatPasswordConfigured() {
 
 function derivePassword(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    scrypt(password, Buffer.from(salt, "hex"), 32,
+    scrypt(
+      password,
+      Buffer.from(salt, "hex"),
+      32,
       { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 },
-      (error, derived) => error ? reject(error) : resolve(derived));
+      (error, derived) => (error ? reject(error) : resolve(derived)),
+    );
   });
 }
 
@@ -86,7 +103,10 @@ export async function verifyChatPassword(candidate: string, username: string) {
   if (!timingSafeEqual(hash(username), hash(passwordSettings().username))) return false;
   const stored = readPasswordRecord();
   return stored
-    ? timingSafeEqual(await derivePassword(candidate, stored.salt), Buffer.from(stored.digest, "hex"))
+    ? timingSafeEqual(
+        await derivePassword(candidate, stored.salt),
+        Buffer.from(stored.digest, "hex"),
+      )
     : timingSafeEqual(hash(candidate), hash(getChatPassword()));
 }
 
@@ -100,15 +120,23 @@ export function verifyPasswordSessionToken(token: string | undefined, now = Date
   if (!token || !isChatPasswordConfigured()) return false;
   const [version, expiresAtRaw, signature, ...extra] = token.split(".");
   const expiresAt = Number(expiresAtRaw);
-  if (version !== TOKEN_VERSION || !signature || extra.length > 0
-    || !Number.isSafeInteger(expiresAt) || expiresAt <= Math.floor(now / 1000)) return false;
+  if (
+    version !== TOKEN_VERSION ||
+    !signature ||
+    extra.length > 0 ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= Math.floor(now / 1000)
+  )
+    return false;
   return timingSafeEqual(hash(signature), hash(sign(`${version}.${expiresAt}`)));
 }
 
 export function getPasswordSessionFromHeaders(headers: Headers) {
   const cookieHeader = headers.get("cookie");
   if (!cookieHeader) return false;
-  const token = cookieHeader.split(";").map((cookie) => cookie.trim().split("="))
+  const token = cookieHeader
+    .split(";")
+    .map((cookie) => cookie.trim().split("="))
     .find(([name]) => name === PASSWORD_SESSION_COOKIE_NAME)?.[1];
   try {
     return verifyPasswordSessionToken(token ? decodeURIComponent(token) : undefined);
@@ -124,8 +152,10 @@ export function hasSameOriginRequest(request: Request) {
   try {
     const originUrl = new URL(origin);
     const forwardedProtocol = request.headers.get("x-forwarded-proto");
-    return originUrl.host === publicHost
-      && (!forwardedProtocol || originUrl.protocol === `${forwardedProtocol}:`);
+    return (
+      originUrl.host === publicHost &&
+      (!forwardedProtocol || originUrl.protocol === `${forwardedProtocol}:`)
+    );
   } catch {
     return false;
   }
@@ -141,8 +171,12 @@ function sign(payload: string) {
   const stored = readPasswordRecord();
   // Revoke old cookies on password changes without orphaning encrypted API keys.
   const identity = JSON.stringify([
-    process.env.EVE_CHAT_USERNAME?.trim() || TEMPORARY_USERNAME,
+    operatorUsername(),
     stored ? stored.revision + stored.digest : hash(getChatPassword()).toString("hex"),
   ]);
-  return createHmac("sha256", key).update(identity).update("\0").update(payload).digest("base64url");
+  return createHmac("sha256", key)
+    .update(identity)
+    .update("\0")
+    .update(payload)
+    .digest("base64url");
 }

@@ -229,7 +229,9 @@ export function ChatComposer({
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={listening ? "Listening…" : isBusy && allowSteering ? "Add a correction…" : placeholder}
+        placeholder={
+          listening ? "Listening…" : isBusy && allowSteering ? "Add a correction…" : placeholder
+        }
         ref={textareaRef}
         rows={1}
         value={value}
@@ -342,10 +344,7 @@ export function ChatComposer({
     </form>
   );
 
-  if (
-    !disabledReason ||
-    (!disabled && (!isBusy || allowSteering) && !isPreparing)
-  ) {
+  if (!disabledReason || (!disabled && (!isBusy || allowSteering) && !isPreparing)) {
     return form;
   }
 

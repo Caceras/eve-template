@@ -88,7 +88,7 @@ The goal is to keep the model-facing context minimal while leaving capabilities 
 There are two distinct inventories:
 
 1. **Effective runtime** — `Client.info()` returns the compiled agent-info v4: tools, skills, connections, channels, memory slots, hooks, schedules, subagents, sandbox, composition history, and dynamic resolvers.
-2. **Official installable ecosystem** — `scripts/sync-eve-surface.mjs` snapshots the current `apps/docs/registry.json` and package export map into `lib/eve-surface.generated.ts`.
+2. **Official installable ecosystem** — `scripts/sync-eve-surface.mjs` snapshots the installed eve package's export map and the live registry `eve add` installs from (`https://eve.dev/r/registry.json`) into `lib/eve-surface.generated.ts`, and mirrors the package's documentation into `public/reference`.
 
 The UI labels these separately so “available in eve” never gets confused with “currently active in this agent session.”
 

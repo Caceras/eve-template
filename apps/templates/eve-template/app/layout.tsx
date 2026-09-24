@@ -10,7 +10,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const title = "Ægentica";
-const description = "A persistent AI agent powered by Ægentica.";
+const description =
+  "Your private AI agent: chat, research, scheduled tasks and memory on every device.";
 function resolveMetadataBase() {
   const configuredUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??

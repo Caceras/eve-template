@@ -1,7 +1,14 @@
 "use client";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-import { CheckIcon, MenuIcon, PanelLeftIcon, SearchIcon, UploadIcon } from "lucide-react";
+import {
+  CheckIcon,
+  MenuIcon,
+  PanelLeftIcon,
+  SearchIcon,
+  SquarePenIcon,
+  UploadIcon,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Suspense,
@@ -339,13 +346,26 @@ export function AgentChatShell({
         <ChatRouteShareButton />
       </Suspense>
       {viewerState ? null : loggedOutAuthActions}
+      {viewerState ? (
+        <Suspense fallback={null}>
+          <NewChatButton
+            className={desktopSidebarOpen ? "md:hidden" : undefined}
+            hasActiveChat={Boolean(activeChatId)}
+            onNewChat={startNewChat}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 
   return (
     <ChatShellProvider value={contextValue}>
       <SidebarCookieScript />
-      <div className="flex h-dvh overflow-hidden bg-background text-foreground" data-mobile-swipe-surface {...surfaceHandlers}>
+      <div
+        className="flex h-dvh overflow-hidden bg-background text-foreground"
+        data-mobile-swipe-surface
+        {...surfaceHandlers}
+      >
         <div
           data-desktop-sidebar
           className={cn(
@@ -467,6 +487,40 @@ function setSidebarDocumentHint(open: boolean) {
   } else {
     document.documentElement.dataset.eveChatSidebar = "closed";
   }
+}
+
+function NewChatButton({
+  className,
+  hasActiveChat,
+  onNewChat,
+}: {
+  readonly className?: string;
+  readonly hasActiveChat: boolean;
+  readonly onNewChat: () => void;
+}) {
+  const pathname = usePathname();
+
+  // The Live session scaffold has its own new-chat control.
+  if ((!hasActiveChat && pathname === "/") || pathname.startsWith("/native")) {
+    return null;
+  }
+
+  return (
+    <Button
+      aria-label="New chat"
+      className={cn(
+        "size-9 rounded-full text-muted-foreground hover:text-foreground md:size-8",
+        className,
+      )}
+      onClick={onNewChat}
+      size="icon-sm"
+      title="New chat"
+      type="button"
+      variant="ghost"
+    >
+      <SquarePenIcon className="size-4" />
+    </Button>
+  );
 }
 
 function ChatRouteShareButton() {

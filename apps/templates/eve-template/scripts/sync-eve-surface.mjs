@@ -1,16 +1,22 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
+// Describe what the app actually runs: the installed eve package, and the live
+// registry `eve add` installs from. The monorepo copies can lag both.
+const REGISTRY_URL = "https://eve.dev/r/registry.json";
 const templateRoot = resolve(process.cwd());
-const repoRoot = resolve(templateRoot, '../../..');
-const evePackage = JSON.parse(readFileSync(join(repoRoot, 'packages/eve/package.json'), 'utf8'));
-const registry = JSON.parse(readFileSync(join(repoRoot, 'apps/docs/registry.json'), 'utf8'));
+const evePackage = JSON.parse(
+  readFileSync(join(templateRoot, "node_modules/eve/package.json"), "utf8"),
+);
+const response = await fetch(REGISTRY_URL);
+if (!response.ok) throw new Error(`Could not read ${REGISTRY_URL}: HTTP ${response.status}`);
+const registry = await response.json();
 
 const items = (registry.items ?? []).map((item) => ({
   name: item.name,
   title: item.title ?? item.name,
-  description: item.description ?? '',
-  category: String(item.name).split('/')[0],
+  description: item.description ?? "",
+  category: String(item.name).split("/")[0],
   implementation: item.meta?.eve?.implementation ?? null,
   requires: item.meta?.eve?.requires ?? null,
   docs: item.meta?.eve?.docs ?? null,
@@ -22,5 +28,35 @@ const snapshot = {
   registryItems: items.sort((a, b) => a.name.localeCompare(b.name)),
 };
 
-writeFileSync(join(templateRoot, 'lib/eve-surface.generated.ts'), `// Generated from the checked-out eve source. Do not edit by hand.\nexport const eveSurface = ${JSON.stringify(snapshot, null, 2)} as const;\n`);
-console.log(`Synced eve ${snapshot.eveVersion}: ${snapshot.packageExports.length} public exports, ${snapshot.registryItems.length} registry items.`);
+writeFileSync(
+  join(templateRoot, "lib/eve-surface.generated.ts"),
+  `// Generated from the installed eve package and ${REGISTRY_URL}. Do not edit by hand.\nexport const eveSurface = ${JSON.stringify(snapshot, null, 2)} as const;\n`,
+);
+console.log(
+  `Synced eve ${snapshot.eveVersion}: ${snapshot.packageExports.length} public exports, ${snapshot.registryItems.length} registry items.`,
+);
+
+// Mirror the installed package's documentation into the app's reference tree.
+const docsSource = join(templateRoot, "node_modules/eve/docs");
+const docsTarget = join(templateRoot, "public/reference");
+for (const entry of readdirSync(docsTarget)) {
+  if (!["LICENSE.txt", "NOTICE.txt"].includes(entry))
+    rmSync(join(docsTarget, entry), { recursive: true });
+}
+cpSync(docsSource, docsTarget, {
+  recursive: true,
+  filter: (source) => !source.endsWith("meta.json"),
+});
+const documents = readdirSync(docsTarget, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() && /\.mdx?$/.test(entry.name))
+  .map((entry) => "/reference/" + relative(docsTarget, join(entry.parentPath, entry.name)))
+  .sort();
+writeFileSync(
+  join(docsTarget, "index.json"),
+  JSON.stringify(
+    { version: evePackage.version, source: "https://github.com/vercel/eve", documents },
+    null,
+    2,
+  ) + "\n",
+);
+console.log(`Mirrored ${documents.length} eve documentation pages into public/reference.`);

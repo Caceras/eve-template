@@ -46,6 +46,20 @@ export function HomeChatPage() {
   }, [pathname]);
 
   useEffect(() => {
+    // The manifest's share target opens /?title=&text=&url=; keep it as a draft until sign-in.
+    const shared = new URLSearchParams(window.location.search);
+    const sharedText = ["title", "text", "url"]
+      .map((key) => shared.get(key)?.trim())
+      .filter(
+        (value, index, values): value is string =>
+          Boolean(value) && values.indexOf(value) === index,
+      )
+      .join("\n\n");
+    if (sharedText) {
+      window.sessionStorage.setItem("eve-chat-draft", sharedText);
+      window.history.replaceState(null, "", "/");
+    }
+
     if (!viewer) {
       return;
     }

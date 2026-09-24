@@ -18,7 +18,7 @@ export default defineWorkflowTool({
       ],
     });
 
-    if (answer.optionId !== "approve") {
+    if (answer.status !== "answered" || answer.optionId !== "approve") {
       return { approved: false };
     }
 

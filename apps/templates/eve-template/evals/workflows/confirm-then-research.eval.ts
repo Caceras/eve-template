@@ -1,7 +1,8 @@
 import { defineEval } from "eve/evals";
 
 export default defineEval({
-  description: "A blocking workflow tool can ask a human, resume, and delegate to a declared agent.",
+  description:
+    "A blocking workflow tool can ask a human, resume, and delegate to a declared agent.",
   async test(t) {
     const parked = await t.send(
       "Use confirm_then_research for the topic 'Eve workflow tools'. Do not answer directly.",

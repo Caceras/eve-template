@@ -159,7 +159,7 @@ export function IntegrationsSettings() {
   return (
     <SettingsShell
       section="integrations"
-      title="Integrations"
+      title="Connections"
       description="The tools and accounts Ægentica can use. Anything that changes an account asks you first."
       actions={
         <Button asChild className="h-11 md:h-9" variant="outline">

@@ -92,7 +92,6 @@ The broader official eve registry and package surface that can be added/configur
 - **Divergence must pay for itself.** Keep differences that implement persistence, self-hosting, saved agents, multimodality, mobile quality or another documented product requirement. Remove duplicated keyboard handlers, duplicate scroll owners, stale labels and alternate UI paths that do not add capability.
 - Do not copy a registry component into a second local implementation just to restyle it. Extend the existing component with class names or a thin product wrapper.
 
-
 ## Authentication
 
 Self-hosted production must present the authentication mode that actually works for that deployment. If `EVE_CHAT_PASSWORD` is configured, password auth takes precedence over optional Vercel OAuth configuration. Custom-domain/proxy deployments must not render a sign-in path that points to an invalid origin.
@@ -148,6 +147,8 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 
 - Composer is the highest-priority control and should feel visually elevated but not decorative.
 - Mobile primary controls should target approximately 40-44px hit areas even when desktop controls are denser.
+- The top bar carries a New chat control whenever the sidebar is not visible (phones, or a collapsed desktop sidebar), except on a fresh chat where it would do nothing.
+- The sidebar highlights the most specific page containing the current route, so every Settings section keeps **Settings** (or **Connections**) selected.
 - Keep drawers mounted when practical so opening/closing feels continuous rather than janky.
 - Respect safe-area insets for top chrome and bottom composers.
 - A stop control must actually cancel generation; never render a fake disabled stop icon.
@@ -161,7 +162,6 @@ Every secondary surface must feel like a first-party extension of chat, not a se
 - Do not hide destructive or important actions behind long-press. Long-press remains available for normal browser behavior on links and media.
 - Horizontal rows that intentionally scroll use contained overscroll/snap behavior; vertical surfaces have one clear scroll owner.
 - Drag/drop may enhance desktop file workflows, but mobile file selection always has an explicit attachment control.
-
 
 ## Completion bar
 

@@ -34,10 +34,15 @@ try {
   }
   const tarball = join(packedDirectory, tarballs[0]);
 
+  // The Ægentica product pins the published eve release it deploys with; its own
+  // workflows (aegentica-product.yml, eve-template.yml) build it against that version.
+  const pinnedProducts = new Set(["eve-template"]);
   const templates = readdirSync(templatesDirectory, { withFileTypes: true })
     .filter(
       (entry) =>
-        entry.isDirectory() && existsSync(join(templatesDirectory, entry.name, "package.json")),
+        entry.isDirectory() &&
+        !pinnedProducts.has(entry.name) &&
+        existsSync(join(templatesDirectory, entry.name, "package.json")),
     )
     .map((entry) => entry.name)
     .sort();

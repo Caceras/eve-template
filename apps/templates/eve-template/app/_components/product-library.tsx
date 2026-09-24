@@ -5,6 +5,7 @@ import { ArrowUpRightIcon, SearchIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { productLibrary } from "@/lib/product-library";
+import { eveSurface } from "@/lib/eve-surface.generated";
 
 export function ProductLibrary() {
   const [query, setQuery] = useState("");
@@ -109,7 +110,8 @@ export function ProductLibrary() {
           </p>
         ) : null}
         <footer className="border-t pt-5 text-xs leading-6 text-muted-foreground">
-          eve 0.63.0 reference snapshot · documentation by Vercel and contributors, Apache-2.0.{" "}
+          eve {eveSurface.eveVersion} reference snapshot · documentation by Vercel and contributors,
+          Apache-2.0.{" "}
           <a className="underline underline-offset-4" href="/reference/NOTICE.txt">
             Attribution
           </a>{" "}

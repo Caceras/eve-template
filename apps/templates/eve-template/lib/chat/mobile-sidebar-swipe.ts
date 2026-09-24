@@ -115,7 +115,11 @@ function hasTextSelection() {
 // horizontal gestures; menu triggers already open on touch-down.
 function startsInsideHorizontalGesture(target: EventTarget | null) {
   for (let node = target instanceof Element ? target : null; node; node = node.parentElement) {
-    if (node.matches("input, textarea, [contenteditable=''], [contenteditable='true'], [role='slider'], [aria-haspopup]")) {
+    if (
+      node.matches(
+        "input, textarea, [contenteditable=''], [contenteditable='true'], [role='slider'], [aria-haspopup]",
+      )
+    ) {
       return true;
     }
 

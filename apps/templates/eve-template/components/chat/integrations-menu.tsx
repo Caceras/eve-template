@@ -83,7 +83,10 @@ export function IntegrationsMenu({
                 <Icon className="size-[18px] text-foreground" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-foreground">{label}</span><span className="block truncate text-[11px] text-muted-foreground">Allow for this chat</span>
+                <span className="block truncate text-sm text-foreground">{label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  Allow for this chat
+                </span>
               </span>
               <span
                 aria-hidden="true"

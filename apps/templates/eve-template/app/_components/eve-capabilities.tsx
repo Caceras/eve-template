@@ -36,7 +36,15 @@ type Item = {
   access: string;
   details?: Record<string, unknown>;
 };
-const categories: Category[] = ["All", "Tools", "Skills", "Agents", "Connections", "Channels", "System"];
+const categories: Category[] = [
+  "All",
+  "Tools",
+  "Skills",
+  "Agents",
+  "Connections",
+  "Channels",
+  "System",
+];
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -389,7 +397,8 @@ export function EveCapabilities() {
               <dd>eve {eveSurface.eveVersion}</dd>
             </dl>
             <p className="mt-3 text-xs text-muted-foreground">
-              Open Activity for live events and outcomes. Credentials are checked only when a capability actually runs.
+              Open Activity for live events and outcomes. Credentials are checked only when a
+              capability actually runs.
             </p>
           </details>
         )}

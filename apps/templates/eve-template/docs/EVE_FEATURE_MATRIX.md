@@ -63,8 +63,7 @@ This matrix is the coverage contract for the Ultimate eve template. â€œIncludedâ
 | `web_fetch`                               | Built in + surfaced             | eve default                                                                             |
 | `web_search`                              | Built in + surfaced             | eve default                                                                             |
 | `generate_image` (AI SDK `generateImage`) | Active                          | `tools/generate_image.ts`, active provider, images kept on the volume and shown in chat |
-| `todo`                                    | Built in + surfaced             | eve default                                                                             |
-| `ask_question`                            | Built in + native UI            | eve default + current Web Chat                                                          |
+| `ask_question`                            | Included + native UI            | `tools/ask_question.ts` (opt-in since eve 0.65) + Web Chat                              |
 | root-copy `agent`                         | Runtime target                  | routed through `agentRouter()`                                                          |
 | `task_cancel`                             | Built in + surfaced             | eve default                                                                             |
 | `connection_search`                       | Built in when connections exist | eve default                                                                             |
@@ -87,17 +86,17 @@ This matrix is the coverage contract for the Ultimate eve template. â€œIncludedâ
 
 | Capability                    | Coverage  | Implementation                               |
 | ----------------------------- | --------- | -------------------------------------------- |
-| framework default sandbox     | Built in  | intentionally not replaced                   |
+| selected sandbox environment  | Included  | `sandbox/sandbox.ts`: `JustBashSandbox`      |
 | seeded `/workspace`           | Included  | `sandbox/workspace/eve-template.md`          |
 | inbound attachments           | Included  | eve channel upload policy + current Web Chat |
 | sandbox read/write/bash       | Built in  | eve tools                                    |
 | sandbox stop/delete lifecycle | Reference | public sandbox handle                        |
 | Docker backend                | Reference | official backend                             |
-| just-bash backend             | Reference | official backend                             |
+| just-bash backend             | Active    | official provider environment                |
 | microsandbox backend          | Reference | official backend                             |
 | Vercel Sandbox backend        | Reference | official backend                             |
-| network policy                | Reference | `defineSandbox` API                          |
-| child shares parent sandbox   | Reference | `defineSandbox(parent => parent.sandbox)`    |
+| network policy                | Reference | provider `environment.open()` options        |
+| child shares parent sandbox   | Reference | `defineParentSandbox()`                      |
 
 ## Workflows and tasks
 
@@ -153,7 +152,7 @@ This matrix is the coverage contract for the Ultimate eve template. â€œIncludedâ
 | --------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
 | eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
 | Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold                                               |
-| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings â†’ Notifications                         |
+| installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings â†’ Notifications                               |
 | Slack                                                           | Included/configurable                  | Chat Template                                                                             |
 | MCP server channel                                              | Included local-only                    | `channels/mcp.ts`                                                                         |
 | custom HTTP channel                                             | Included but token-disabled by default | `channels/demo.ts`                                                                        |
@@ -211,18 +210,18 @@ The generated surface file records every current public package export and offic
 
 ## Operator product surfaces
 
-| Capability                              | Coverage                                  | Boundary                                                            |
-| --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------- |
-| Saved agents                            | Implemented in `/agents`                  | 64 encrypted operator profiles; not separate tenants or deployments |
-| Profile instructions and reference text | Dynamic user-role context                 | No permission grants or retrieval index                             |
-| Profile model / reasoning choice        | Main chat through existing router         | The active provider must support the model                          |
-| Profile creation in chat                | `create_saved_agent`, approval required   | Operator only; editing remains in the form                          |
-| Saved-profile delegation                | Background eve workflow                   | Compiled researcher, current conversation model                     |
-| Main-chat files                         | Structured eve client content             | Four files / 6 MB; unsent drafts stay on this device                |
-| Chat / Research / Image                 | Per-turn composer intent                  | One runtime; generation requires working credentials                |
-| Image library                           | Authenticated `/images`                   | Existing volume; bounded scan, confirmed deletion                   |
-| Global command search                   | Cmd/Ctrl+K                                | Shared pages/actions and up to 100 recent chats                     |
-| Capability directory                    | Searchable Live / Built in / Explore | Declarations and registry availability are not connection tests     |
+| Capability                              | Coverage                                | Boundary                                                            |
+| --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| Saved agents                            | Implemented in `/agents`                | 64 encrypted operator profiles; not separate tenants or deployments |
+| Profile instructions and reference text | Dynamic user-role context               | No permission grants or retrieval index                             |
+| Profile model / reasoning choice        | Main chat through existing router       | The active provider must support the model                          |
+| Profile creation in chat                | `create_saved_agent`, approval required | Operator only; editing remains in the form                          |
+| Saved-profile delegation                | Background eve workflow                 | Compiled researcher, current conversation model                     |
+| Main-chat files                         | Structured eve client content           | Four files / 6 MB; unsent drafts stay on this device                |
+| Chat / Research / Image                 | Per-turn composer intent                | One runtime; generation requires working credentials                |
+| Image library                           | Authenticated `/images`                 | Existing volume; bounded scan, confirmed deletion                   |
+| Global command search                   | Cmd/Ctrl+K                              | Shared pages/actions and up to 100 recent chats                     |
+| Capability directory                    | Searchable Live / Built in / Explore    | Declarations and registry availability are not connection tests     |
 
 Real execution remains unverified until a working model key is supplied and live turns complete. Runtime is the source of truth for effective capabilities; static entries in this matrix cannot assert credential success.
 

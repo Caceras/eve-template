@@ -121,7 +121,8 @@ export function NativeAgentChat({
         onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
         placeholder="Message Ægentica"
       />
-      <div className="px-2 pb-1">
+      {/* Leave room for the absolutely positioned send button. */}
+      <div className="min-w-0 pb-1 pl-2 pr-14">
         <ModelPicker />
       </div>
       <ComposerAction
@@ -134,7 +135,10 @@ export function NativeAgentChat({
   );
 
   return (
-    <section aria-label="Channels" className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <section
+      aria-label="Channels"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
+    >
       {showConversationLayout ? (
         <ChatHeader canStartNewChat={activeSessionId !== undefined} />
       ) : null}

@@ -1,4 +1,8 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["packages/eve/CHANGELOG.md"]
+  "ignorePatterns": [
+    "packages/eve/CHANGELOG.md",
+    "apps/templates/eve-template/lib/eve-surface.generated.ts",
+    "apps/templates/eve-template/lib/model-catalogs.snapshot.json"
+  ]
 }

@@ -1,6 +1,6 @@
-// Generated from the checked-out eve source. Do not edit by hand.
+// Generated from the installed eve package and https://eve.dev/r/registry.json. Do not edit by hand.
 export const eveSurface = {
-  "eveVersion": "0.63.0",
+  "eveVersion": "0.66.1",
   "packageExports": [
     ".",
     "./agents/auth",
@@ -27,6 +27,10 @@ export const eveSurface = {
     "./evals/loaders",
     "./evals/reporters",
     "./extension",
+    "./extensions/code",
+    "./extensions/code/prwatch",
+    "./extensions/code/sandbox",
+    "./extensions/code/tools",
     "./hooks",
     "./instructions",
     "./instrumentation",
@@ -49,6 +53,7 @@ export const eveSurface = {
     "./sandbox/docker",
     "./sandbox/just-bash",
     "./sandbox/microsandbox",
+    "./sandbox/provider",
     "./sandbox/vercel",
     "./schedules",
     "./self-modification",
@@ -73,7 +78,6 @@ export const eveSurface = {
     "./tools/read_file",
     "./tools/sleep",
     "./tools/task_cancel",
-    "./tools/todo",
     "./tools/web_fetch",
     "./tools/web_search",
     "./tools/workflow",
@@ -323,7 +327,7 @@ export const eveSurface = {
       "description": "Add the built-in Next.js Web Chat channel to an eve agent.",
       "category": "channel",
       "implementation": "native",
-      "requires": ">=0.33.0",
+      "requires": ">=0.66.1",
       "docs": "/docs/channels/eve"
     },
     {
@@ -932,7 +936,7 @@ export const eveSurface = {
     {
       "name": "tool/ask_question",
       "title": "Ask Question",
-      "description": "Let the agent ask the user a question during a turn.",
+      "description": "Let the agent ask the user one question and wait for the answer.",
       "category": "tool",
       "implementation": null,
       "requires": null,
@@ -996,15 +1000,6 @@ export const eveSurface = {
       "name": "tool/task_cancel",
       "title": "Task Cancel",
       "description": "Cancel background tasks from the root session.",
-      "category": "tool",
-      "implementation": null,
-      "requires": null,
-      "docs": null
-    },
-    {
-      "name": "tool/todo",
-      "title": "Todo",
-      "description": "Maintain a durable per-session todo list.",
       "category": "tool",
       "implementation": null,
       "requires": null,

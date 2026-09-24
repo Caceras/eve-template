@@ -1,6 +1,6 @@
 // Ægentica service worker: an offline fallback for page loads and Web Push
 // for scheduled task results. It never caches API calls or agent streams.
-const CACHE = "aegentica-shell-v1";
+const CACHE = "aegentica-shell-v2";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -19,13 +19,19 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
       )
+      // Start page requests while the worker boots instead of after it.
+      .then(() => self.registration.navigationPreload?.enable())
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
+  event.respondWith(
+    Promise.resolve(event.preloadResponse)
+      .then((preloaded) => preloaded || fetch(event.request))
+      .catch(() => caches.match(OFFLINE_URL)),
+  );
 });
 
 self.addEventListener("push", (event) => {

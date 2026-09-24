@@ -39,8 +39,7 @@ export const productLibrary = [
     description:
       "Open a recent conversation to return to its context and follow a response already in progress.",
     status: "Included",
-    example:
-      "Start a conversation, return to New chat, then select the conversation under Recent.",
+    example: "Start a conversation, return to New chat, then select the conversation under Recent.",
     requirements: "History is saved on your server, so the desktop and the installed app share it.",
     path: "guides/client/continuations",
   },
@@ -50,7 +49,8 @@ export const productLibrary = [
     description:
       "Add direction while work is running, or stop a response when you want to change course.",
     status: "Included",
-    example: "While Ægentica is responding, type a correction and send it to steer the same turn, or tap Stop.",
+    example:
+      "While Ægentica is responding, type a correction and send it to steer the same turn, or tap Stop.",
     requirements: "Stopping generation does not undo tool actions already completed.",
     path: "guides/client/messages",
   },
@@ -174,7 +174,8 @@ export const productLibrary = [
     title: "Connect your work apps",
     description: "Add access to tools and context from services such as Linear, Notion and Sentry.",
     status: "Needs setup",
-    example: "Open Connections for configured accounts, or Capabilities → Explore for the broader directory.",
+    example:
+      "Open Connections for configured accounts, or Capabilities → Explore for the broader directory.",
     requirements:
       "These accounts are not connected. Each integration needs credentials and permissions; a catalog entry is not an active connection.",
     path: "connections",
