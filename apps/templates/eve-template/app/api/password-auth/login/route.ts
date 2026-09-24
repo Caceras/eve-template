@@ -35,13 +35,20 @@ export async function POST(request: Request) {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 1024) { await reader.cancel(); break; }
+      if (size > 1024) {
+        await reader.cancel();
+        break;
+      }
       chunks.push(value);
     }
   }
   if (size > 1024) return NextResponse.json({ error: "Request too large." }, { status: 413 });
   let body: { password?: unknown; username?: unknown } | null;
-  try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { body = null; }
+  try {
+    body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    body = null;
+  }
   const username = typeof body?.username === "string" ? body.username : "";
   const password = typeof body?.password === "string" ? body.password : "";
   if (!(await verifyChatPassword(password, username)))
@@ -49,10 +56,18 @@ export async function POST(request: Request) {
   const response = NextResponse.json({ ok: true });
   const secure = isSecureAuthHintCookie();
   response.cookies.set(PASSWORD_SESSION_COOKIE_NAME, createPasswordSessionToken(), {
-    httpOnly: true, maxAge: PASSWORD_SESSION_MAX_AGE, path: "/", sameSite: "lax", secure,
+    httpOnly: true,
+    maxAge: PASSWORD_SESSION_MAX_AGE,
+    path: "/",
+    sameSite: "lax",
+    secure,
   });
   response.cookies.set(AUTH_HINT_COOKIE_NAME, AUTH_HINT_COOKIE_VALUE, {
-    httpOnly: false, maxAge: AUTH_HINT_COOKIE_MAX_AGE, path: "/", sameSite: "lax", secure,
+    httpOnly: false,
+    maxAge: AUTH_HINT_COOKIE_MAX_AGE,
+    path: "/",
+    sameSite: "lax",
+    secure,
   });
   return response;
 }

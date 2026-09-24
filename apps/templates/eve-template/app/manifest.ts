@@ -9,10 +9,31 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    orientation: "portrait",
+    launch_handler: { client_mode: "navigate-existing" },
     background_color: "#ffffff",
     theme_color: "#ffffff",
     categories: ["productivity", "utilities"],
+    share_target: {
+      action: "/",
+      method: "GET",
+      params: { title: "title", text: "text", url: "url" },
+    },
+    screenshots: [
+      {
+        src: "/screenshots/mobile-chat.png",
+        sizes: "780x1688",
+        type: "image/png",
+        form_factor: "narrow",
+        label: "Chat with Ægentica",
+      },
+      {
+        src: "/screenshots/desktop-chat.png",
+        sizes: "1440x900",
+        type: "image/png",
+        form_factor: "wide",
+        label: "Ægentica on desktop",
+      },
+    ],
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

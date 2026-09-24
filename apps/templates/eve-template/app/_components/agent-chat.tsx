@@ -14,10 +14,7 @@ import type {
 import type { EveMessage } from "eve/react";
 import { defaultMessageReducer } from "eve/react";
 import { useEveAgent } from "@/lib/chat/use-reliable-eve-agent";
-import {
-  ExternalLinkIcon,
-  PlugIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, PlugIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useChatShell, type EnabledConnections } from "@/app/_components/chat-shell-context";

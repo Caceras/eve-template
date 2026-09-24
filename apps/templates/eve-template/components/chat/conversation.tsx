@@ -24,7 +24,10 @@ export function ChatConversationContent({
 }: ComponentProps<typeof StickToBottom.Content>) {
   return (
     <StickToBottom.Content
-      className={cn("mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 pb-8 pt-3 sm:gap-6 sm:px-6 sm:pb-10 sm:pt-5", className)}
+      className={cn(
+        "mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 pb-8 pt-3 sm:gap-6 sm:px-6 sm:pb-10 sm:pt-5",
+        className,
+      )}
       {...props}
     />
   );

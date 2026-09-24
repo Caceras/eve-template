@@ -4,7 +4,8 @@ import { writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 const origin = process.env.CHECK_ORIGIN || "http://localhost:3000";
-if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname)) throw new Error("Local fixture only.");
+if (!["localhost", "127.0.0.1"].includes(new URL(origin).hostname))
+  throw new Error("Local fixture only.");
 const { chromium } = await import(pathToFileURL(resolve(process.env.PLAYWRIGHT_MODULE)).href);
 const output = resolve(process.env.QA_ARTIFACTS || "/tmp/aegentica-qa");
 const browser = await chromium.launch();
@@ -32,18 +33,42 @@ try {
   await page.getByRole("status").filter({ hasText: "Password changed." }).waitFor();
   assert.equal((await context.request.get(origin + "/api/agents")).status(), 200);
   assert.deepEqual(await (await context.request.get(origin + "/api/agents")).json(), before);
-  assert.equal((await context.request.get(origin + "/api/agents", {
-    headers: { Cookie: `eve_chat_session=${cookie.value}` },
-  })).status(), 401);
+  assert.equal(
+    (
+      await context.request.get(origin + "/api/agents", {
+        headers: { Cookie: `eve_chat_session=${cookie.value}` },
+      })
+    ).status(),
+    401,
+  );
   await page.screenshot({ path: join(output, "desktop-security.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+    false,
+  );
   await page.screenshot({ path: join(output, "mobile-security.png"), fullPage: true });
   assert.equal(errors.length, 0);
-  await writeFile(join(output, "security-browser-results.json"), JSON.stringify({ passed: true, checks: ["UI password rotation", "old cookie revoked", "profiles preserved", "mobile viewport fits"], pageErrors: errors }));
-  console.log("PASS: password rotation through UI, revoked cookie, preserved profiles and mobile layout");
+  await writeFile(
+    join(output, "security-browser-results.json"),
+    JSON.stringify({
+      passed: true,
+      checks: [
+        "UI password rotation",
+        "old cookie revoked",
+        "profiles preserved",
+        "mobile viewport fits",
+      ],
+      pageErrors: errors,
+    }),
+  );
+  console.log(
+    "PASS: password rotation through UI, revoked cookie, preserved profiles and mobile layout",
+  );
 } catch (error) {
-  await page.screenshot({ path: join(output, "security-failure.png"), fullPage: true }).catch(() => {});
+  await page
+    .screenshot({ path: join(output, "security-failure.png"), fullPage: true })
+    .catch(() => {});
   throw error;
 } finally {
   await context.close();

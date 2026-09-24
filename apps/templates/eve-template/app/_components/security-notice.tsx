@@ -12,9 +12,17 @@ export function SecurityNotice() {
     void fetch("/api/settings/security", { signal: controller.signal })
       .then(async (response) => {
         if (response.ok) setNeeded((await response.json()).requiresChange === true);
-      }).catch(() => {});
+      })
+      .catch(() => {});
     return () => controller.abort();
   }, [viewer]);
   if (!viewer || !needed) return null;
-  return <p role="alert" className="rounded-lg border p-4 text-sm leading-6">Replace the temporary or short password before adding API keys. <Link className="font-medium underline underline-offset-4" href="/settings/security">Open security settings</Link></p>;
+  return (
+    <p role="alert" className="rounded-lg border p-4 text-sm leading-6">
+      Replace the temporary or short password before adding API keys.{" "}
+      <Link className="font-medium underline underline-offset-4" href="/settings/security">
+        Open security settings
+      </Link>
+    </p>
+  );
 }

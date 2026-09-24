@@ -28,6 +28,17 @@ import {
 import type { ChatListItem, SetupStatus, Viewer } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
 
+const workspaceHrefs: readonly string[] = [...primaryWorkspacePages, ...systemWorkspacePages].map(
+  (page) => page.href,
+);
+
+/** The most specific workspace page containing the path, so /settings/voice selects Settings. */
+function activeWorkspaceHref(pathname: string) {
+  return workspaceHrefs
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
 const activeRowClass = "bg-foreground/[0.055] text-foreground hover:bg-foreground/[0.075]";
 const inactiveRowClass = "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground";
 
@@ -66,6 +77,7 @@ export function ChatSidebar({
   const router = useRouter();
   const pathname = usePathname();
   const newSessionActive = activeChatId === null && pathname === "/";
+  const activeHref = activeWorkspaceHref(pathname);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [deleteChat, setDeleteChat] = useState<ChatListItem | null>(null);
 
@@ -100,25 +112,30 @@ export function ChatSidebar({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="flex flex-col gap-1 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
           <div className="sticky top-0 z-10 mb-2 flex h-10 items-center justify-between bg-background/95 px-2 backdrop-blur">
-          <Link
-            href="/"
-            onClick={() => onNavigate?.(null)}
-            className="flex items-center gap-2 text-sm font-medium"
-          >
-            <img alt="" aria-hidden className="size-5 invert dark:invert-0" src="/aegentica.svg" />
-            Ægentica
-          </Link>
-          {onToggleSidebar && (
-            <Button
-              aria-label="Close sidebar"
-              className="size-10 text-muted-foreground"
-              onClick={onToggleSidebar}
-              size="icon"
-              variant="ghost"
+            <Link
+              href="/"
+              onClick={() => onNavigate?.(null)}
+              className="flex items-center gap-2 text-sm font-medium"
             >
-              <PanelLeftIcon className="size-4" />
-            </Button>
-          )}
+              <img
+                alt=""
+                aria-hidden
+                className="size-5 invert dark:invert-0"
+                src="/aegentica.svg"
+              />
+              Ægentica
+            </Link>
+            {onToggleSidebar && (
+              <Button
+                aria-label="Close sidebar"
+                className="size-10 text-muted-foreground"
+                onClick={onToggleSidebar}
+                size="icon"
+                variant="ghost"
+              >
+                <PanelLeftIcon className="size-4" />
+              </Button>
+            )}
           </div>
           <Button
             aria-current={newSessionActive ? "page" : undefined}
@@ -152,118 +169,116 @@ export function ChatSidebar({
               Ctrl/⌘ K
             </span>
           </Button>
-        <nav aria-label="Workspace" className="mt-3 grid gap-0.5">
-          <p className="px-2 pb-1 pt-1 text-[11px] font-medium text-muted-foreground/60">
-            Workspace
-          </p>
-          {primaryWorkspacePages.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => onNavigate?.()}
-              aria-current={pathname === href ? "page" : undefined}
-              className={cn(
-                "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
-                pathname === href ? activeRowClass : inactiveRowClass,
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {label}
-            </Link>
-          ))}
-          <p className="px-2 pb-1 pt-3 text-[11px] font-medium text-muted-foreground/60">
-            More
-          </p>
-          {systemWorkspacePages.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => onNavigate?.()}
-              aria-current={pathname === href ? "page" : undefined}
-              className={cn(
-                "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
-                pathname === href ? activeRowClass : inactiveRowClass,
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {label}
-            </Link>
-          ))}
-        </nav>
+          <nav aria-label="Workspace" className="mt-3 grid gap-0.5">
+            <p className="px-2 pb-1 pt-1 text-[11px] font-medium text-muted-foreground/60">
+              Workspace
+            </p>
+            {primaryWorkspacePages.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => onNavigate?.()}
+                aria-current={activeHref === href ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
+                  activeHref === href ? activeRowClass : inactiveRowClass,
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </Link>
+            ))}
+            <p className="px-2 pb-1 pt-3 text-[11px] font-medium text-muted-foreground/60">More</p>
+            {systemWorkspacePages.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => onNavigate?.()}
+                aria-current={activeHref === href ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-2.5 rounded-lg px-2 text-sm md:min-h-9",
+                  activeHref === href ? activeRowClass : inactiveRowClass,
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                {label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
-      <div className="px-2 py-2">
-        {chats.length ? (
-          <div>
-            <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">
-              Recent
-            </p>
-            {chats.map((chat) => {
-              const active = activeChatId === chat.id;
+        <div className="px-2 py-2">
+          {chats.length ? (
+            <div>
+              <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground/60">
+                Recent
+              </p>
+              {chats.map((chat) => {
+                const active = activeChatId === chat.id;
 
-              return (
-                <div
-                  className={cn(
-                    "group/session relative mb-0.5 rounded-md transition-colors hover:bg-muted/50 hover:text-foreground",
-                    active ? activeRowClass : inactiveRowClass,
-                  )}
-                  key={chat.id}
-                >
-                  <Link
-                    className="flex h-11 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
-                    aria-current={active ? "page" : undefined}
-                    href={`/chat/${chat.id}`}
-                    onClick={() => {
-                      onNavigate?.(chat.id);
-                    }}
+                return (
+                  <div
+                    className={cn(
+                      "group/session relative mb-0.5 rounded-md transition-colors hover:bg-muted/50 hover:text-foreground",
+                      active ? activeRowClass : inactiveRowClass,
+                    )}
+                    key={chat.id}
                   >
-                    <span className="block truncate">{chat.title}</span>
-                    <span className="sr-only">Updated {formatHistoryTime(chat.updatedAt)}</span>
-                  </Link>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        aria-label="Chat actions"
-                        className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:right-1 md:size-7 md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-                        size="icon-xs"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <EllipsisIcon className="size-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" sideOffset={6}>
-                      <DropdownMenuItem
-                        onSelect={() => setDeleteChat(chat)}
-                        variant="destructive"
-                      >
-                        <Trash2Icon className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {hasMoreChats ? (
-          <div ref={sentinelRef} className="px-2 py-2">
-            {isLoadingMore ? (
-              <p className="text-xs text-muted-foreground">Loading more...</p>
-            ) : (
-              <Button
-                className="h-10 px-2 text-xs font-normal text-muted-foreground hover:text-foreground md:h-8"
-                onClick={() => void onLoadMoreChats?.()}
-                type="button"
-                variant="ghost"
-              >
-                Load more
-              </Button>
-            )}
-          </div>
-        ) : null}
-      </div>
+                    <Link
+                      className="flex h-11 min-w-0 items-center px-2 pr-8 text-sm md:h-8"
+                      aria-current={active ? "page" : undefined}
+                      href={`/chat/${chat.id}`}
+                      onClick={() => {
+                        onNavigate?.(chat.id);
+                      }}
+                    >
+                      <span className="block truncate">{chat.title}</span>
+                      <span className="sr-only">Updated {formatHistoryTime(chat.updatedAt)}</span>
+                    </Link>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          aria-label="Chat actions"
+                          className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2 opacity-100 transition-opacity hover:bg-muted md:right-1 md:size-7 md:opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                          size="icon-xs"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <EllipsisIcon className="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" sideOffset={6}>
+                        <DropdownMenuItem
+                          onSelect={() => setDeleteChat(chat)}
+                          variant="destructive"
+                        >
+                          <Trash2Icon className="size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {hasMoreChats ? (
+            <div ref={sentinelRef} className="px-2 py-2">
+              {isLoadingMore ? (
+                <p className="text-xs text-muted-foreground">Loading more...</p>
+              ) : (
+                <Button
+                  className="h-10 px-2 text-xs font-normal text-muted-foreground hover:text-foreground md:h-8"
+                  onClick={() => void onLoadMoreChats?.()}
+                  type="button"
+                  variant="ghost"
+                >
+                  Load more
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="border-t border-border/70 px-2 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

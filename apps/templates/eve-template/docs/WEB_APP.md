@@ -18,11 +18,20 @@ The installed app opens in its own window with shortcuts for **New chat**,
 **Tasks** and **Settings** (long-press the icon on Android). The manifest is
 `app/manifest.ts`; the icons, including a maskable one for Android's adaptive
 shapes, are generated from the Æ monogram by `app/icons/[file]/route.tsx`.
+Screenshots in `public/screenshots/` give Android and desktop Chrome the richer
+install dialog. Opening the app again reuses its window instead of starting a
+second one, and it follows the device's orientation.
+
+Once installed on Android, Ægentica appears in the system **Share** sheet.
+Shared text or a link opens a new chat with it already in the message box
+(`app/_components/home-chat-page.tsx`); if the app is signed out, the draft
+waits until sign-in.
 
 `public/sw.js` is a deliberately small service worker. It shows notifications,
 opens the right chat when one is tapped, and serves a branded offline page
-(`public/offline.html`) when a page cannot load. It does not cache the app
-itself, so a deploy is visible on the next load. It is registered in production
+(`public/offline.html`) when a page cannot load. Navigation preload starts each
+page request while the worker boots. It does not cache the app itself, so a
+deploy is visible on the next load. It is registered in production
 only (`app/_components/pwa-registration.tsx`).
 
 ## Notifications
@@ -92,8 +101,8 @@ browser's storage (`lib/voice/preferences.ts`); the speech helpers are in
 ## Settings
 
 Settings has five sections with a side menu (a contained, snap-scrolling row on phones):
-**AI & models** (providers, keys and the default model), **Voice**, **Notifications**
-(install and notifications for this device), **Connections**, and **Security**. Integrations lists what Ægentica can use in the shape of a
+**Models** (providers, keys and the default model), **Voice**, **Notifications**
+(install and notifications for this device), **Connections**, and **Security**. Connections lists what Ægentica can use in the shape of a
 plugin directory: built-in tools (web search, image creation, files and code,
 voice, memory, tasks), accounts (GitHub and Telegram, set up in place) and work
 apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory** opens Capabilities → Explore with the official eve registry surface.

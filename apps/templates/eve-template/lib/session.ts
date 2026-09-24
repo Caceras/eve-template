@@ -1,15 +1,17 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import type { SetupStatus, Viewer } from "@/lib/chat/types";
-import { getPasswordSessionFromHeaders } from "@/lib/password-auth";
+import { getPasswordSessionFromHeaders, operatorUsername } from "@/lib/password-auth";
 import { getSetupStatus } from "@/lib/setup";
 
-const PASSWORD_VIEWER: Viewer = {
-  email: "local@aegentica.local",
-  id: "eve-chat-user",
-  image: null,
-  name: "Riki",
-};
+function passwordViewer(): Viewer {
+  return {
+    email: "local@aegentica.local",
+    id: "eve-chat-user",
+    image: null,
+    name: operatorUsername(),
+  };
+}
 
 export async function getServerViewer(setupStatus?: SetupStatus): Promise<Viewer | null> {
   const requestHeaders = await headers();
@@ -20,11 +22,11 @@ export async function getServerViewer(setupStatus?: SetupStatus): Promise<Viewer
   }
 
   if (status.authMode === "local-dev") {
-    return PASSWORD_VIEWER;
+    return passwordViewer();
   }
 
   if (status.authMode === "password") {
-    return getPasswordSessionFromHeaders(requestHeaders) ? PASSWORD_VIEWER : null;
+    return getPasswordSessionFromHeaders(requestHeaders) ? passwordViewer() : null;
   }
 
   if (status.authMode !== "vercel") {

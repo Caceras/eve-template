@@ -1,7 +1,14 @@
 "use client";
 
 import { Client, type ClientSession } from "eve/client";
-import { CheckCircle2Icon, EraserIcon, ListRestartIcon, ScanSearchIcon, SquareIcon, WandSparklesIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  EraserIcon,
+  ListRestartIcon,
+  ScanSearchIcon,
+  SquareIcon,
+  WandSparklesIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +59,8 @@ export function EveSessionLab() {
         <div className="max-w-2xl">
           <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Inspect a durable conversation by session ID and manage its low-level lifecycle when needed.
+            Inspect a durable conversation by session ID and manage its low-level lifecycle when
+            needed.
           </p>
         </div>
 
@@ -63,19 +71,53 @@ export function EveSessionLab() {
             value={sessionId}
           />
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void inspect()} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button
+              disabled={busy || !sessionId.trim()}
+              onClick={() => void inspect()}
+              className="justify-start sm:justify-center"
+              size="sm"
+              variant="outline"
+            >
               <ScanSearchIcon className="size-4" /> Inspect stream
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.cancel())} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button
+              disabled={busy || !sessionId.trim()}
+              onClick={() => void withSession((session) => session.cancel())}
+              className="justify-start sm:justify-center"
+              size="sm"
+              variant="outline"
+            >
               <SquareIcon className="size-4" /> Cancel turn
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.compact())} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button
+              disabled={busy || !sessionId.trim()}
+              onClick={() => void withSession((session) => session.compact())}
+              className="justify-start sm:justify-center"
+              size="sm"
+              variant="outline"
+            >
               <WandSparklesIcon className="size-4" /> Compact
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.clear())} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button
+              disabled={busy || !sessionId.trim()}
+              onClick={() => void withSession((session) => session.clear())}
+              className="justify-start sm:justify-center"
+              size="sm"
+              variant="outline"
+            >
               <EraserIcon className="size-4" /> Clear context
             </Button>
-            <Button disabled={busy || !sessionId.trim()} onClick={() => void withSession((session) => session.reset({ reason: "Requested from Ægentica Activity" }))} className="justify-start sm:justify-center" size="sm" variant="outline">
+            <Button
+              disabled={busy || !sessionId.trim()}
+              onClick={() =>
+                void withSession((session) =>
+                  session.reset({ reason: "Requested from Ægentica Activity" }),
+                )
+              }
+              className="justify-start sm:justify-center"
+              size="sm"
+              variant="outline"
+            >
               <ListRestartIcon className="size-4" /> Reset
             </Button>
           </div>
@@ -88,7 +130,9 @@ export function EveSessionLab() {
         <div className="mt-5 overflow-hidden rounded-xl border bg-card">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <span className="text-sm font-medium">Event stream</span>
-            <span className="text-xs tabular-nums text-muted-foreground">{events.length} events</span>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {events.length} events
+            </span>
           </div>
           {events.length ? (
             <pre className="max-h-[60vh] overflow-auto bg-muted/20 p-4 text-[11px] leading-5">
@@ -96,9 +140,11 @@ export function EveSessionLab() {
             </pre>
           ) : (
             <div className="px-4 py-10 text-center">
-            <p className="text-sm font-medium">No session loaded</p>
-            <p className="mt-1 text-xs text-muted-foreground">Inspect a session to view its durable event stream.</p>
-          </div>
+              <p className="text-sm font-medium">No session loaded</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Inspect a session to view its durable event stream.
+              </p>
+            </div>
           )}
         </div>
       </div>

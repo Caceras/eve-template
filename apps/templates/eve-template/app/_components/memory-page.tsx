@@ -1,11 +1,5 @@
 "use client";
-import {
-  CheckIcon,
-  Loader2Icon,
-  PencilIcon,
-  Trash2Icon,
-  UploadIcon,
-} from "lucide-react";
+import { CheckIcon, Loader2Icon, PencilIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {

@@ -162,7 +162,6 @@ html[data-eve-chat-sidebar="closed"] [data-desktop-sidebar] {
   }
 }
 
-
 ::selection {
   background: color-mix(in oklab, var(--foreground) 12%, transparent);
 }

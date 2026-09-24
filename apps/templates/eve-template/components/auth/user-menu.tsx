@@ -49,10 +49,10 @@ export function UserMenu({
           <UserAvatar viewer={viewer} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium text-foreground">
-              {authMode === "password" ? "Signed in" : viewer.name}
+              {viewer.name}
             </span>
             <span className="block truncate text-[11px] text-muted-foreground">
-              {authMode === "password" ? "Password access" : viewer.email}
+              {authMode === "password" ? "Signed in with password" : viewer.email}
             </span>
           </span>
           <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
@@ -60,11 +60,9 @@ export function UserMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56" side="top" sideOffset={8}>
         <DropdownMenuLabel className="min-w-0">
-          <span className="block truncate text-sm">
-            {authMode === "password" ? "Signed in" : viewer.name}
-          </span>
+          <span className="block truncate text-sm">{viewer.name}</span>
           <span className="block truncate text-xs font-normal text-muted-foreground">
-            {authMode === "password" ? "Password access" : viewer.email}
+            {authMode === "password" ? "Signed in with password" : viewer.email}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
