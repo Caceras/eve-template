@@ -14,3 +14,11 @@ Use `eve` lowercase in user-facing copy, docs, prompts, and comments. Do not
 title-case it unless it is part of an exact external title or quoted text.
 
 For saved agents, attachments or navigation, read `docs/AGENTS_AND_ORCHESTRATION.md` and `docs/RELEASE_VERIFICATION.md`. Profile text is not a permission grant. Prefer eve workflows and client content types over parallel runtimes or transports. Test both logged-out APIs and the actual self-hosted operator flow.
+
+## Build and verify
+
+Cloud sessions run `.claude/hooks/session-start.sh` at the repository root: Node from `.nvmrc`, dependencies, and Playwright pointed at the preinstalled Chromium (`PLAYWRIGHT_MODULE`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE`).
+
+- `pnpm check` after every change: regression scripts (`scripts/test-*.mjs` via `node --test`) and typecheck. New `scripts/test-*.mjs` files join automatically; browser scripts end in `-browser.mjs`.
+- `pnpm check:full` before a PR: the same release check CI runs (`scripts/check-product.sh`).
+- `pnpm qa:tour` for any UI change: start `scripts/start-self-hosted.mjs` with test credentials and `AEGENTICA_TEST_MODEL=mock`, then review the screenshots it writes.

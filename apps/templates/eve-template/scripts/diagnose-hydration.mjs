@@ -1,6 +1,6 @@
-import { chromium } from "/tmp/aegentica-browser/node_modules/playwright/index.mjs";
+import { launchBrowser } from "./browser.mjs";
 import { writeFile } from "node:fs/promises";
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const page = await browser.newPage();
 page.setDefaultTimeout(30000);
 page.setDefaultNavigationTimeout(60000);

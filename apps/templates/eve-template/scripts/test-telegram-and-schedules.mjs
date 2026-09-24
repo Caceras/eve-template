@@ -16,6 +16,8 @@ registerHooks({
   },
 });
 const directory = await mkdtemp(join(tmpdir(), "aegentica-settings-"));
+// The webhook URL comes from the request origin; a developer shell must not override it.
+delete process.env.BETTER_AUTH_URL;
 process.env.EVE_SETTINGS_DIR = directory;
 process.env.EVE_SESSION_SECRET = randomBytes(32).toString("hex");
 const originalFetch = globalThis.fetch;
