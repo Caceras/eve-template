@@ -61,7 +61,7 @@ export function SettingsShell({
         <nav
           aria-label="Settings"
           ref={navRef}
-          className="-mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0"
+          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0"
         >
           <p className="hidden px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/70 md:block">
             Settings

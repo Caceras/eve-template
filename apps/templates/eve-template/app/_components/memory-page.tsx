@@ -1,5 +1,6 @@
 "use client";
 import { CheckIcon, Loader2Icon, PencilIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,9 +106,15 @@ export function MemoryPage() {
             persistent folder to turn it on.
           </p>
         ) : !status.ready ? (
-          <p className="mt-8 rounded-lg border p-5 text-sm">
-            Memory starts with your first message. Send Ægentica anything, then come back here.
-          </p>
+          <div className="mt-8 rounded-lg border p-5">
+            <p className="mb-4 text-sm">
+              Memory starts with your first message. Send Ægentica anything, then come back here to
+              add or import memories.
+            </p>
+            <Button asChild className="h-11 md:h-9">
+              <Link href="/">Start a chat</Link>
+            </Button>
+          </div>
         ) : (
           <>
             <form

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { AUTH_HINT_COOKIE_NAME, AUTH_HINT_COOKIE_VALUE } from "../auth-hint";
 import type { CatalogModel, ProviderId } from "../model-catalog";
 import { notifyModelSettingsChanged, subscribeModelPreference } from "./model-preference";
 
@@ -36,6 +37,9 @@ function loadCatalog() {
   return (catalogRequest = request);
 }
 function loadStatus() {
+  // Signed-out visitors cannot manage providers; skip a request that can only be denied.
+  if (!document.cookie.includes(`${AUTH_HINT_COOKIE_NAME}=${AUTH_HINT_COOKIE_VALUE}`))
+    return Promise.resolve(null);
   statusRequest ??= fetch("/api/settings/providers", { cache: "no-store" })
     .then(async (response) => (response.ok ? ((await response.json()) as ProviderStatus) : null))
     .catch(() => null);

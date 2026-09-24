@@ -290,7 +290,7 @@ export function EveCapabilities() {
             ))}
           </div>
           <Link
-            className="ml-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="ml-auto inline-flex min-h-11 items-center gap-1 px-1 text-sm text-muted-foreground hover:text-foreground md:min-h-0"
             href="/agents"
           >
             Your agents

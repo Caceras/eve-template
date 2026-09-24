@@ -1,6 +1,6 @@
 # Release verification
 
-Release identifier: `orchestration-2026-09-23`. The health response distinguishes this product release from the previous UI. The final merged commit and Dokploy deployment record identify the exact deployed source.
+Release identifier: `polish-2026-09-24`. The health response distinguishes this product release from the previous UI. The final merged commit and Dokploy deployment record identify the exact deployed source.
 
 ## Required checks
 

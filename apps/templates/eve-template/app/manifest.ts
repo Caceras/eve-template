@@ -3,6 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
+    lang: "en",
+    dir: "ltr",
     name: "Ægentica",
     short_name: "Ægentica",
     description: "Your persistent AI agent: chat, research, scheduled tasks and memory.",
@@ -14,9 +16,27 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#ffffff",
     categories: ["productivity", "utilities"],
     share_target: {
-      action: "/",
-      method: "GET",
-      params: { title: "title", text: "text", url: "url" },
+      action: "/share",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        title: "title",
+        text: "text",
+        url: "url",
+        files: [
+          {
+            name: "files",
+            accept: [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/gif",
+              "application/pdf",
+              "text/*",
+            ],
+          },
+        ],
+      },
     },
     screenshots: [
       {
@@ -42,6 +62,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "New chat", url: "/", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Agents", url: "/agents", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Tasks", url: "/tasks", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       {
         name: "Settings",

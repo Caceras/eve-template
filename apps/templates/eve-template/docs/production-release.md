@@ -52,4 +52,4 @@ VPS under `/root/aegentica-backups/20260922-before-polish`.
 
 ## Orchestration release gate
 
-The next product release adds saved agent profiles, eve-native delegation, main-chat attachments, a private image library, global search and a capability directory. The release identifier is `orchestration-2026-09-23`. Use [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) for current checks and domain gates. This entry describes code scope, not a claim that a deployment or real model turn has already passed.
+The next product release adds saved agent profiles, eve-native delegation, main-chat attachments, a private image library, global search and a capability directory. It shipped as `orchestration-2026-09-23`; the current identifier is `polish-2026-09-24` (eve 0.66.2, file sharing from the Android share sheet, app icon badges, keyboard-aware layout and a conversation picker on Activity). Use [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) for current checks and domain gates. This entry describes code scope, not a claim that a deployment or real model turn has already passed.
