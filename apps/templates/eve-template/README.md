@@ -31,7 +31,7 @@ Where this stands against the original sol0 vision, and what comes next, is in [
 - Cmd/Ctrl+K: global pages, actions and recent-chat search
 - `/tasks`: scheduled tasks
 - `/memory`: long-term memory
-- `/settings`: Models (providers and model), Voice, Notifications (install and notifications), Connections (built-in tools, GitHub, Telegram, work apps), Security (password)
+- `/settings`: Models (providers and model), with `/settings/voice`, `/settings/notifications` (install and notifications), `/settings/integrations` (Connections: built-in tools, GitHub, Telegram, work apps) and `/settings/security` (password)
 - `/capabilities`: live runtime declarations (not credential tests), what this repository includes (Included), and what eve can install (Available)
 - `/native`: eve's current official `channel/web` scaffold, kept as a reference surface
 - `/session` (Activity): pick a conversation (or paste a session ID) to inspect its durable event stream and cancel, compact, clear or reset it
@@ -47,7 +47,7 @@ cp .env.example .env.local   # set EVE_CHAT_USERNAME, EVE_CHAT_PASSWORD, EVE_SES
 pnpm dev                     # Next.js app and eve agent together (withEve)
 ```
 
-Production (single container, as on ai-chat.se): `pnpm build:eve && pnpm build`, then `pnpm start`. The start script supervises Next.js and the eve runtime. Deployment, volumes and environment are covered in [SELF_HOSTING](./docs/SELF_HOSTING.md) and [production-release](./docs/production-release.md). The Vercel deployment mode inherited from the chat template (Neon, Upstash, Sign in with Vercel) is in [setup-and-deploy](./docs/setup-and-deploy.md).
+Production (single container, as on aegentica.se): `pnpm build:eve && pnpm build`, then `pnpm start`. The start script supervises Next.js and the eve runtime. Deployment, volumes and environment are covered in [SELF_HOSTING](./docs/SELF_HOSTING.md) and [production-release](./docs/production-release.md). The Vercel deployment mode inherited from the chat template (Neon, Upstash, Sign in with Vercel) is in [setup-and-deploy](./docs/setup-and-deploy.md).
 
 ## Checks
 

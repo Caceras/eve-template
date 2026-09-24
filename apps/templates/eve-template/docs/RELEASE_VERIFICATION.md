@@ -1,6 +1,6 @@
 # Release verification
 
-Release identifier: `polish-2026-09-24b`. The health response distinguishes this product release from the previous UI. The final merged commit and Dokploy deployment record identify the exact deployed source.
+The `release` field of `/api/health` (the `RELEASE` constant in `app/api/health/route.ts`) identifies the product release; bump it with every release so a deploy is verifiable. The final merged commit and Dokploy deployment record identify the exact deployed source.
 
 ## Required checks
 
@@ -18,16 +18,11 @@ The product's `use-reliable-eve-agent` hook preserves the upstream `eve/react` s
 
 Saved agents are encrypted profiles of the operator workspace, not separate deployments or permission boundaries. Direct chat applies their instructions, reference context, reasoning and preferred model; an explicit composer selection wins over the profile default. Delegation uses the compiled researcher and the current conversation model. Runtime tools retain their own approvals. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).
 
-## Live release
+## Live release and domains
 
-1. Confirm `agents/eve-chat`, repository `Caceras/eve-template`, branch `main`, Docker context `apps/templates/eve-template`.
-2. Preserve `eve-chat-data`, all existing environment values and the settings signing/encryption secret.
-3. Deploy the tested merged revision through Dokploy. Wait for the build and healthy runtime; queued is not deployed.
-4. Verify HTTPS, the health release identifier, new page routes, and 401 responses from private profile, image, history and settings APIs without authentication.
-5. Verify the authenticated live UI when credentials are available. Distinguish isolated browser acceptance from production authentication.
-6. Remove the temporary QA compose and its own volume after collecting evidence. Never remove the production data volume.
+Deploy and verify with the runbook in [production-release](./production-release.md#deploy-and-verify). Distinguish isolated browser acceptance from production authentication.
 
-`aegentica.se` is the primary domain, registered at Loopia until 2027-09-24. Its apex and `www` A records point to the VPS (136.148.209.184), and both hosts are Dokploy domains of the same application with Let's Encrypt certificates (verified 2026-09-24). `ai-chat.se` remains an alias of that application. After a deploy, check `/api/health` on both hosts.
+`aegentica.se` is the primary domain, registered at Loopia until 2027-09-24. Its apex and `www` A records point to the VPS (136.148.209.184), and both hosts are Dokploy domains of the same application with Let's Encrypt certificates (verified 2026-09-24). `ai-chat.se` remains an alias of that application. Password sign-in checks the request's own host, so it works on every domain without extra configuration. After a deploy, check `/api/health` on both hosts.
 
 ## External verification
 
