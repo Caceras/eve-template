@@ -27,7 +27,13 @@ try {
   if (!ready) throw new Error("Diagnostic server did not start.");
   console.log("DIAGNOSTIC_SIGN_IN");
   await page.goto("http://localhost:3001", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+  // A click that lands before hydration is dropped; retry until the dialog opens.
+  const username = page.getByLabel("Username", { exact: true });
+  for (let attempt = 0; !(await username.isVisible()); attempt++) {
+    if (attempt >= 10) throw new Error("The sign-in dialog did not open.");
+    await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+    await username.waitFor({ timeout: 3000 }).catch(() => {});
+  }
   await page.getByLabel("Username", { exact: true }).fill(process.env.EVE_CHAT_USERNAME);
   await page.getByLabel("Password", { exact: true }).fill(process.env.EVE_CHAT_PASSWORD);
   await page.locator("form").getByRole("button", { name: "Sign in", exact: true }).click();

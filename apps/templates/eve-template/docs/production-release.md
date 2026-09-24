@@ -1,6 +1,6 @@
-# Production release (ai-chat.se)
+# Production release (aegentica.se)
 
-Host: ai-chat.se, Dokploy application `YZiCsMtzVXR5vLrO8AgWM`, built from
+Hosts: aegentica.se (primary), www.aegentica.se and ai-chat.se, one Dokploy application `YZiCsMtzVXR5vLrO8AgWM`, built from
 `Caceras/eve-template` `main` (auto-deploy is off; deploy from Dokploy after a
 merge). One container runs Next.js on port 3000 and the eve runtime on
 127.0.0.1:4274 under `scripts/start-self-hosted.mjs`. The persistent volume
