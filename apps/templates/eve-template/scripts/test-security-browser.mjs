@@ -14,7 +14,13 @@ const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 try {
   await page.goto(origin, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+  // A click that lands before hydration is dropped; retry until the dialog opens.
+  const username = page.getByLabel("Username", { exact: true });
+  for (let attempt = 0; !(await username.isVisible()); attempt++) {
+    assert(attempt < 10, "sign-in dialog opens");
+    await page.getByRole("button", { name: "Sign in", exact: true }).first().click();
+    await username.waitFor({ timeout: 3000 }).catch(() => {});
+  }
   await page.getByLabel("Username", { exact: true }).fill(process.env.EVE_CHAT_USERNAME);
   await page.getByLabel("Password", { exact: true }).fill(process.env.EVE_CHAT_PASSWORD);
   await page.locator("form").getByRole("button", { name: "Sign in", exact: true }).click();
