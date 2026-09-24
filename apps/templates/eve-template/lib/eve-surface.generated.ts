@@ -1,4 +1,4 @@
-// Generated from the checked-out Eve source. Do not edit by hand.
+// Generated from the checked-out eve source. Do not edit by hand.
 export const eveSurface = {
   "eveVersion": "0.63.0",
   "packageExports": [

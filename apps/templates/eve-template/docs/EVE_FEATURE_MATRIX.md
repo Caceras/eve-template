@@ -1,19 +1,19 @@
-# Eve feature matrix
+# eve feature matrix
 
-This matrix is the coverage contract for the Ultimate Eve Template. “Included” means the generated template contains a runnable example. Only the live Agent overview may report “Active”, after runtime inspection; a declaration does not prove an integration is connected or tested. “Built in” means Eve supplies the behavior without authored replacement code. “Surfaced” means the UI exposes the effective/runtime or official registry capability. “Reference” means the docs/UI point to the official capability without activating credentials or an unsafe integration by default.
+This matrix is the coverage contract for the Ultimate eve template. “Included” means the generated template contains a runnable example. Only the live Agent overview may report “Active”, after runtime inspection; a declaration does not prove an integration is connected or tested. “Built in” means eve supplies the behavior without authored replacement code. “Surfaced” means the UI exposes the effective/runtime or official registry capability. “Reference” means the docs/UI point to the official capability without activating credentials or an unsafe integration by default.
 
 ## Core runtime and client
 
 | Capability                         | Coverage                 | Implementation                                                  |
 | ---------------------------------- | ------------------------ | --------------------------------------------------------------- |
-| Durable sessions / turns / steps   | Built in + surfaced      | `useEveAgent`, Eve HTTP channel                                 |
+| Durable sessions / turns / steps   | Built in + surfaced      | `useEveAgent`, eve HTTP channel                                 |
 | Streaming + reconnect / rewind     | Built in                 | official Chat Template and Web Chat                             |
-| Session prewarm                    | Reference                | Eve React/client API                                            |
+| Session prewarm                    | Reference                | eve React/client API                                            |
 | Steering active turns              | Built in                 | current `channel/web` scaffold                                  |
 | Cancellation                       | Built in + UI            | both chat surfaces                                              |
-| Compact context                    | Built in / reference     | Eve session API                                                 |
-| Clear context                      | Built in / reference     | Eve session API                                                 |
-| Reset session                      | Built in / reference     | Eve session API                                                 |
+| Compact context                    | Built in / reference     | eve session API                                                 |
+| Clear context                      | Built in / reference     | eve session API                                                 |
+| Reset session                      | Built in / reference     | eve session API                                                 |
 | Structured output schema           | Reference                | `defineAgent.outputSchema` / per-turn client schema             |
 | Compaction                         | Included                 | `agent/agent.ts`, threshold 0.8                                 |
 | Session token budgets              | Included                 | `agent/agent.ts`                                                |
@@ -43,7 +43,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | flat skill                         | Inherited + Active | Chat Template `plan_a_trip`, `daily-briefing.md`                                                                             |
 | packaged skill + resources         | Active             | `skills/deep-research/`, `review-a-pull-request/`, `investigate-a-failing-check/`, `research-a-question/` (ported from sol0) |
 | dynamic skill                      | Included           | `skills/caller-note.ts`                                                                                                      |
-| `load_skill`                       | Built in           | Eve default harness                                                                                                          |
+| `load_skill`                       | Built in           | eve default harness                                                                                                          |
 | durable per-session state          | Included           | `defineState` + `session_counter`                                                                                            |
 | cross-session memory               | Active             | `memory/profile.ts`, fileMemory on a SQLite backend; Memory page edits the same document                                     |
 | memory scoping                     | Active             | operator scope shared by web, Telegram and schedules                                                                         |
@@ -57,17 +57,17 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 
 | Capability                                | Coverage                        | Implementation                                                                          |
 | ----------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
-| `bash`                                    | Built in + surfaced             | Eve default                                                                             |
-| `read_file`                               | Built in + surfaced             | Eve default                                                                             |
+| `bash`                                    | Built in + surfaced             | eve default                                                                             |
+| `read_file`                               | Built in + surfaced             | eve default                                                                             |
 | `write_file`                              | Included override               | official definition + `always()`                                                        |
-| `web_fetch`                               | Built in + surfaced             | Eve default                                                                             |
-| `web_search`                              | Built in + surfaced             | Eve default                                                                             |
+| `web_fetch`                               | Built in + surfaced             | eve default                                                                             |
+| `web_search`                              | Built in + surfaced             | eve default                                                                             |
 | `generate_image` (AI SDK `generateImage`) | Active                          | `tools/generate_image.ts`, active provider, images kept on the volume and shown in chat |
-| `todo`                                    | Built in + surfaced             | Eve default                                                                             |
-| `ask_question`                            | Built in + native UI            | Eve default + current Web Chat                                                          |
+| `todo`                                    | Built in + surfaced             | eve default                                                                             |
+| `ask_question`                            | Built in + native UI            | eve default + current Web Chat                                                          |
 | root-copy `agent`                         | Runtime target                  | routed through `agentRouter()`                                                          |
-| `task_cancel`                             | Built in + surfaced             | Eve default                                                                             |
-| `connection_search`                       | Built in when connections exist | Eve default                                                                             |
+| `task_cancel`                             | Built in + surfaced             | eve default                                                                             |
+| `connection_search`                       | Built in when connections exist | eve default                                                                             |
 | `glob`                                    | Included opt-in                 | official definition                                                                     |
 | `grep`                                    | Included opt-in                 | official definition                                                                     |
 | `sleep`                                   | Included opt-in                 | official durable definition                                                             |
@@ -80,7 +80,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | `once()` / `never()` / `auto()` approval  | Reference                       | public approval API                                                                     |
 | questions                                 | Included/built in               | `ask_question`, workflow `ctx.ask()`                                                    |
 | connection authorization                  | Built in + native UI            | official connection lifecycle                                                           |
-| session limit input                       | Built in                        | Eve limits lifecycle                                                                    |
+| session limit input                       | Built in                        | eve limits lifecycle                                                                    |
 | durable callback/schema                   | Reference                       | provider-package dynamic capability API                                                 |
 
 ## Sandbox and files
@@ -89,8 +89,8 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | ----------------------------- | --------- | -------------------------------------------- |
 | framework default sandbox     | Built in  | intentionally not replaced                   |
 | seeded `/workspace`           | Included  | `sandbox/workspace/eve-template.md`          |
-| inbound attachments           | Included  | Eve channel upload policy + current Web Chat |
-| sandbox read/write/bash       | Built in  | Eve tools                                    |
+| inbound attachments           | Included  | eve channel upload policy + current Web Chat |
+| sandbox read/write/bash       | Built in  | eve tools                                    |
 | sandbox stop/delete lifecycle | Reference | public sandbox handle                        |
 | Docker backend                | Reference | official backend                             |
 | just-bash backend             | Reference | official backend                             |
@@ -109,7 +109,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | `ctx.agent()`                      | Included                                      | both workflow tools               |
 | `ctx.agents`                       | Used by official router                       | `agentRouter()`                   |
 | workflow progress/yield            | Reference                                     | official API                      |
-| durable timers/sleep               | Included opt-in tool + reference workflow API | Eve Workflow                      |
+| durable timers/sleep               | Included opt-in tool + reference workflow API | eve Workflow                      |
 | webhooks/hooks in Workflow         | Reference                                     | official Workflow SDK integration |
 | cancellation / abort signal        | Reference                                     | official workflow tool context    |
 | runtime-generated workflow program | Included                                      | `tools/workflow.ts`               |
@@ -119,12 +119,12 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 
 | Capability                            | Coverage                           | Implementation                  |
 | ------------------------------------- | ---------------------------------- | ------------------------------- |
-| built-in root copy                    | Built in / router target           | Eve root target                 |
+| built-in root copy                    | Built in / router target           | eve root target                 |
 | declared visible subagent             | Included                           | `researcher`                    |
 | hidden `tool:false` subagent          | Included                           | `reviewer`                      |
 | `agentRouter()`                       | Included                           | `tools/agent.ts`                |
-| persistent child sessions / `agentId` | Built in                           | Eve runtime                     |
-| child steering / continuation         | Built in / reference UI            | Eve runtime                     |
+| persistent child sessions / `agentId` | Built in                           | eve runtime                     |
+| child steering / continuation         | Built in / reference UI            | eve runtime                     |
 | child task cancellation               | Built in                           | `task_cancel`                   |
 | dynamic subagent                      | Included, caller-gated             | `subagents/conditional-helper/` |
 | nested subagents                      | Reference                          | official filesystem model       |
@@ -144,14 +144,14 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | provided arguments / idempotency call ID | Reference                   | MCP/OpenAPI API                   |
 | connection filters                       | Reference                   | MCP/OpenAPI API                   |
 | per-connection approval                  | Reference                   | MCP/OpenAPI API                   |
-| interactive authorization                | Built in + native UI        | Eve connection lifecycle          |
+| interactive authorization                | Built in + native UI        | eve connection lifecycle          |
 | official connection registry             | Surfaced                    | generated from registry           |
 
 ## Channels
 
 | Capability                                                      | Coverage                               | Implementation                                                                            |
 | --------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
+| eve HTTP channel                                                | Included                               | Chat Template channel                                                                     |
 | Web Chat                                                        | Included x2                            | persisted shell + current registry scaffold                                               |
 | installable app (PWA) + Web Push                                | Active                                 | `app/manifest.ts`, `public/sw.js`, Settings → Notifications                         |
 | Slack                                                           | Included/configurable                  | Chat Template                                                                             |
@@ -178,8 +178,8 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | Extensions                      | Active + surfaced                | `extensions/github.ts` mounts the registry's `@github-tools/eve-extension`; the rest of the registry is surfaced                      |
 | extension override/disable      | Demonstrated conceptually        | `write_file` mirrors override composition                                                                                             |
 | self-modification extension     | Surfaced / optional              | official `eve/self-modification` registry item                                                                                        |
-| local traces                    | Built in                         | Eve dev default                                                                                                                       |
-| Vercel Agent Runs               | Built in on supported deployment | Eve deployment default                                                                                                                |
+| local traces                    | Built in                         | eve dev default                                                                                                                       |
+| Vercel Agent Runs               | Built in on supported deployment | eve deployment default                                                                                                                |
 | OTel configuration/destinations | Surfaced / reference             | official registry + API                                                                                                               |
 | lifecycle instrumentation       | Reference                        | `defineInstrumentation`                                                                                                               |
 | trace redaction/export policy   | Reference                        | official OTEL API                                                                                                                     |
@@ -195,7 +195,7 @@ This matrix is the coverage contract for the Ultimate Eve Template. “Included�
 | `t.judge()`                         | Reference               | official current API                 |
 | `mockModel`                         | Reference               | official current API                 |
 | reporters / datasets / loaders      | Reference               | official eval APIs                   |
-| Eve Client SDK                      | Included                | Chat Template + capability inspector |
+| eve Client SDK                      | Included                | Chat Template + capability inspector |
 | React `useEveAgent`                 | Included                | both chat surfaces                   |
 | Vue / Svelte bindings               | Reference               | public package exports               |
 | Next / Nuxt / SvelteKit adapters    | Reference               | public package exports               |
@@ -226,4 +226,4 @@ The generated surface file records every current public package export and offic
 
 Real execution remains unverified until a working model key is supplied and live turns complete. Runtime is the source of truth for effective capabilities; static entries in this matrix cannot assert credential success.
 
-The primary persisted composer also exposes Eve's documented active-turn steering (`turnPolicy: "steer"`) while retaining durable cancellation. The AI Elements Live session remains an advanced surface rather than a duplicate sidebar destination.
+The primary persisted composer also exposes eve's documented active-turn steering (`turnPolicy: "steer"`) while retaining durable cancellation. The AI Elements Live session remains an advanced surface rather than a duplicate sidebar destination.

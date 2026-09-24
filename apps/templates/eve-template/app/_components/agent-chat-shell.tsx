@@ -1,7 +1,7 @@
 "use client";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-import { CheckIcon, MenuIcon, PanelLeftIcon, UploadIcon } from "lucide-react";
+import { CheckIcon, MenuIcon, PanelLeftIcon, SearchIcon, UploadIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Suspense,
@@ -38,6 +38,7 @@ import { deleteClientChat, listClientChats } from "@/lib/chat/persistence-client
 import type { ChatListItem, SetupStatus, Viewer } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
 import { useMobileSidebarSwipe } from "@/lib/chat/mobile-sidebar-swipe";
+import { COMMAND_EVENT } from "@/lib/navigation";
 
 export function AgentChatShell({
   children,
@@ -371,7 +372,7 @@ export function AgentChatShell({
               {!desktopSidebarOpen ? (
                 <Button
                   aria-label="Open sidebar"
-                  className="hidden md:inline-flex"
+                  className="hidden size-10 rounded-md md:inline-flex"
                   onClick={() => setDesktopSidebarOpenPersisted(true)}
                   size="icon-sm"
                   type="button"
@@ -380,6 +381,17 @@ export function AgentChatShell({
                   <PanelLeftIcon className="size-4" />
                 </Button>
               ) : null}
+              <Button
+                aria-label="Search pages and conversations"
+                className="size-10 rounded-full md:rounded-md"
+                onClick={() => window.dispatchEvent(new Event(COMMAND_EVENT))}
+                size="icon-sm"
+                title="Search (Cmd/Ctrl K)"
+                type="button"
+                variant="ghost"
+              >
+                <SearchIcon className="size-4" />
+              </Button>
             </div>
             {topRightActions}
           </div>
@@ -391,7 +403,7 @@ export function AgentChatShell({
           <DialogContent
             {...drawerHandlers}
             showCloseButton={false}
-            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 border-r border-border/70 p-0 touch-pan-y sm:max-w-[21rem]"
+            className="left-0 top-0 h-dvh w-[86vw] max-w-[21rem] translate-x-0 translate-y-0 gap-0 rounded-none border-0 border-r border-border/70 p-0 touch-pan-y ease-out data-[state=closed]:zoom-out-100 data-[state=closed]:slide-out-to-left data-[state=open]:zoom-in-100 data-[state=open]:slide-in-from-left sm:max-w-[21rem]"
           >
             <DialogTitle className="sr-only">Workspace navigation</DialogTitle>
             <DialogDescription className="sr-only">

@@ -122,7 +122,7 @@ function ProviderCard({
           onChange={(event) => setApiKey(event.target.value)}
           placeholder={state.configured ? "Paste a new key to replace it" : info.keyPlaceholder}
           maxLength={2048}
-          className="h-11 min-w-0 flex-1"
+          className="h-11 min-w-0 sm:flex-1"
         />
         <Button className="h-11" type="submit" disabled={Boolean(busy) || !apiKey.trim()}>
           {busy === "save" && <Loader2Icon className="size-4 animate-spin" />}

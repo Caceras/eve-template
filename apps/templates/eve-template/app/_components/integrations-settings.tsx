@@ -155,7 +155,6 @@ export function IntegrationsSettings() {
   const visible = integrations.filter(
     (item) => !needle || `${item.name} ${item.description}`.toLowerCase().includes(needle),
   );
-  const active = integrations.filter((item) => item.status !== "setup");
 
   return (
     <SettingsShell
@@ -178,20 +177,6 @@ export function IntegrationsSettings() {
           value={query}
         />
       </div>
-
-      {!needle ? (
-        <div className="flex flex-wrap gap-2 py-1" aria-label="Active integrations">
-          {active.map((item) => (
-            <span
-              className="flex size-11 items-center justify-center rounded-xl border bg-card shadow-xs"
-              key={item.id}
-              title={item.name}
-            >
-              <item.icon className="size-5" />
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       {(["Built in", "Accounts", "Work apps"] as const).map((group) => {
         const items = visible.filter((item) => item.group === group);

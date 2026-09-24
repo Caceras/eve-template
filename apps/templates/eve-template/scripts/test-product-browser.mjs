@@ -137,38 +137,28 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     await navigate();
     const dialog = page.getByRole("dialog", { name: "Workspace navigation" });
-    await page.mouse.move(2, 360);
-    await page.mouse.down();
-    await page.mouse.move(92, 362, { steps: 6 });
-    await page.mouse.up();
+    // Real touch input: synthetic pointer events hide the pointercancel a browser
+    // fires once a finger pans, which is exactly how swipes fail on phones.
+    const touch = await context.newCDPSession(page);
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    const swipe = async (fromX, toX, y) => {
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: fromX, y }] });
+      for (let step = 1; step <= 8; step++)
+        await touch.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: fromX + ((toX - fromX) * step) / 8, y: y + step / 4 }],
+        });
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+    await swipe(120, 300, 150);
     await dialog.waitFor();
     await snapshot("mobile-navigation-swipe");
     const drawerBox = await dialog.boundingBox();
     assert(drawerBox, "mobile navigation has a visible drawer box");
-    const closeStartX = drawerBox.x + Math.min(250, drawerBox.width - 20);
-    await dialog.dispatchEvent("pointerdown", {
-      pointerId: 41,
-      pointerType: "touch",
-      isPrimary: true,
-      clientX: closeStartX,
-      clientY: 360,
-      bubbles: true,
-    });
-    await page.evaluate(
-      ({ x, y }) =>
-        window.dispatchEvent(
-          new PointerEvent("pointerup", {
-            pointerId: 41,
-            pointerType: "touch",
-            isPrimary: true,
-            clientX: x,
-            clientY: y,
-            bubbles: true,
-          }),
-        ),
-      { x: drawerBox.x + 40, y: 362 },
-    );
+    await swipe(drawerBox.x + Math.min(250, drawerBox.width - 20), drawerBox.x + 40, 150);
     await dialog.waitFor({ state: "hidden" });
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await touch.detach();
     await page.getByRole("button", { name: "Open sidebar", exact: true }).first().click();
     await dialog.waitFor();
     await snapshot("mobile-navigation");

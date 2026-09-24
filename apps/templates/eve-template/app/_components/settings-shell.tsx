@@ -4,7 +4,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SecurityNotice } from "./security-notice";
@@ -32,10 +32,20 @@ export function SettingsShell({ section, title, description, actions, children }
   readonly children: ReactNode;
 }) {
   const { viewer, requestSignIn } = useChatShell();
+  const navRef = useRef<HTMLElement>(null);
+  // On phones the sections are a horizontal strip; keep the current one visible.
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>("[aria-current=page]");
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const strip = nav.getBoundingClientRect();
+    const tab = active.getBoundingClientRect();
+    nav.scrollLeft += tab.left - strip.left - (strip.width - tab.width) / 2;
+  }, [section]);
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-16 pt-16 sm:px-6 md:flex-row md:gap-12">
-        <nav aria-label="Settings" className="-mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0">
+        <nav aria-label="Settings" ref={navRef} className="-mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0">
           <p className="hidden px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/70 md:block">Settings</p>
           {SECTIONS.map((item) => (
             <Link aria-current={item.id === section ? "page" : undefined} className={cn(rowClass, item.id === section ? "bg-foreground/[0.055] text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground")} href={item.href} key={item.id}>

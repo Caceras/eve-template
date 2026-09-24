@@ -96,7 +96,7 @@ Settings has five sections with a side menu (a contained, snap-scrolling row on 
 (install and notifications for this device), **Connections**, and **Security**. Integrations lists what Ægentica can use in the shape of a
 plugin directory: built-in tools (web search, image creation, files and code,
 voice, memory, tasks), accounts (GitHub and Telegram, set up in place) and work
-apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory** opens Capabilities → Explore with the official Eve registry surface.
+apps through Vercel Connect (Linear, Notion, Sentry). **Browse directory** opens Capabilities → Explore with the official eve registry surface.
 
 ## Memory
 
@@ -153,8 +153,8 @@ The main persisted chat now has the same attachment path as eve's official clien
 
 Choose Chat, Research or Image beside the agent selector without changing conversation. Research and Image supply turn instructions; they are not new runtimes or fake modality endpoints. Image uses the existing `generate_image` tool. Voice retains the device dictation/read-aloud/hands-free loop, not native real-time audio/video.
 
-While a durable turn is submitted or streaming, the primary composer remains available for a correction. Sending that correction uses Eve's documented `turnPolicy: "steer"`, so it stays in the same turn; Stop still calls Eve's durable `cancel()`. Normal input remains blocked while resuming, finalizing or waiting on authorization/HITL. This matches the capability already exposed by the advanced Live session instead of hiding it there.
+While a durable turn is submitted or streaming, the primary composer remains available for a correction. Sending that correction uses eve's documented `turnPolicy: "steer"`, so it stays in the same turn; Stop still calls eve's durable `cancel()`. Normal input remains blocked while resuming, finalizing or waiting on authorization/HITL. This matches the capability already exposed by the advanced Live session instead of hiding it there.
 
 `/agents` creates saved profiles and `/images` lists generated images, with authenticated details, prompt/model metadata when present, save and confirmed deletion. Older images without metadata remain readable. The gallery scans at most 3,000 directory entries / 1,000 image files and pages 48 at a time; the limit is disclosed. Media responses are private and `no-store`, including after sign-out. Deleting an image also removes it from chats referencing that file.
 
-The sidebar uses shared navigation metadata. Global Search (Cmd/Ctrl+K) includes pages, actions, settings and up to 100 recent conversations. The advanced AI Elements Live session remains searchable without becoming a second primary chat. Mobile navigation uses the existing Radix Dialog for focus management and Escape handling, with an isolated swipe adapter for left-edge open and left-swipe close. It has one internal scroll owner, closes on navigation, and closes when resized to desktop. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).
+The sidebar uses shared navigation metadata. Global Search (Cmd/Ctrl+K) includes pages, actions, settings and up to 100 recent conversations. The advanced AI Elements Live session remains searchable without becoming a second primary chat. Mobile navigation uses the existing Radix Dialog for focus management and Escape handling, with an isolated touch-swipe adapter: swipe right anywhere to open (Android reserves the screen edge for Back) and swipe left on the drawer to close; the drawer slides in from the left. It has one internal scroll owner, closes on navigation, and closes when resized to desktop. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md).
