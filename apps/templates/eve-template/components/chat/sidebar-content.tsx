@@ -155,6 +155,8 @@ export function ChatSidebar({
             New chat
           </Button>
           <Button
+            aria-keyshortcuts="Control+K Meta+K"
+            aria-label="Search pages and conversations"
             className="min-h-11 w-full justify-start gap-2 rounded-lg px-2 text-sm font-normal text-muted-foreground hover:bg-muted/50 hover:text-foreground md:min-h-9"
             onClick={() => {
               onNavigate?.();

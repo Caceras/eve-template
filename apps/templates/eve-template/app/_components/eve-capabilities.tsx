@@ -7,6 +7,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   ArrowUpRightIcon,
+  ChevronRightIcon,
   ShieldCheckIcon,
 } from "lucide-react";
 import { useChatShell } from "./chat-shell-context";
@@ -51,6 +52,8 @@ const record = (value: unknown): Record<string, unknown> =>
     : {};
 const array = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown) => (typeof value === "string" ? value : "");
+// Tool descriptions are written for the model; rows show only their opening sentence.
+const summary = (description: string) => description.split(/(?<=[.!?])\s/)[0] ?? description;
 const pair = (value: unknown) => [...array(record(value).static), ...array(record(value).dynamic)];
 function entry(value: unknown, category: Category, group: string): Item {
   const r = record(value);
@@ -364,13 +367,13 @@ export function EveCapabilities() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{item.name}</span>
                   <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {item.description}
+                    {summary(item.description)}
                   </span>
                 </span>
                 <Badge variant="outline" className="hidden shrink-0 font-normal sm:flex">
                   {item.group}
                 </Badge>
-                <ArrowUpRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
               </button>
             ))}
           </div>
@@ -431,7 +434,7 @@ export function EveCapabilities() {
             </DialogHeader>
             {selected && (
               <>
-                <p className="text-sm leading-6">{selected.description}</p>
+                <p className="text-sm leading-6 whitespace-pre-line">{selected.description}</p>
                 <div className="rounded-lg bg-muted p-4 text-sm">
                   <p className="font-medium">Access</p>
                   <p className="mt-1 leading-6 text-muted-foreground">{selected.access}</p>

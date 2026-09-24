@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: healthy,
-        release: "polish-2026-09-24",
+        release: "polish-2026-09-24b",
         app: setup.appReady ? "ready" : "setup-required",
         auth: setup.authMode,
         eve: response.ok ? "ready" : "unavailable",
@@ -30,7 +30,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        release: "polish-2026-09-24",
+        release: "polish-2026-09-24b",
         app: setup.appReady ? "ready" : "setup-required",
         auth: setup.authMode,
         eve: "unavailable",
