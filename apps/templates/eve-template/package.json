@@ -28,7 +28,8 @@
     "test": "node --test 'scripts/test-!(*-browser).mjs'",
     "check": "pnpm test && pnpm typecheck",
     "check:full": "bash scripts/check-product.sh",
-    "qa:tour": "node scripts/qa-tour.mjs"
+    "qa:tour": "node scripts/qa-tour.mjs",
+    "verify:live": "node scripts/verify-live.mjs"
   },
   "dependencies": {
     "@github-tools/eve-extension": "0.7.4",
