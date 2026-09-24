@@ -1,0 +1,182 @@
+{
+  ".env.example": {
+    "reason": "Self-hosted variables: operator password, session secret, memory directory, provider keys.",
+    "upstream": "5df7cf4c6aa7"
+  },
+  "AGENTS.md": {
+    "reason": "Product guide for agents working on Ægentica.",
+    "upstream": "ea82bf6920a7"
+  },
+  "README.md": {
+    "reason": "Product README.",
+    "upstream": "10ed10d6973b"
+  },
+  "agent/agent.ts": {
+    "reason": "Step-level model routing (provider switching), session cost limits and compaction.",
+    "upstream": "8aafb586ad41"
+  },
+  "agent/channels/eve.ts": {
+    "reason": "Internal task auth, and attachments enabled like the current Web Chat scaffold.",
+    "upstream": "0f351e284677"
+  },
+  "agent/instructions.md": {
+    "reason": "Ægentica identity and capabilities.",
+    "upstream": "81ce7edfe5ff"
+  },
+  "agent/memory/profile.ts": {
+    "reason": "Durable SQLite memory for self-hosting.",
+    "upstream": "0a138c155d34"
+  },
+  "app/(chat)/layout.tsx": {
+    "reason": "Request-time auth and history (Docker runtime env) and the product shell.",
+    "upstream": "9e7c1aa7f3e8"
+  },
+  "app/_components/agent-chat-shell.tsx": {
+    "reason": "Product navigation, mobile drawer with swipe, command menu.",
+    "upstream": "2d8fd45e88d9"
+  },
+  "app/_components/agent-chat-skeleton.tsx": {
+    "reason": "Skeleton mirrors the product layout.",
+    "upstream": "85550f43a604"
+  },
+  "app/_components/agent-chat.tsx": {
+    "reason": "Saved agents, modes, attachments, steering and voice.",
+    "upstream": "e61b8eb8564a"
+  },
+  "app/_components/eve-image-mark.tsx": {
+    "reason": "Replaced by the Ægentica mark (DESIGN brand rules).",
+    "upstream": "928273a16666"
+  },
+  "app/_components/home-chat-page.tsx": {
+    "reason": "Product home: share-target drafts, suggestions, shared composer.",
+    "upstream": "be196e16859d"
+  },
+  "app/_components/session-chat-page.tsx": {
+    "reason": "Draft transfer to the canonical chat, steering, safe-area padding, branding.",
+    "upstream": "65e137f70420"
+  },
+  "app/actions/chat.ts": {
+    "reason": "One-time import of chats stored in the browser before server history.",
+    "upstream": "e5258ecfb5bd"
+  },
+  "app/api/bootstrap/route.ts": {
+    "reason": "connection() so per-viewer data is not prerendered at build.",
+    "upstream": "c374b0858560"
+  },
+  "app/api/chats/route.ts": {
+    "reason": "connection() so per-viewer data is not prerendered at build.",
+    "upstream": "ac4f9ef37edc"
+  },
+  "app/api/password-auth/login/route.ts": {
+    "reason": "Username, rate limit, bounded body, same-origin check, auth hint cookie.",
+    "upstream": "1ea9dc4da4d7"
+  },
+  "app/apple-icon.tsx": {
+    "reason": "Ægentica mark.",
+    "upstream": "3f1f6daa73be"
+  },
+  "app/globals.css": {
+    "reason": "tw-animate-css for shadcn animations; white surfaces and higher-contrast muted text (DESIGN).",
+    "upstream": "32065600c17f"
+  },
+  "app/icon.svg": {
+    "reason": "Ægentica mark.",
+    "upstream": "963cab18091b"
+  },
+  "app/layout.tsx": {
+    "reason": "PWA metadata, viewport, service worker, Vercel-only analytics.",
+    "upstream": "874f985e999f"
+  },
+  "components/auth/password-sign-in-form.tsx": {
+    "reason": "Username and password operator sign-in.",
+    "upstream": "f1d45e41bd6f"
+  },
+  "components/auth/sign-in-modal.tsx": {
+    "reason": "Ægentica sign-in copy.",
+    "upstream": "9d07f703b445"
+  },
+  "components/auth/user-menu.tsx": {
+    "reason": "Password-mode label, drafts cleared on logout, 40px touch target.",
+    "upstream": "677aa4b253ea"
+  },
+  "components/chat/composer.tsx": {
+    "reason": "Agent, mode, attachments, dictation, read-aloud and model picker.",
+    "upstream": "b5a0472f8335"
+  },
+  "components/chat/integrations-menu.tsx": {
+    "reason": "Only configured connections are listed.",
+    "upstream": "1c13b3b11d69"
+  },
+  "components/chat/message.tsx": {
+    "reason": "Read aloud, generated images, attachments and product tool labels.",
+    "upstream": "c756ad1ea2d5"
+  },
+  "components/chat/sidebar.tsx": {
+    "reason": "Product navigation groups and chat actions.",
+    "upstream": "b2ded4728340"
+  },
+  "components/ui/command.tsx": {
+    "reason": "Dialog title inside DialogContent so Radix finds it (accessibility).",
+    "upstream": "1d24c826bdec"
+  },
+  "docs/how-the-chatbot-works.md": {
+    "reason": "Ægentica notes on server history and composer additions.",
+    "upstream": "206566a9411b"
+  },
+  "docs/setup-and-deploy.md": {
+    "reason": "Self-hosted production section.",
+    "upstream": "626cef510d1d"
+  },
+  "lib/auth.ts": {
+    "reason": "Trusted production host and proxy headers behind Traefik.",
+    "upstream": "8915d4bcf537"
+  },
+  "lib/chat/persistence-client.ts": {
+    "reason": "Paged chat list for search and navigation.",
+    "upstream": "df5ea1288d19"
+  },
+  "lib/chat/types.ts": {
+    "reason": "Configured connections in the setup status.",
+    "upstream": "73cb3719a92f"
+  },
+  "lib/db/queries.ts": {
+    "reason": "SQLite store for self-hosting next to Postgres.",
+    "upstream": "9238f140ee54"
+  },
+  "lib/eve-auth.ts": {
+    "reason": "Model, saved-agent and mode attributes; internal task auth; operator identity.",
+    "upstream": "3aad65c772f6"
+  },
+  "lib/password-auth.ts": {
+    "reason": "Operator username, scrypt hash, password rotation and session revocation.",
+    "upstream": "601a49ce92ae"
+  },
+  "lib/session.ts": {
+    "reason": "Operator name on the viewer.",
+    "upstream": "b10a55054d2a"
+  },
+  "lib/setup.ts": {
+    "reason": "Self-hosted setup status: password mode, storage, configured connections.",
+    "upstream": "8f0f52ae52f2"
+  },
+  "next.config.ts": {
+    "reason": "Service worker headers; workflow routes to the local eve runtime.",
+    "upstream": "bebecbf77cf1"
+  },
+  "package.json": {
+    "reason": "Product dependencies and scripts.",
+    "upstream": "f8de041fdeef"
+  },
+  "pnpm-lock.yaml": {
+    "reason": "Product dependencies.",
+    "upstream": "6319af628fa7"
+  },
+  "pnpm-workspace.yaml": {
+    "reason": "Product workspace settings.",
+    "upstream": "d78de14c088a"
+  },
+  "public/eve.svg": {
+    "reason": "Replaced by public/aegentica.svg (DESIGN brand rules).",
+    "upstream": "1980724c3d9c"
+  }
+}

@@ -5,10 +5,12 @@ on:
     branches: [main, codex/aegentica-orchestration-release]
     paths:
       - apps/templates/eve-template/**
+      - apps/templates/eve-chat-template/**
       - .github/workflows/aegentica-product.yml
   pull_request:
     paths:
       - apps/templates/eve-template/**
+      - apps/templates/eve-chat-template/**
       - .github/workflows/aegentica-product.yml
 
 permissions:
