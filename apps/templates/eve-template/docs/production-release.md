@@ -48,6 +48,7 @@ Build: `pnpm install --frozen-lockfile`, `pnpm build:eve`, `pnpm build`
 4. Logged out, `/api/chats`, `/api/agents`, `/api/images` and
    `/api/settings/*` return 401.
 5. `/sw.js`, `/manifest.webmanifest` and `/icons/icon-192.png` load.
+   `pnpm verify:live` checks steps 3 to 5 on both domains.
 6. Signed in: the active provider's **Test connection** succeeds, a chat
    streams a reply and reappears in the sidebar after a reload, and the Memory
    and Tasks pages load.
