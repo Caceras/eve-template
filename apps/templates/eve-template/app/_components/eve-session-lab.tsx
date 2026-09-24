@@ -134,11 +134,11 @@ export function EveSessionLab() {
               value={sessionId}
             />
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-5">
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void inspect()}
-              className="h-11 justify-start sm:justify-center md:h-8"
+              className="col-span-2 h-11 md:h-8 lg:col-span-1"
               size="sm"
               variant="outline"
             >
@@ -147,7 +147,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.cancel())}
-              className="h-11 justify-start sm:justify-center md:h-8"
+              className="h-11 md:h-8"
               size="sm"
               variant="outline"
             >
@@ -156,7 +156,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.compact())}
-              className="h-11 justify-start sm:justify-center md:h-8"
+              className="h-11 md:h-8"
               size="sm"
               variant="outline"
             >
@@ -165,7 +165,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void withSession((session) => session.clear())}
-              className="h-11 justify-start sm:justify-center md:h-8"
+              className="h-11 md:h-8"
               size="sm"
               variant="outline"
             >
@@ -178,7 +178,7 @@ export function EveSessionLab() {
                   session.reset({ reason: "Requested from Ægentica Activity" }),
                 )
               }
-              className="h-11 justify-start sm:justify-center md:h-8"
+              className="h-11 md:h-8"
               size="sm"
               variant="outline"
             >
