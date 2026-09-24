@@ -26,6 +26,10 @@ For every capability:
 4. If eve supplies a current e2e fixture for an API with no scaffold, adapt the smallest possible example.
 5. Write custom code only for reference glue or UI that eve does not supply.
 
+## Divergence check
+
+`scripts/test-upstream.mjs` (part of `pnpm test`) compares this app with `apps/templates/eve-chat-template`. Every upstream file the app changes or removes is listed in `docs/upstream-divergence.json` with a reason and a fingerprint of the upstream version it was reviewed against. The check fails when a new divergence has no reason, when a listed file matches upstream again (the list only shrinks), and when upstream changes a listed file, which is the cue to port that change. After reviewing, `node scripts/test-upstream.mjs --write` records new divergences as `TODO` and refreshes fingerprints; replace each `TODO` with a reason. Cosmetic-only differences are restored to upstream rather than listed.
+
 ## Deliberate overrides
 
 A few overrides exist because demonstrating composition is itself useful:

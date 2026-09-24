@@ -6,7 +6,7 @@ Before any user-facing UI, UX, navigation, authentication, responsive-layout, or
 
 For capability-facing UI, also read `docs/EVE_FEATURE_MATRIX.md` and preserve the distinction between **Active**, **Included**, and **Available**.
 
-Prefer upstream over custom code (`docs/UPSTREAM.md`): keep eve defaults, mount registry items and extensions instead of copying them, and reuse the chat template's components and shadcn/ui primitives in `components/ui/`.
+Prefer upstream over custom code (`docs/UPSTREAM.md`; `scripts/test-upstream.mjs` lists and pins every divergence from the official chat template): keep eve defaults, mount registry items and extensions instead of copying them, and reuse the chat template's components and shadcn/ui primitives in `components/ui/`.
 
 Keep the docs true in the same change: `README.md` for the feature list, `docs/WEB_APP.md`, `docs/GITHUB.md`, `docs/SELF_HOSTING.md` and `docs/TELEGRAM_AND_SCHEDULES.md` for behavior, `docs/EVE_FEATURE_MATRIX.md` for capability coverage and `docs/VISION.md` for roadmap status.
 
