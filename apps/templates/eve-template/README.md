@@ -2,7 +2,7 @@
 
 ![Ægentica mark](./public/aegentica.svg)
 
-Ægentica is a personal AI agent you own. It is the successor to sol0: one private assistant for one operator, reachable as an installable web app on phone and desktop and through Telegram, running on your own server at [ai-chat.se](https://ai-chat.se).
+Ægentica is a personal AI agent you own. It is the successor to sol0: one private assistant for one operator, reachable as an installable web app on phone and desktop and through Telegram, running on your own server at [aegentica.se](https://aegentica.se) (also reachable at [ai-chat.se](https://ai-chat.se)).
 
 It is built on [eve](https://eve.dev), Vercel's framework for durable agents, and starts from eve's official `eve-chat-template`. eve supplies the hard parts sol0 had to hand-build: durable sessions that survive a closed tab or a device switch, approvals, memory, schedules, subagents, sandboxed tools and channels. Ægentica adds the product layer on top and keeps eve's defaults wherever they exist.
 
@@ -92,4 +92,4 @@ pnpm install && pnpm typecheck && pnpm build:eve && pnpm build && pnpm eval
 
 Create saved agents without a model key, select them in the composer or ask the root agent to delegate work using the existing eve workflow and researcher. Main chat supports Chat/Research/Image intent plus images, PDFs and text attachments; Images is an authenticated gallery on the existing volume. Provider/model switching, approvals, memory, tasks, voice controls and all existing routes remain available.
 
-This is one operator workspace, not independent tenants or arbitrary generated deployments. Read [Agents and orchestration](./docs/AGENTS_AND_ORCHESTRATION.md), [release verification](./docs/RELEASE_VERIFICATION.md) and [DESIGN](./docs/DESIGN.md). The requested domain is `aegentica.se`; retain `ai-chat.se` until the new domain is actually resolving and serving valid TLS.
+This is one operator workspace, not independent tenants or arbitrary generated deployments. Read [Agents and orchestration](./docs/AGENTS_AND_ORCHESTRATION.md), [release verification](./docs/RELEASE_VERIFICATION.md) and [DESIGN](./docs/DESIGN.md). The primary domain is `aegentica.se`; `ai-chat.se` stays as an alias of the same application.

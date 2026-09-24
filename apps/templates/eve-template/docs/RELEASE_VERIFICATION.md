@@ -27,7 +27,7 @@ Saved agents are encrypted profiles of the operator workspace, not separate depl
 5. Verify the authenticated live UI when credentials are available. Distinguish isolated browser acceptance from production authentication.
 6. Remove the temporary QA compose and its own volume after collecting evidence. Never remove the production data volume.
 
-`aegentica.se` is the requested primary domain. Registration/delegation, DNS, the Dokploy route and TLS require independent verification. Keep `ai-chat.se` working until then. The registrar issued an 11.25 SEK invoice; its payment/activation status is not established by the invoice alone. At review the registry DNS returned NXDOMAIN. Do not order the domain again or claim activation from an invoice.
+`aegentica.se` is the primary domain, registered at Loopia until 2027-09-24. Its apex and `www` A records point to the VPS (136.148.209.184), and both hosts are Dokploy domains of the same application with Let's Encrypt certificates (verified 2026-09-24). `ai-chat.se` remains an alias of that application. After a deploy, check `/api/health` on both hosts.
 
 ## External verification
 
