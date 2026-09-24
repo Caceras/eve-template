@@ -11,7 +11,9 @@ merge). One container runs Next.js on port 3000 and the eve runtime on
 - `chats.sqlite`: chat history (`EVE_CHAT_DB_PATH` overrides)
 - `profile.sqlite` inside `EVE_MEMORY_DIR`: long-term memory
 - `settings/*.enc`: provider keys, GitHub and Telegram tokens, push keys and
-  devices, scheduled tasks (encrypted with a key derived from `EVE_SESSION_SECRET`)
+  devices, scheduled tasks and saved agents (`settings/agents.enc.json`),
+  encrypted with a key derived from `EVE_SESSION_SECRET`
+- generated images and their metadata
 - eve's workflow data for durable sessions
 
 Never replace the volume with an empty one, and keep `EVE_SESSION_SECRET`
@@ -31,17 +33,26 @@ Set a spending limit on each key; each session also stops at $25 of model
 cost. Keep a second provider's key saved: if one provider rejects its key,
 switching is one click. See [SELF_HOSTING.md](./SELF_HOSTING.md).
 
-## Build and verify
+## Deploy and verify
 
 Build: `pnpm install --frozen-lockfile`, `pnpm build:eve`, `pnpm build`
-(Node 24). After a deploy, check:
+(Node 24). Release only a merged revision whose product check passed:
 
-1. `/api/health` reports `app`, `eve` and `storage` ready.
-2. Logged out, `/api/chats` and `/api/settings/*` return 401.
-3. `/sw.js`, `/manifest.webmanifest` and `/icons/icon-192.png` load.
-4. Signed in: Settings → the active provider's **Test connection** succeeds, a
-   chat streams a reply and reappears in the sidebar after a reload, and the
-   Memory and Tasks pages load.
+1. Confirm Dokploy `agents/eve-chat`: repository `Caceras/eve-template`, branch
+   `main`, Docker context `apps/templates/eve-template`. Keep `eve-chat-data`
+   and every environment value, including `EVE_SESSION_SECRET`.
+2. Deploy from Dokploy and wait for a finished build and a healthy runtime;
+   queued is not deployed.
+3. `/api/health` on aegentica.se and ai-chat.se reports `app`, `eve` and `storage` ready and a `release`
+   matching `RELEASE` in `app/api/health/route.ts`.
+4. Logged out, `/api/chats`, `/api/agents`, `/api/images` and
+   `/api/settings/*` return 401.
+5. `/sw.js`, `/manifest.webmanifest` and `/icons/icon-192.png` load.
+6. Signed in: the active provider's **Test connection** succeeds, a chat
+   streams a reply and reappears in the sidebar after a reload, and the Memory
+   and Tasks pages load.
+7. Read the runtime logs. Remove any temporary QA container and its own volume;
+   never the production volume.
 
 ## Rollback
 
@@ -50,6 +61,10 @@ destructively: the SQLite files add tables and columns only. A backup of the
 pre-polish image and workflow archive from 22 September 2026 is kept on the
 VPS under `/root/aegentica-backups/20260922-before-polish`.
 
-## Orchestration release gate
+## Release history
 
-The next product release adds saved agent profiles, eve-native delegation, main-chat attachments, a private image library, global search and a capability directory. It shipped as `orchestration-2026-09-23`; `polish-2026-09-24` added eve 0.66.2, file sharing from the Android share sheet, app icon badges, keyboard-aware layout and a conversation picker on Activity; the current identifier is `polish-2026-09-24b` (errors no longer cover the phone top bar and link to Settings when a key is missing, one search control per layout, readable capability rows, a compact Activity toolbar). Use [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) for current checks and domain gates. This entry describes code scope, not a claim that a deployment or real model turn has already passed.
+- `orchestration-2026-09-23`: saved agent profiles, eve-native delegation, main-chat attachments, private image library, global search, capability directory.
+- `polish-2026-09-24`: eve 0.66.2, file sharing from the Android share sheet, app icon badges, keyboard-aware layout, conversation picker on Activity.
+- `polish-2026-09-24b`: errors keep the phone top bar usable and link to Settings, one search control per layout, readable capability rows, compact Activity toolbar.
+
+Entries describe code scope. [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) holds the checks and domain gates.

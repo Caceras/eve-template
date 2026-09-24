@@ -118,11 +118,10 @@ model ID.
 
 ## Checks
 
-```sh
-node scripts/test-provider-settings.mjs   # auth, CSRF, storage, switching, tests, fail-closed
-node scripts/test-models.mjs              # catalogs, fallbacks, picker preference
-node scripts/test-openrouter-model.mjs    # OpenRouter request shape, search tool, cost
-```
+`pnpm test` covers provider auth, CSRF, storage, switching and fail-closed
+behavior (`scripts/test-provider-settings.mjs`), catalogs and picker preference
+(`scripts/test-models.mjs`) and the OpenRouter request shape
+(`scripts/test-openrouter-model.mjs`).
 
 `node scripts/check-model-routing.mjs` runs against a live app (`CHECK_ORIGIN`,
 `EVE_CHAT_USERNAME`, `EVE_CHAT_PASSWORD`). For every provider with a key it
@@ -131,8 +130,4 @@ event used the requested model on that provider. With real keys this sends real,
 token-consuming requests. With placeholder keys each provider must reject the
 key, which still proves the request reached the right provider.
 
-## Orchestration release
-
-Saved agents and the image library reuse the existing persistent volume. Keep `settings/agents.enc.json`, generated media and metadata together with existing settings, chats, memory and workflow data; preserve `EVE_SESSION_SECRET`. No new database, Vercel hosting dependency, host Docker socket or public runtime port is introduced. The application remains a single-operator installation, not a public multi-tenant agent service.
-
-The primary host is `aegentica.se` (with `www.aegentica.se`); `ai-chat.se` is an alias. All three are Dokploy domains of this same application, not separate processes with diverging data. Password sign-in checks the request's own host, so it works on every domain without extra configuration. Verify the `polish-2026-09-24b` health release field after deployment. See [release verification](./RELEASE_VERIFICATION.md) and [agent storage](./AGENTS_AND_ORCHESTRATION.md#storage-and-limits).
+Storage, deployment and domains are in [production-release](./production-release.md) and [release verification](./RELEASE_VERIFICATION.md).

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSetupStatus } from "@/lib/setup";
 
+// Bump on every product release; docs point here instead of repeating it.
+const RELEASE = "polish-2026-09-24b";
+
 export async function GET() {
   const setup = await getSetupStatus();
   const startedAt = Date.now();
@@ -17,7 +20,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: healthy,
-        release: "polish-2026-09-24b",
+        release: RELEASE,
         app: setup.appReady ? "ready" : "setup-required",
         auth: setup.authMode,
         eve: response.ok ? "ready" : "unavailable",
@@ -30,7 +33,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        release: "polish-2026-09-24b",
+        release: RELEASE,
         app: setup.appReady ? "ready" : "setup-required",
         auth: setup.authMode,
         eve: "unavailable",
