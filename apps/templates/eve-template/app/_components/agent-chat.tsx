@@ -142,6 +142,16 @@ function hasOpenChatTurn(events: readonly MessageStreamEvent[]) {
   return open;
 }
 
+// Streamed fragments skip both server saves (the event and the session cursor eve advances
+// with it). The completing event that follows carries the full text and saves its cursor,
+// so a reopened chat either replays the fragments or already has the whole message; the
+// end-of-turn snapshot still stores every event.
+const STREAMED_FRAGMENTS = new Set<MessageStreamEvent["type"]>([
+  "action.input.appended",
+  "message.appended",
+  "reasoning.appended",
+]);
+
 function namespaceStreamEvent(
   event: MessageStreamEvent,
   namespace: string | undefined,
@@ -248,6 +258,7 @@ export function AgentChatSession({
   const [skippingAuthorizationKey, setSkippingAuthorizationKey] = useState<string | null>(null);
   const activeChatIdRef = useRef(activeChat?.id ?? chatId ?? null);
   const eventIndexRef = useRef(activeChat?.events.length ?? 0);
+  const lastEventWasFragmentRef = useRef(false);
   const eventIndexChatIdRef = useRef(activeChat?.id ?? chatId ?? null);
   const knownInitialEventsRef = useRef<readonly MessageStreamEvent[]>(activeChat?.events ?? []);
   const currentTitleRef = useRef(activeChat?.title ?? "New chat");
@@ -344,6 +355,7 @@ export function AgentChatSession({
         event,
         persistedSessionRef.current?.state?.sessionId,
       );
+      lastEventWasFragmentRef.current = STREAMED_FRAGMENTS.has(displayEvent.type);
       const nextStreamEvents = appendUniqueStreamEvent(streamEventsRef.current, displayEvent);
 
       if (nextStreamEvents !== streamEventsRef.current) {
@@ -357,7 +369,7 @@ export function AgentChatSession({
 
       const chatId = activeChatIdRef.current;
 
-      if (!viewer || !chatId) {
+      if (!viewer || !chatId || lastEventWasFragmentRef.current) {
         return;
       }
 
@@ -401,7 +413,10 @@ export function AgentChatSession({
     onEvent: persistStreamEvent,
     onSessionChange(session) {
       persistedSessionRef.current = attachClientSession(session);
-      if (session) void persistSessionState(session);
+      // eve reports the session right after the event that advanced it.
+      const afterFragment = lastEventWasFragmentRef.current;
+      lastEventWasFragmentRef.current = false;
+      if (session && !afterFragment) void persistSessionState(session);
     },
     onFinish: (snapshot) => {
       void persistSnapshot(snapshot);

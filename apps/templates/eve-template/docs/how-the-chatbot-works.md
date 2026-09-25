@@ -430,6 +430,14 @@ retrying a write can replace the same slot.
 This event-by-event persistence is what makes refresh/resume possible even if
 the browser closes mid-turn.
 
+Streamed fragments (`message.appended`, `reasoning.appended`,
+`action.input.appended`) skip this write and the session-cursor save that eve
+triggers with them, so saves per turn stay flat however long the reply is. The
+completing event that follows (`message.completed`, `reasoning.completed`,
+`actions.requested`) carries the full content and saves its cursor, so a
+reopened chat either replays the fragments from the earlier cursor or already
+has the whole message. The snapshot below still stores every event.
+
 ### Snapshot Persistence
 
 When `useEveAgent` finishes a turn, it calls `onFinish(snapshot)`.

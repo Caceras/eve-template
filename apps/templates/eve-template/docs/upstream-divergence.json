@@ -40,7 +40,7 @@
     "upstream": "85550f43a604"
   },
   "app/_components/agent-chat.tsx": {
-    "reason": "Saved agents, modes, attachments, steering and voice.",
+    "reason": "Saved agents, modes, attachments, steering and voice; streamed fragments skip per-event saves.",
     "upstream": "e61b8eb8564a"
   },
   "app/_components/eve-image-mark.tsx": {
