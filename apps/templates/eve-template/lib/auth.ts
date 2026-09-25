@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { getAppUrlHost, getEffectiveAppUrl } from "@/lib/auth-url";
-import { db } from "@/lib/db/client";
+import { db, isDatabaseConfigured } from "@/lib/db/client";
 
 const vercelClientId = process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID?.trim() ?? "";
 const vercelClientSecret = process.env.VERCEL_APP_CLIENT_SECRET?.trim() ?? "";
@@ -45,6 +45,8 @@ export const auth = betterAuth({
     trustedProxyHeaders: true,
     database: {
       generateId: () => randomUUID(),
+      // Password mode has no auth database, so the schema check could only log a false error.
+      validateSchema: isDatabaseConfigured(),
     },
   },
   onAPIError: {

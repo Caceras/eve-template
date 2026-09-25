@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSetupStatus } from "@/lib/setup";
 
 // Bump on every product release; docs point here instead of repeating it.
-const RELEASE = "maintenance-2026-09-24";
+const RELEASE = "maintenance-2026-09-25";
 
 export async function GET() {
   const setup = await getSetupStatus();
