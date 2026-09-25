@@ -68,6 +68,6 @@ VPS under `/root/aegentica-backups/20260922-before-polish`.
 - `polish-2026-09-24`: eve 0.66.2, file sharing from the Android share sheet, app icon badges, keyboard-aware layout, conversation picker on Activity.
 - `polish-2026-09-24b`: errors keep the phone top bar usable and link to Settings, one search control per layout, readable capability rows, compact Activity toolbar.
 - `maintenance-2026-09-24`: eve 0.66.3 and better-auth 1.7.5 patch releases.
-- `maintenance-2026-09-25`: no false Better Auth schema error in password mode.
+- `maintenance-2026-09-25`: no false Better Auth schema error in password mode, about 310 MB smaller image, chat saves per turn no longer grow with reply length.
 
 Entries describe code scope. [RELEASE_VERIFICATION](./RELEASE_VERIFICATION.md) holds the checks and domain gates.
