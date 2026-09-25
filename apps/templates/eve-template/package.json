@@ -24,6 +24,8 @@
     "eve:info": "eve info",
     "eve:surface": "node scripts/sync-eve-surface.mjs",
     "eve:surface:check": "node scripts/check-eve-surface.mjs",
+    "upstream:sync": "node scripts/sync-upstream-template.mjs",
+    "upstream:check": "node scripts/sync-upstream-template.mjs --check",
     "start:next": "next start",
     "test": "node --test 'scripts/test-!(*-browser).mjs'",
     "check": "pnpm test && pnpm typecheck",

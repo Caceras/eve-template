@@ -16,6 +16,7 @@ run_check() {
 }
 run_check unit pnpm test
 run_check eve-surface pnpm eve:surface:check
+run_check upstream-template pnpm upstream:check
 run_check build-eve pnpm build:eve
 run_check typecheck pnpm typecheck
 run_check build-next pnpm build

@@ -4,7 +4,7 @@ The `release` field of `/api/health` (the `RELEASE` constant in `app/api/health/
 
 ## Required checks
 
-The read-only product workflow installs the template's frozen lockfile on Node 24 and runs `bash scripts/check-product.sh`: the isolated regression scripts (`pnpm test`), the eve surface freshness check (`pnpm eve:surface:check`, which reads the live registry), eve compilation, Next.js type generation and checking, a Next.js production build, and Playwright Chromium acceptance. Explicit exit handling prevents successful log pipelines from concealing failed commands. CI has no production credentials or production data.
+The read-only product workflow installs the template's frozen lockfile on Node 24 and runs `bash scripts/check-product.sh`: the isolated regression scripts (`pnpm test`), the eve surface freshness check (`pnpm eve:surface:check`, which reads the live registry), the upstream template freshness check (`pnpm upstream:check`, which reads `vercel/eve` main), eve compilation, Next.js type generation and checking, a Next.js production build, and Playwright Chromium acceptance. Explicit exit handling prevents successful log pipelines from concealing failed commands. CI has no production credentials or production data.
 
 The existing root workflow checks framework lint, invariants, documentation and framework tests. A failure predating the release requires baseline evidence; it must not simply be dismissed. The main baseline `a82f3045ba8edeac3328913932465da8b65bbabb` already has a failing `test-tui` job in run `35804349097` (job `107001675492`). Product changes do not modify that framework TUI. New product failures remain release blockers.
 

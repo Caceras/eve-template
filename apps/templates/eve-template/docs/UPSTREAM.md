@@ -30,6 +30,8 @@ For every capability:
 
 `scripts/test-upstream.mjs` (part of `pnpm test`) compares this app with `apps/templates/eve-chat-template`. Every upstream file the app changes or removes is listed in `docs/upstream-divergence.json` with a reason and a fingerprint of the upstream version it was reviewed against. The check fails when a new divergence has no reason, when a listed file matches upstream again (the list only shrinks), and when upstream changes a listed file, which is the cue to port that change. After reviewing, `node scripts/test-upstream.mjs --write` records new divergences as `TODO` and refreshes fingerprints; replace each `TODO` with a reason. Cosmetic-only differences are restored to upstream rather than listed.
 
+The baseline itself is kept live: `pnpm upstream:check` (part of `scripts/check-product.sh`) fetches `apps/templates/eve-chat-template` from `vercel/eve` main and fails when the local copy is behind. `pnpm upstream:sync` refreshes it; then run `pnpm test` and port or record each upstream change.
+
 ## Deliberate overrides
 
 A few overrides exist because demonstrating composition is itself useful:
