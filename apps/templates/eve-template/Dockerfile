@@ -14,7 +14,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 FROM deps AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build:eve && pnpm build
+# The runner copies /app whole, so drop the build cache and dev-only packages here.
+RUN pnpm build:eve && pnpm build && rm -rf .next/cache && CI=true pnpm prune --prod
 
 FROM base AS runner
 RUN apt-get update \

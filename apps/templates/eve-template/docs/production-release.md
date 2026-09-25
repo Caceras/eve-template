@@ -36,7 +36,7 @@ switching is one click. See [SELF_HOSTING.md](./SELF_HOSTING.md).
 ## Deploy and verify
 
 Build: `pnpm install --frozen-lockfile`, `pnpm build:eve`, `pnpm build`
-(Node 24). Release only a merged revision whose product check passed:
+(Node 24); the image then drops `.next/cache` and dev-only packages. Release only a merged revision whose product check passed:
 
 1. Confirm Dokploy `agents/eve-chat`: repository `Caceras/eve-template`, branch
    `main`, Docker context `apps/templates/eve-template`. Keep `eve-chat-data`
