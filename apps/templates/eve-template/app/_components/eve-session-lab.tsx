@@ -2,8 +2,10 @@
 
 import { Client, type ClientSession } from "eve/client";
 import {
+  AlertCircleIcon,
   CheckCircle2Icon,
   EraserIcon,
+  InfoIcon,
   ListRestartIcon,
   ScanSearchIcon,
   SquareIcon,
@@ -19,57 +21,99 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { forgetClientChatSession } from "@/lib/chat/persistence-client";
+import {
+  describeSessionError,
+  describeSessionResult,
+  errorDetail,
+  type SessionAction,
+} from "@/lib/chat/session-results";
 import type { ActiveChat, ChatListItem } from "@/lib/chat/types";
+import { cn } from "@/lib/utils";
 import { useChatShell } from "./chat-shell-context";
+import { ConfirmButton } from "./confirm-button";
+import { LoadError } from "./load-error";
+
+type Status = { readonly tone: "info" | "success" | "error"; readonly text: string };
+const STATUS_ICONS = { info: InfoIcon, success: CheckCircle2Icon, error: AlertCircleIcon };
 
 export function EveSessionLab() {
-  const { viewer } = useChatShell();
+  const { setupStatus, viewer } = useChatShell();
   const [chats, setChats] = useState<ChatListItem[]>([]);
+  // Empty only after a load that worked; a failed load says so, with Retry.
+  const [chatsState, setChatsState] = useState<"loading" | "ready" | "failed">("loading");
+  const [chatsAttempt, setChatsAttempt] = useState(0);
   const [chatId, setChatId] = useState("");
   const [sessionId, setSessionId] = useState("");
-  const [status, setStatus] = useState(
-    "Choose a conversation or paste a session ID to inspect its durable event stream.",
-  );
+  const [status, setStatus] = useState<Status>({
+    tone: "info",
+    text: "Choose a conversation or paste a session ID to inspect its durable event stream.",
+  });
   const [events, setEvents] = useState<unknown[]>([]);
   const [busy, setBusy] = useState(false);
+  const StatusIcon = STATUS_ICONS[status.tone];
 
   useEffect(() => {
     if (!viewer) return;
     let cancelled = false;
     void fetch("/api/chats", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : { chats: [] }))
-      .then((data: { chats?: ChatListItem[] }) => !cancelled && setChats(data.chats ?? []))
-      .catch(() => undefined);
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load conversations.");
+        return (await response.json()) as { chats?: ChatListItem[] };
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setChats(data.chats ?? []);
+        setChatsState("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setChatsState("failed");
+      });
     return () => {
       cancelled = true;
     };
-  }, [viewer]);
+  }, [viewer, chatsAttempt]);
 
   const chooseChat = async (id: string) => {
     setChatId(id);
-    const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, { cache: "no-store" });
-    const data = (await response.json().catch(() => ({}))) as { chat?: ActiveChat | null };
+    let data: { chat?: ActiveChat | null };
+    try {
+      const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not open the conversation.");
+      data = await response.json();
+    } catch {
+      setStatus({
+        tone: "error",
+        text: "Couldn't open this conversation. Check the connection and try again.",
+      });
+      return;
+    }
     const next = data.chat?.session?.sessionId;
     if (!next) {
       setSessionId("");
       setEvents([]);
-      setStatus("This conversation has no durable session yet. Send it a message first.");
+      setStatus({
+        tone: "info",
+        text: "This conversation has no durable session yet. Send it a message first.",
+      });
       return;
     }
     setSessionId(next);
     await inspect(next);
   };
 
-  const withSession = async (operation: (session: ClientSession) => Promise<unknown>) => {
+  const withSession = async (
+    action: SessionAction,
+    operation: (session: ClientSession) => Promise<unknown>,
+  ) => {
     const id = sessionId.trim();
     if (!id) return;
     setBusy(true);
     try {
       const session = new Client({ host: "" }).sessions.attach(id);
-      const result = await operation(session);
-      setStatus(JSON.stringify(result));
+      setStatus({ tone: "success", text: describeSessionResult(action, await operation(session)) });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Session operation failed.");
+      setStatus({ tone: "error", text: describeSessionError(action, error) });
     } finally {
       setBusy(false);
     }
@@ -85,9 +129,12 @@ export function EveSessionLab() {
         collected.push(event);
       }
       setEvents(collected);
-      setStatus(`Loaded ${collected.length} durable stream events.`);
+      setStatus({
+        tone: "success",
+        text: `Loaded ${collected.length} durable stream ${collected.length === 1 ? "event" : "events"}.`,
+      });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not inspect session.");
+      setStatus({ tone: "error", text: `Couldn't inspect this session.${errorDetail(error)}` });
     } finally {
       setBusy(false);
     }
@@ -107,9 +154,22 @@ export function EveSessionLab() {
         <div className="mt-7 rounded-xl border bg-card p-4 sm:p-5">
           <div className="grid gap-2 sm:grid-cols-2">
             <Select disabled={busy || chats.length === 0} onValueChange={chooseChat} value={chatId}>
-              <SelectTrigger aria-label="Conversation" className="h-11 w-full md:h-9">
+              <SelectTrigger
+                aria-label="Conversation"
+                className="w-full data-[size=default]:h-11 pointer-fine:md:data-[size=default]:h-9"
+              >
                 <SelectValue
-                  placeholder={chats.length ? "Choose a conversation" : "No conversations yet"}
+                  placeholder={
+                    !viewer
+                      ? "Sign in to choose a conversation"
+                      : chatsState === "loading"
+                        ? "Loading conversations…"
+                        : chatsState === "failed"
+                          ? "Conversations unavailable"
+                          : chats.length
+                            ? "Choose a conversation"
+                            : "No conversations yet"
+                  }
                 />
               </SelectTrigger>
               <SelectContent>
@@ -124,7 +184,7 @@ export function EveSessionLab() {
               aria-label="Session ID"
               autoCapitalize="off"
               autoCorrect="off"
-              className="h-11 font-mono text-xs md:h-9"
+              className="h-11 font-mono text-xs pointer-fine:md:h-9"
               onChange={(event) => {
                 setChatId("");
                 setSessionId(event.target.value);
@@ -138,7 +198,7 @@ export function EveSessionLab() {
             <Button
               disabled={busy || !sessionId.trim()}
               onClick={() => void inspect()}
-              className="col-span-2 h-11 md:h-8 lg:col-span-1"
+              className="col-span-2 h-11 pointer-fine:md:h-8 lg:col-span-1"
               size="sm"
               variant="outline"
             >
@@ -146,8 +206,8 @@ export function EveSessionLab() {
             </Button>
             <Button
               disabled={busy || !sessionId.trim()}
-              onClick={() => void withSession((session) => session.cancel())}
-              className="h-11 md:h-8"
+              onClick={() => void withSession("cancel", (session) => session.cancel())}
+              className="h-11 pointer-fine:md:h-8"
               size="sm"
               variant="outline"
             >
@@ -155,39 +215,66 @@ export function EveSessionLab() {
             </Button>
             <Button
               disabled={busy || !sessionId.trim()}
-              onClick={() => void withSession((session) => session.compact())}
-              className="h-11 md:h-8"
+              onClick={() => void withSession("compact", (session) => session.compact())}
+              className="h-11 pointer-fine:md:h-8"
               size="sm"
               variant="outline"
             >
               <WandSparklesIcon className="size-4" /> Compact
             </Button>
-            <Button
+            <ConfirmButton
               disabled={busy || !sessionId.trim()}
-              onClick={() => void withSession((session) => session.clear())}
-              className="h-11 md:h-8"
+              title="Clear this conversation's context?"
+              description="Ægentica forgets what was said so far in this conversation. The chat history stays visible."
+              confirmLabel="Clear context"
+              onConfirm={() => void withSession("clear", (session) => session.clear())}
+              className="h-11 pointer-fine:md:h-8"
               size="sm"
               variant="outline"
             >
               <EraserIcon className="size-4" /> Clear context
-            </Button>
-            <Button
+            </ConfirmButton>
+            <ConfirmButton
               disabled={busy || !sessionId.trim()}
-              onClick={() =>
-                void withSession((session) =>
-                  session.reset({ reason: "Requested from Ægentica Activity" }),
-                )
+              title="Reset this conversation?"
+              description="The conversation starts over from nothing. This cannot be undone."
+              confirmLabel="Reset"
+              onConfirm={() =>
+                void withSession("reset", async (session) => {
+                  const result = await session.reset({
+                    reason: "Requested from Ægentica Activity",
+                  });
+                  // A reset session refuses messages: the chat that used it starts a new one.
+                  await forgetClientChatSession(setupStatus.storageMode, session.state.sessionId);
+                  return result;
+                })
               }
-              className="h-11 md:h-8"
+              className="h-11 pointer-fine:md:h-8"
               size="sm"
               variant="outline"
             >
               <ListRestartIcon className="size-4" /> Reset
-            </Button>
+            </ConfirmButton>
           </div>
-          <div className="mt-4 flex items-start gap-2 rounded-lg bg-muted/45 px-3 py-2.5 text-xs text-muted-foreground">
-            <CheckCircle2Icon className="mt-0.5 size-3.5 shrink-0" />
-            <p className="break-words">{status}</p>
+          {viewer && chatsState === "failed" ? (
+            <LoadError
+              className="mt-3 p-3 sm:p-3"
+              message="Couldn't load your conversations. A session ID still works."
+              onRetry={() => {
+                setChatsState("loading");
+                setChatsAttempt((count) => count + 1);
+              }}
+            />
+          ) : null}
+          <div
+            className={cn(
+              "mt-4 flex items-start gap-2 rounded-lg bg-muted/45 px-3 py-2.5 text-xs text-muted-foreground",
+              status.tone === "error" && "bg-destructive/10 text-destructive",
+            )}
+            role="status"
+          >
+            <StatusIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            <p className="break-words">{status.text}</p>
           </div>
         </div>
 

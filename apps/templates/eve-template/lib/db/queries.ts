@@ -11,6 +11,8 @@ export const listChatsByUser: typeof postgres.listChatsByUser = (...args) =>
 export const listChatsPageByUser: typeof postgres.listChatsPageByUser = (...args) =>
   store().listChatsPageByUser(...args);
 export const createChat: typeof postgres.createChat = (...args) => store().createChat(...args);
+export const chatExistsForUser: typeof postgres.chatExistsForUser = (...args) =>
+  store().chatExistsForUser(...args);
 export const getChatForUser: typeof postgres.getChatForUser = (...args) =>
   store().getChatForUser(...args);
 export const markChatPendingMessage: typeof postgres.markChatPendingMessage = (...args) =>
@@ -21,9 +23,13 @@ export const skipChatAuthorization: typeof postgres.skipChatAuthorization = (...
   store().skipChatAuthorization(...args);
 export const saveChatSessionState: typeof postgres.saveChatSessionState = (...args) =>
   store().saveChatSessionState(...args);
+export const forgetChatSession: typeof postgres.forgetChatSession = (...args) =>
+  store().forgetChatSession(...args);
 export const appendChatEvent: typeof postgres.appendChatEvent = (...args) =>
   store().appendChatEvent(...args);
 export const saveChatSnapshot: typeof postgres.saveChatSnapshot = (...args) =>
   store().saveChatSnapshot(...args);
+export const renameChatForUser: typeof postgres.renameChatForUser = (...args) =>
+  store().renameChatForUser(...args);
 export const deleteChatForUser: typeof postgres.deleteChatForUser = (...args) =>
   store().deleteChatForUser(...args);

@@ -17,6 +17,9 @@ const allowedHosts = [
   "127.0.0.1:3000",
   "127.0.0.1:3001",
   "*.vercel.app",
+  // Production hosts (docs/RELEASE_VERIFICATION.md).
+  "aegentica.se",
+  "www.aegentica.se",
   "ai-chat.se",
   getAppUrlHost(process.env.BETTER_AUTH_URL),
   getAppUrlHost(process.env.VERCEL_PROJECT_PRODUCTION_URL),

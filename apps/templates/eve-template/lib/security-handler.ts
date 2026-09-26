@@ -9,7 +9,8 @@ import {
   PASSWORD_SESSION_MAX_AGE,
   verifyChatPassword,
 } from "./password-auth";
-import { isSecureAuthHintCookie } from "./auth-hint";
+import { rotatePasswordSessions } from "./password-sessions";
+import { AUTH_HINT_COOKIE_NAME, isSecureAuthHintCookie } from "./auth-hint";
 import { withSettingsLock, writeJson } from "./secure-settings";
 
 export function handleSecurity(request: Request) {
@@ -17,6 +18,21 @@ export function handleSecurity(request: Request) {
     maxBytes: 2048,
     read: async () => json(passwordSettings()),
     write: async (body) => {
+      if (body.signOutEverywhere === true && Object.keys(body).length === 1) {
+        await rotatePasswordSessions();
+        // This browser's cookie is now invalid too; clear it so it signs in again.
+        const response = json({ signedOut: true });
+        const secure = isSecureAuthHintCookie() ? "; Secure" : "";
+        for (const [name, httpOnly] of [
+          [PASSWORD_SESSION_COOKIE_NAME, "; HttpOnly"],
+          [AUTH_HINT_COOKIE_NAME, ""],
+        ])
+          response.headers.append(
+            "Set-Cookie",
+            `${name}=; Path=/${httpOnly}; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT${secure}`,
+          );
+        return response;
+      }
       const { currentPassword, newPassword } = body;
       if (
         Object.keys(body).some((key) => key !== "currentPassword" && key !== "newPassword") ||

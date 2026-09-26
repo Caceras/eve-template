@@ -1,9 +1,11 @@
 "use client";
+import { BrandIcon } from "@/components/brand-icon";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ExternalLinkIcon, Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmButton } from "./confirm-button";
 
 type Status =
   | { connected: false; unreadable?: true }
@@ -56,6 +58,7 @@ export function GithubSettings() {
   return (
     <section aria-labelledby="github-title" className="rounded-lg border bg-card p-4 sm:p-5">
       <h2 id="github-title" className="flex items-center gap-2 font-medium">
+        <BrandIcon brand="github" name="GitHub" />
         GitHub
         {status?.connected && <Badge variant="secondary">Connected</Badge>}
       </h2>
@@ -87,15 +90,18 @@ export function GithubSettings() {
             )}
           </p>
           {status.source === "app" && (
-            <Button
+            <ConfirmButton
               variant="ghost"
-              className="-ml-2 h-11 px-2 text-muted-foreground md:h-9"
+              className="-ml-2 h-11 px-2 text-muted-foreground pointer-fine:md:h-9"
               disabled={Boolean(busy)}
-              onClick={() => void run("disconnect")}
+              title="Disconnect GitHub?"
+              description="The saved token is deleted. Ægentica loses access to your repositories until you add a token again."
+              confirmLabel="Disconnect"
+              onConfirm={() => void run("disconnect")}
             >
               {busy === "disconnect" && <Loader2Icon className="size-4 animate-spin" />}
               Disconnect
-            </Button>
+            </ConfirmButton>
           )}
         </div>
       ) : (

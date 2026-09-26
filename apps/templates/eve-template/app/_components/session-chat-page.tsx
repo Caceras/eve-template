@@ -1,7 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   AgentChatSession,
   type AgentChatController,
@@ -9,12 +16,14 @@ import {
 } from "@/app/_components/agent-chat";
 import { ComposerFooterControls } from "@/components/chat/composer-footer-controls";
 import { ErrorToast } from "@/components/chat/error-toast";
+import { START_CHAT_ERROR_KEY, START_CHAT_SIGN_IN_KEY } from "@/app/_components/home-chat-page";
 import {
   CHAT_ROUTE_SYNC_EVENT,
   type ChatRouteSyncDetail,
 } from "@/app/_components/agent-chat-events";
 import { useChatShell } from "@/app/_components/chat-shell-context";
 import { ChatComposer } from "@/components/chat/composer";
+import { ComposerDock } from "@/components/chat/pending-turn";
 import {
   clearPendingChatMessage,
   isProvisionalChatId,
@@ -24,12 +33,17 @@ import {
 import { createClientChat, getClientChat } from "@/lib/chat/persistence-client";
 import type { ActiveChat, SetupStatus } from "@/lib/chat/types";
 import { moveComposerDraft } from "@/lib/chat/composer-draft";
+import { readDraftText, saveDraftText } from "@/lib/chat/draft-text";
+import { receivedUserText } from "@/lib/chat/event-log";
+import { isSignInError, readableChatError } from "@/lib/chat/errors";
 
+const subscribeNever = () => () => {};
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
   canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
+  isSyncing: false,
 };
 
 export function SessionChatPage({
@@ -39,15 +53,30 @@ export function SessionChatPage({
   readonly chatId: string;
   readonly children: ReactNode;
 }) {
-  const { setActiveChatId, setupStatus, touchChat, viewer } = useChatShell();
+  const { requestSignIn, setActiveChatId, setupStatus, touchChat, viewer } = useChatShell();
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [draft, setDraft] = useState("");
   const [controllerReady, setControllerReady] = useState(false);
   const [controllerStatus, setControllerStatus] = useState(IDLE_CONTROLLER_STATUS);
-  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
+  // The message that opened this chat is on screen from the first frame (the
+  // home page hands it over in session storage); a hard load hydrates with
+  // nothing and reads it in the effect below.
+  const initialPendingMessage = useSyncExternalStore(
+    subscribeNever,
+    () => readPendingChatMessage(chatId),
+    () => null,
+  );
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(
+    initialPendingMessage,
+  );
   const [clientError, setClientError] = useState<string | null>(null);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const controllerRef = useRef<AgentChatController | null>(null);
+  // The status the current chat instance reported last. While a loaded chat
+  // replaces the loading placeholder, the rendered status is still the
+  // placeholder's, so the send below must not trust it.
+  const controllerStatusRef = useRef(IDLE_CONTROLLER_STATUS);
+  const activeChatRef = useRef<ActiveChat | null>(null);
   const currentChatIdRef = useRef(chatId);
   const pendingConsumedRef = useRef(false);
   const provisionalCreateStartedRef = useRef(new Set<string>());
@@ -61,16 +90,10 @@ export function SessionChatPage({
     currentChatIdRef.current = chatId;
   }, [chatId]);
 
-  useEffect(() => {
-    controllerRef.current = null;
-    setControllerReady(false);
-    setControllerStatus(IDLE_CONTROLLER_STATUS);
-    setActiveChat(null);
-    setDraft("");
-    setPendingUserMessage(null);
-    pendingConsumedRef.current = false;
-    settledPendingMessagesRef.current = new Set();
-  }, [chatId]);
+  // No reset effect on chatId: the page is keyed by chat id, so it starts fresh
+  // for each chat. Next keeps a left page alive and re-runs its effects when
+  // Back shows it again; a reset there forgot which message was already sent
+  // and sent it a second time.
 
   useEffect(() => {
     const restoredPendingMessage = readPendingChatMessage(chatId);
@@ -125,12 +148,20 @@ export function SessionChatPage({
 
         clearPendingChatMessage(chatId);
         setPendingUserMessage(null);
-
+        const reason = readableChatError(
+          error,
+          "Failed to start chat.",
+          "You're offline. Your message is still in the box.",
+        );
+        // This page is hidden once it leaves, so the home page shows why (and,
+        // for an expired sign-in, asks to sign in again with the message kept).
         try {
           window.sessionStorage.setItem("eve-chat-draft", pendingMessage);
+          window.sessionStorage.setItem(START_CHAT_ERROR_KEY, reason);
+          if (isSignInError(error)) window.sessionStorage.setItem(START_CHAT_SIGN_IN_KEY, "1");
         } catch {}
 
-        setClientError(error instanceof Error ? error.message : "Failed to start chat.");
+        setClientError(reason);
         router.replace("/", { scroll: false });
       }
     })();
@@ -154,27 +185,34 @@ export function SessionChatPage({
   }, [chatId, setActiveChatId]);
 
   useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
     const applyRouteSync = (detail: ChatRouteSyncDetail) => {
-      if (detail.chatId !== chatId) {
+      // The chat page's server data only confirms the chat exists; the chat
+      // itself is loaded below. A route without a chat must never clear one.
+      if (detail.chatId !== chatId || !detail.activeChat) {
         return;
       }
-      setActiveChat((current) => {
-        if (!detail.activeChat && current?.id === chatId) {
-          return current;
-        }
+      // The route data is what the server rendered when the page was first
+      // opened; a page shown again by Back replays it. It fills an empty page
+      // but never replaces a newer chat or brings back a sent message.
+      const current = activeChatRef.current;
+      if (current?.id === chatId) {
+        if (detail.activeChat && detail.activeChat.events.length >= current.events.length)
+          setActiveChat(detail.activeChat);
+        return;
+      }
 
-        return detail.activeChat;
-      });
-      setPendingUserMessage((current) => {
-        if (detail.activeChat) {
-          return getRestorablePendingUserMessage(
-            detail.activeChat.pendingUserMessage,
-            settledPendingMessagesRef.current,
-          );
-        }
-
-        return current;
-      });
+      setActiveChat(detail.activeChat);
+      setPendingUserMessage(
+        getRestorablePendingUserMessage(
+          detail.activeChat.pendingUserMessage,
+          settledPendingMessagesRef.current,
+          detail.activeChat.events,
+        ),
+      );
     };
     const target = window as Window & {
       __eveChatRouteSync?: ChatRouteSyncDetail;
@@ -218,6 +256,7 @@ export function SessionChatPage({
         const nextPendingUserMessage = getRestorablePendingUserMessage(
           chat.pendingUserMessage,
           settledPendingMessagesRef.current,
+          chat.events,
         );
 
         setPendingUserMessage(nextPendingUserMessage);
@@ -228,7 +267,8 @@ export function SessionChatPage({
         setClientError(null);
       } catch (error) {
         if (!cancelled && !abortController.signal.aborted) {
-          setClientError(error instanceof Error ? error.message : "Failed to load chat history.");
+          if (isSignInError(error)) requestSignIn();
+          setClientError(readableChatError(error, "Failed to load chat history."));
         }
       }
     })();
@@ -237,7 +277,14 @@ export function SessionChatPage({
       cancelled = true;
       abortController.abort();
     };
-  }, [chatId, isProvisionalChat, setupStatus.appReady, setupStatus.storageMode, viewer]);
+  }, [
+    chatId,
+    isProvisionalChat,
+    requestSignIn,
+    setupStatus.appReady,
+    setupStatus.storageMode,
+    viewer,
+  ]);
 
   useEffect(() => {
     if (!viewer) {
@@ -249,16 +296,28 @@ export function SessionChatPage({
     if (restoredDraft) {
       setDraft(restoredDraft);
       window.sessionStorage.removeItem("eve-chat-draft");
+    } else if (!isProvisionalChat) {
+      const saved = readDraftText(chatId);
+      if (saved) setDraft(saved);
     }
-  }, [viewer]);
+  }, [chatId, isProvisionalChat, viewer]);
+
+  // A chat that is still being created has no lasting id to keep a draft under.
+  useEffect(() => {
+    if (viewer && !isProvisionalChat) saveDraftText(chatId, draft);
+  }, [chatId, draft, isProvisionalChat, viewer]);
 
   useEffect(() => {
+    // A restored pending message waits until the chat has read its session:
+    // if eve already received it, that turn resumes instead of a second send.
+    const status = controllerStatusRef.current;
     if (
       pendingConsumedRef.current ||
       isLoadingChat ||
       !controllerReady ||
-      controllerStatus.isBusy ||
-      controllerStatus.isDisabled
+      status.isSyncing ||
+      status.isBusy ||
+      status.isDisabled
     ) {
       return;
     }
@@ -287,6 +346,7 @@ export function SessionChatPage({
     controllerReady,
     controllerStatus.isBusy,
     controllerStatus.isDisabled,
+    controllerStatus.isSyncing,
     isLoadingChat,
     pendingUserMessage,
   ]);
@@ -298,14 +358,9 @@ export function SessionChatPage({
   const handleControllerChange = useCallback(
     (controller: AgentChatController | null, status: AgentChatControllerStatus) => {
       controllerRef.current = controller;
+      controllerStatusRef.current = status;
       setControllerReady(Boolean(controller));
-      setControllerStatus((current) =>
-        current.isBusy === status.isBusy &&
-        current.isDisabled === status.isDisabled &&
-        current.isEmpty === status.isEmpty
-          ? current
-          : status,
-      );
+      setControllerStatus((current) => (sameControllerStatus(current, status) ? current : status));
     },
     [],
   );
@@ -349,14 +404,10 @@ export function SessionChatPage({
     [chatId],
   );
 
+  // A saved turn settles only its own messages (handlePendingUserMessageSettled):
+  // saving another turn (a task result) must not drop a message still to send.
   const handleActiveChatUpdated = useCallback((nextActiveChat: ActiveChat) => {
     setActiveChat(nextActiveChat);
-    setPendingUserMessage(
-      getRestorablePendingUserMessage(
-        nextActiveChat.pendingUserMessage,
-        settledPendingMessagesRef.current,
-      ),
-    );
   }, []);
 
   const composerDisabled =
@@ -388,22 +439,20 @@ export function SessionChatPage({
         pendingUserMessage={pendingUserMessage}
       />
 
-      <div className="shrink-0 bg-gradient-to-t from-background via-background/96 to-transparent px-0 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-4 sm:pb-5 sm:pt-4">
-        <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">
-          <ChatComposer
-            allowSteering={controllerStatus.canSteer}
-            disabled={composerDisabled}
-            disabledReason={composerDisabledReason}
-            footerStart={<ComposerFooterControls setupStatus={setupStatus} />}
-            isBusy={controllerStatus.isBusy}
-            onChange={setDraft}
-            onStop={handleComposerStop}
-            onSubmit={handleComposerSubmit}
-            placeholder="Message Ægentica"
-            value={draft}
-          />
-        </div>
-      </div>
+      <ComposerDock>
+        <ChatComposer
+          allowSteering={controllerStatus.canSteer}
+          disabled={composerDisabled}
+          disabledReason={composerDisabledReason}
+          footerStart={<ComposerFooterControls setupStatus={setupStatus} />}
+          isBusy={controllerStatus.isBusy}
+          onChange={setDraft}
+          onStop={handleComposerStop}
+          onSubmit={handleComposerSubmit}
+          placeholder="Message Ægentica"
+          value={draft}
+        />
+      </ComposerDock>
 
       <div className="hidden" aria-hidden>
         {children}
@@ -412,15 +461,42 @@ export function SessionChatPage({
   );
 }
 
+function sameControllerStatus(left: AgentChatControllerStatus, right: AgentChatControllerStatus) {
+  return (
+    left.canSteer === right.canSteer &&
+    left.disabledReason === right.disabledReason &&
+    left.isBusy === right.isBusy &&
+    left.isDisabled === right.isDisabled &&
+    left.isEmpty === right.isEmpty &&
+    left.isSyncing === right.isSyncing
+  );
+}
+
 function getRestorablePendingUserMessage(
   pendingUserMessage: string | null | undefined,
   settledMessages: ReadonlySet<string>,
+  savedEvents: ActiveChat["events"] = [],
 ) {
-  if (!pendingUserMessage || settledMessages.has(pendingUserMessage)) {
+  if (
+    !pendingUserMessage ||
+    settledMessages.has(pendingUserMessage) ||
+    latestReceivedMessage(savedEvents) === pendingUserMessage.trim()
+  ) {
     return null;
   }
 
   return pendingUserMessage;
+}
+
+// The server clears a pending message only with the end-of-turn save, so a
+// reload just before it still finds one. If eve already received it, the chat
+// resumes that turn instead of sending the message a second time.
+function latestReceivedMessage(events: ActiveChat["events"]) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type === "message.received") return receivedUserText(event);
+  }
+  return null;
 }
 
 function getSessionComposerDisabledReason({

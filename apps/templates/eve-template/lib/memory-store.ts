@@ -32,13 +32,20 @@ function db() {
   if (!directory) throw new Error("EVE_MEMORY_DIR is not set.");
   if (database) return database;
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  database = new DatabaseSync(join(directory, "profile.sqlite"));
-  database.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA busy_timeout = 5000;
-    CREATE TABLE IF NOT EXISTS memory (key TEXT PRIMARY KEY, content TEXT NOT NULL, version TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS memory_owner (role TEXT PRIMARY KEY, key TEXT NOT NULL);
-  `);
+  // Waits for eve's connection from the first statement (see sqlite-queries.ts),
+  // and is cached only once set up so a failed first attempt is retried.
+  const connection = new DatabaseSync(join(directory, "profile.sqlite"), { timeout: 5000 });
+  try {
+    connection.exec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS memory (key TEXT PRIMARY KEY, content TEXT NOT NULL, version TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_owner (role TEXT PRIMARY KEY, key TEXT NOT NULL);
+    `);
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+  database = connection;
   return database;
 }
 
@@ -69,8 +76,11 @@ export function parseMemoryDocument(content: string | undefined): ParsedDocument
   return { entries, lastAllocatedIndex: Number(header[1]) };
 }
 
+/** Byte-for-byte eve's own format: an empty document is the header alone. */
 export function formatMemoryDocument(document: ParsedDocument) {
-  return `<!-- eve-memory-file-v1 lastAllocatedIndex=${document.lastAllocatedIndex} -->\n${document.entries
+  const header = `<!-- eve-memory-file-v1 lastAllocatedIndex=${document.lastAllocatedIndex} -->\n`;
+  if (document.entries.length === 0) return header;
+  return `${header}${document.entries
     .toSorted((left, right) => left.index - right.index)
     .map((entry) => `${entry.index}: ${entry.text}`)
     .join("\n")}\n`;
@@ -135,7 +145,8 @@ function change(edit: (document: ParsedDocument) => ParsedDocument) {
     connection.exec("COMMIT");
     return next.entries;
   } catch (error) {
-    connection.exec("ROLLBACK");
+    // Already rolled back by SQLite on some errors, such as a full disk.
+    if (connection.isTransaction) connection.exec("ROLLBACK");
     throw error;
   }
 }

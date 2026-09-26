@@ -1,6 +1,6 @@
 // Generated from the installed eve package and https://eve.dev/r/registry.json. Do not edit by hand.
 export const eveSurface = {
-  "eveVersion": "0.66.3",
+  "eveVersion": "0.67.0",
   "packageExports": [
     ".",
     "./agents/auth",

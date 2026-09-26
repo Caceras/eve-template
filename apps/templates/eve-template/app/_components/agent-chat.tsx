@@ -1,13 +1,16 @@
 "use client";
-import { modelRequestHeaders } from "@/lib/chat/model-preference";
-import { composerTurn, clearComposerFiles, readComposerDraft } from "@/lib/chat/composer-draft";
+import {
+  composerHeaders,
+  composerTurn,
+  clearComposerFiles,
+  readComposerDraft,
+} from "@/lib/chat/composer-draft";
 
-import { Client } from "eve/client";
+import { Client, ClientError } from "eve/client";
 import type {
   AuthorizationRequiredStreamEvent,
   ClientSession,
   ClientSessionState,
-  EveAgentStoreSnapshot,
   EveMessageData,
   MessageStreamEvent,
 } from "eve/client";
@@ -16,31 +19,51 @@ import { defaultMessageReducer } from "eve/react";
 import { useEveAgent } from "@/lib/chat/use-reliable-eve-agent";
 import { ExternalLinkIcon, PlugIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useChatShell, type EnabledConnections } from "@/app/_components/chat-shell-context";
 import {
   ChatConversation,
   ChatConversationContent,
   ChatScrollButton,
 } from "@/components/chat/conversation";
-import { AgentMessage } from "@/components/chat/message";
+import { AgentMessage, type AgentInputResponse } from "@/components/chat/message";
+import { ThinkingLine } from "@/components/chat/pending-turn";
 import { ErrorToast } from "@/components/chat/error-toast";
+import { describeTurnFailure } from "@/lib/turn-failure";
 import { Button } from "@/components/ui/button";
+import {
+  compactStreamFragments,
+  createSeenEvents,
+  hasSeen,
+  isStreamFragment,
+  markSeen,
+  receivedUserText,
+  type SeenEvents,
+} from "@/lib/chat/event-log";
 import { isChatTurnSettledEvent } from "@/lib/chat/events";
+import { isSignInError, readableChatError } from "@/lib/chat/errors";
 import { getChatMessageLengthError } from "@/lib/chat/limits";
 import {
   appendClientChatEvent,
   checkClientSendLimit,
   clearClientChatPendingMessage,
   createClientChat,
+  forgetClientChatSession,
   markClientChatPendingMessage,
   saveClientChatSession,
   saveClientChatSnapshot,
-  skipClientChatAuthorization,
 } from "@/lib/chat/persistence-client";
 import type { ActiveChat, SetupStatus } from "@/lib/chat/types";
-
-type AgentSnapshot = EveAgentStoreSnapshot<EveMessageData>;
 
 export type DraftHandlers = {
   readonly clearDraft: () => void;
@@ -59,6 +82,12 @@ export type AgentChatControllerStatus = {
   readonly isBusy: boolean;
   readonly isDisabled: boolean;
   readonly isEmpty: boolean;
+  /**
+   * The chat is still reading its session from the saved cursor. A message
+   * that was pending when the page closed is sent again only after this, and
+   * only if eve never received it.
+   */
+  readonly isSyncing: boolean;
 };
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
@@ -66,49 +95,10 @@ const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
+  isSyncing: false,
 };
 
 const THINKING_EXIT_DURATION_MS = 180;
-
-function advanceBrowserSession({
-  baseStreamIndex,
-  events,
-  sessionId,
-}: {
-  readonly baseStreamIndex: number;
-  readonly events: readonly MessageStreamEvent[];
-  readonly sessionId: string;
-}): ClientSessionState | undefined {
-  const boundary = findBoundaryEvent(events);
-
-  if (boundary?.type === "session.waiting") {
-    return {
-      sessionId,
-      streamIndex: baseStreamIndex + events.length,
-    };
-  }
-
-  const lastEvent = events.at(-1);
-
-  if (lastEvent?.type === "authorization.required") {
-    return {
-      sessionId,
-      streamIndex: baseStreamIndex + events.length,
-    };
-  }
-
-  return undefined;
-}
-
-function findBoundaryEvent(events: readonly MessageStreamEvent[]) {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-
-    if (event && isChatTurnSettledEvent(event)) {
-      return event;
-    }
-  }
-}
 
 function attachClientSession(session: ClientSessionState | undefined): ClientSession | null {
   if (!session) return null;
@@ -117,15 +107,64 @@ function attachClientSession(session: ClientSessionState | undefined): ClientSes
   });
 }
 
-function reduceEventsToMessageData(events: readonly MessageStreamEvent[]): EveMessageData {
-  const reducer = defaultMessageReducer();
-  let data = reducer.initial();
+const messageReducer = defaultMessageReducer();
 
+function reduceEventsToMessageData(
+  events: readonly MessageStreamEvent[],
+  data: EveMessageData = messageReducer.initial(),
+): EveMessageData {
   for (const event of events) {
-    data = reducer.reduce(data, event);
+    data = messageReducer.reduce(data, event);
   }
 
   return data;
+}
+
+/**
+ * The chat's messages: the saved history is reduced once per save, and each
+ * event that arrives is applied on top of the last result rather than
+ * reducing the whole chat again (eve's reducer keeps unchanged messages as
+ * they were, so memoized rows skip them).
+ */
+function useMessageData(
+  knownEvents: readonly MessageStreamEvent[],
+  liveEvents: readonly MessageStreamEvent[],
+) {
+  const knownData = useMemo(() => reduceEventsToMessageData(knownEvents), [knownEvents]);
+  const last = useRef<{
+    readonly base: EveMessageData;
+    readonly data: EveMessageData;
+    readonly events: readonly MessageStreamEvent[];
+  } | null>(null);
+
+  return useMemo(() => {
+    const previous = last.current;
+    const extends_ =
+      previous?.base === knownData &&
+      previous.events.length <= liveEvents.length &&
+      (previous.events.length === 0 ||
+        liveEvents[previous.events.length - 1] === previous.events.at(-1));
+    const data = extends_
+      ? reduceEventsToMessageData(liveEvents.slice(previous.events.length), previous.data)
+      : reduceEventsToMessageData(liveEvents, knownData);
+    last.current = { base: knownData, data, events: liveEvents };
+    return data;
+  }, [knownData, liveEvents]);
+}
+
+/** A row re-renders only when its message, state or place in the chat changes. */
+const ChatMessage = memo(AgentMessage);
+
+/** The last message is a reply whose last part is still visibly arriving. */
+function isReplyInProgress(message: EveMessage | undefined) {
+  if (message?.role !== "assistant") return false;
+  const part = message.parts.at(-1);
+  if (!part) return false;
+  if (part.type === "text") return part.state === "streaming" && part.text.length > 0;
+  if (part.type === "reasoning") return part.state === "streaming";
+  if (part.type === "dynamic-tool")
+    return part.state !== "output-available" && part.state !== "output-error";
+  return false;
 }
 
 function hasOpenChatTurn(events: readonly MessageStreamEvent[]) {
@@ -142,16 +181,6 @@ function hasOpenChatTurn(events: readonly MessageStreamEvent[]) {
   return open;
 }
 
-// Streamed fragments skip both server saves (the event and the session cursor eve advances
-// with it). The completing event that follows carries the full text and saves its cursor,
-// so a reopened chat either replays the fragments or already has the whole message; the
-// end-of-turn snapshot still stores every event.
-const STREAMED_FRAGMENTS = new Set<MessageStreamEvent["type"]>([
-  "action.input.appended",
-  "message.appended",
-  "reasoning.appended",
-]);
-
 function namespaceStreamEvent(
   event: MessageStreamEvent,
   namespace: string | undefined,
@@ -164,8 +193,15 @@ function namespaceStreamEvent(
     return event;
   }
 
+  const data = event.data as { readonly sequence?: unknown; readonly turnId?: unknown };
+  // eve 0.67 streams the continuation after an answered question with an empty
+  // turn id; give each continuation its own, so replies do not merge.
   const turnId =
-    "turnId" in event.data && typeof event.data.turnId === "string" ? event.data.turnId : undefined;
+    data.turnId === "" && typeof data.sequence === "number"
+      ? `continued_${data.sequence}`
+      : typeof data.turnId === "string"
+        ? data.turnId
+        : undefined;
 
   if (!turnId) {
     return event;
@@ -186,22 +222,12 @@ function namespaceStreamEvent(
   } as MessageStreamEvent;
 }
 
-function isSnapshotForCurrentSession(
-  snapshotSession: ClientSessionState | undefined,
-  currentSession: ClientSessionState | undefined,
-) {
-  if (!snapshotSession) {
-    return true;
-  }
-
-  return snapshotSession.sessionId === currentSession?.sessionId;
-}
-
-/** A saved chat whose latest turn failed (e.g. a scheduled run) still shows why. */
+/** A chat whose latest turn failed (live, or a saved scheduled run) shows why, readably. */
 function lastTurnFailure(events: readonly MessageStreamEvent[]) {
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index]!;
-    if (event.type === "turn.failed") return event.data.message;
+    if (event.type === "turn.failed")
+      return { raw: event.data.message, text: describeTurnFailure(event.data) };
     if (event.type === "turn.started" || event.type === "turn.completed") return null;
   }
   return null;
@@ -209,6 +235,58 @@ function lastTurnFailure(events: readonly MessageStreamEvent[]) {
 
 function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function sleep(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * eve ends a session for good at its deadline (30 days, `agent/agent.ts`),
+ * when it fails, or when Activity resets it; it then refuses every message.
+ */
+function hasEndedSession(events: readonly MessageStreamEvent[]) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const type = events[index]!.type;
+    if (type === "session.completed" || type === "session.failed") return true;
+    if (type === "session.waiting" || type === "turn.started") return false;
+  }
+  return false;
+}
+
+function isEndedSessionError(error: unknown) {
+  return (
+    error instanceof ClientError &&
+    (error.code === "session_not_active" ||
+      (error.status === 409 && /no longer active/i.test(error.message)))
+  );
+}
+
+/** The session a message came from: turn ids carry it as a prefix (namespaceStreamEvent). */
+function messageSessionId(message: EveMessage) {
+  const turnId = message.metadata?.turnId;
+  const separator = turnId?.indexOf(":") ?? -1;
+  return turnId && separator > 0 ? turnId.slice(0, separator) : undefined;
+}
+
+/** The newer of two cursors of one session; a different session replaces the old one. */
+function laterCursor(
+  current: ClientSessionState | undefined,
+  next: ClientSessionState,
+): ClientSessionState {
+  return current?.sessionId === next.sessionId && current.streamIndex >= next.streamIndex
+    ? current
+    : next;
 }
 
 export function AgentChatSession({
@@ -244,11 +322,19 @@ export function AgentChatSession({
   const [currentTitle, setCurrentTitle] = useState(activeChat?.title ?? "New chat");
   const [clientError, setClientError] = useState<string | null>(null);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
-  const [resumedEvents, setResumedEvents] = useState<MessageStreamEvent[]>([]);
-  const [isResuming, setIsResuming] = useState(false);
-  const [isFinalizingTurn, setIsFinalizingTurn] = useState(false);
-  const [streamEvents, setStreamEvents] = useState<MessageStreamEvent[]>([]);
-  const [localEvents, setLocalEvents] = useState<MessageStreamEvent[]>([]);
+  // The chat as the server has it, and every event shown since the last save
+  // (from this page's own turns or from reading the session).
+  const [knownEvents, setKnownEvents] = useState<readonly MessageStreamEvent[]>(
+    () => activeChat?.events ?? [],
+  );
+  const [liveEvents, setLiveEvents] = useState<readonly MessageStreamEvent[]>([]);
+  // A send or answer from this page is in flight.
+  const [hookTurn, setHookTurn] = useState(false);
+  // eve's hook keeps reading the session after this page's own turn, until the page is hidden.
+  const [hookFollowing, setHookFollowing] = useState(false);
+  const [sessionId, setSessionId] = useState(activeChat?.session?.sessionId);
+  const [sessionEnded, setSessionEnded] = useState(() => hasEndedSession(activeChat?.events ?? []));
+  const [caughtUpSessionId, setCaughtUpSessionId] = useState<string | null>(null);
   const {
     clearMessage: clearLocalPendingUserMessage,
     message: localPendingUserMessage,
@@ -257,68 +343,130 @@ export function AgentChatSession({
   } = usePendingUserMessage();
   const [skippingAuthorizationKey, setSkippingAuthorizationKey] = useState<string | null>(null);
   const activeChatIdRef = useRef(activeChat?.id ?? chatId ?? null);
-  const eventIndexRef = useRef(activeChat?.events.length ?? 0);
-  const lastEventWasFragmentRef = useRef(false);
-  const eventIndexChatIdRef = useRef(activeChat?.id ?? chatId ?? null);
-  const knownInitialEventsRef = useRef<readonly MessageStreamEvent[]>(activeChat?.events ?? []);
+  const knownEventsRef = useRef<readonly MessageStreamEvent[]>(knownEvents);
+  const liveEventsRef = useRef<readonly MessageStreamEvent[]>([]);
+  const seenRef = useRef<SeenEvents | null>(null);
+  seenRef.current ??= createSeenEvents(knownEvents);
+  // Rows the server holds for this chat; per-event saves append after them.
+  const savedCountRef = useRef(knownEvents.length);
+  // Saves run one at a time, in order, so an end-of-turn save never races the
+  // per-event saves around it.
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  // The newest cursor of the chat's session this page has read, and the one saved.
+  const sessionRef = useRef<ClientSessionState | undefined>(activeChat?.session);
+  const savedCursorRef = useRef<ClientSessionState | undefined>(activeChat?.session);
+  const lastHookEventRef = useRef<MessageStreamEvent | null>(null);
+  const hookTurnRef = useRef(false);
+  // A new turn this page sent through eve's hook, which eve's cancel() can target.
+  const ownTurnRef = useRef(false);
+  const sessionEndedRef = useRef(sessionEnded);
   const currentTitleRef = useRef(activeChat?.title ?? "New chat");
-  const resumeStartedRef = useRef(false);
-  const resumedEventsRef = useRef<MessageStreamEvent[]>([]);
-  const streamEventsRef = useRef<MessageStreamEvent[]>([]);
-  const localEventsRef = useRef<MessageStreamEvent[]>([]);
-  const persistedSessionRef = useRef<ClientSession | null>(
-    attachClientSession(activeChat?.session),
-  );
   const isSetupReady = setupStatus.appReady;
   const storageMode = setupStatus.storageMode;
   const router = useRouter();
 
-  const startFinalizingTurn = useCallback(() => {
-    setIsFinalizingTurn(true);
+  const runSaved = useCallback(<T,>(work: () => Promise<T>) => {
+    const run = saveQueueRef.current.then(work);
+    saveQueueRef.current = run.catch(() => {});
+    return run;
   }, []);
 
-  const stopFinalizingTurn = useCallback(() => {
-    setIsFinalizingTurn(false);
+  const reportSaveError = useCallback(
+    (fallback: string) => (error: unknown) => {
+      // An expired sign-in asks to sign in again; the chat keeps what it shows.
+      if (isSignInError(error)) requestSignIn();
+      setClientError(readableChatError(error, fallback));
+    },
+    [requestSignIn],
+  );
+
+  const noteCursor = useCallback((cursor: ClientSessionState) => {
+    sessionRef.current = laterCursor(sessionRef.current, cursor);
   }, []);
 
-  const finishFinalizingTurn = useCallback(() => {
-    setIsFinalizingTurn(false);
-  }, []);
+  /** Saves how far the session has been read, after the event it follows is saved. */
+  const saveCursor = useCallback(
+    (cursor: ClientSessionState) => {
+      const chatId = activeChatIdRef.current;
+      if (!viewer || !chatId) return;
+      void runSaved(async () => {
+        if (laterCursor(savedCursorRef.current, cursor) !== cursor) return;
+        await saveClientChatSession(storageMode, { chatId, session: cursor });
+        savedCursorRef.current = cursor;
+      }).catch(reportSaveError("Failed to save session state."));
+    },
+    [reportSaveError, runSaved, storageMode, viewer],
+  );
 
-  const persistSnapshot = useCallback(
-    async (snapshot: AgentSnapshot) => {
+  /**
+   * Shows an event once, whichever reader delivered it, and saves it (streamed
+   * fragments wait for the end-of-turn save). Returns the event as shown, or
+   * null for one the chat already has.
+   */
+  const ingestEvent = useCallback(
+    (event: MessageStreamEvent, namespace: string | undefined) => {
+      const displayEvent = namespaceStreamEvent(event, namespace);
+      const seen = seenRef.current!;
+
+      if (hasSeen(seen, displayEvent)) return null;
+
+      markSeen(seen, displayEvent);
+      if (displayEvent.type === "session.completed" || displayEvent.type === "session.failed") {
+        sessionEndedRef.current = true;
+        setSessionEnded(true);
+      }
+      const next = [...liveEventsRef.current, displayEvent];
+      liveEventsRef.current = next;
+      setLiveEvents(next);
+
       const chatId = activeChatIdRef.current;
 
-      if (!viewer || !chatId) {
-        stopFinalizingTurn();
-        return;
+      if (viewer && chatId && !isStreamFragment(displayEvent)) {
+        void runSaved(async () => {
+          await appendClientChatEvent(storageMode, {
+            chatId,
+            event: displayEvent,
+            eventIndex: savedCountRef.current,
+          });
+          savedCountRef.current += 1;
+        }).catch(reportSaveError("Failed to save stream progress."));
       }
 
-      setClientError(null);
+      return displayEvent;
+    },
+    [reportSaveError, runSaved, storageMode, viewer],
+  );
 
-      try {
-        if (!isSnapshotForCurrentSession(snapshot.session, persistedSessionRef.current?.state)) {
-          stopFinalizingTurn();
-          return;
-        }
+  /**
+   * At a turn boundary, saves the turn with its streamed fragments joined and
+   * the cursor just past it. Events after the boundary stay live.
+   */
+  const commitTurn = useCallback(
+    (boundary: MessageStreamEvent, cursor: ClientSessionState | undefined) => {
+      const chatId = activeChatIdRef.current;
+      if (!viewer || !chatId) return;
 
-        const snapshotEvents =
-          streamEventsRef.current.length > 0
-            ? mergeStreamEventLogs(knownInitialEventsRef.current, streamEventsRef.current)
-            : preserveKnownInitialEvents(snapshot.events, knownInitialEventsRef.current);
-        const events = mergeLocalEvents(snapshotEvents, localEventsRef.current);
-
-        const session = advanceSessionWithLocalEvents(snapshot.session, localEventsRef.current);
+      void runSaved(async () => {
+        const end = liveEventsRef.current.indexOf(boundary);
+        if (end < 0) return;
+        const turn = liveEventsRef.current.slice(0, end + 1);
+        const known = knownEventsRef.current;
+        const events = [...known, ...compactStreamFragments(turn)];
+        const session = cursor ?? sessionRef.current;
 
         await saveClientChatSnapshot(storageMode, {
           chatId,
           events,
           session,
+          unchanged: known.length,
         });
-        eventIndexRef.current = events.length;
-        knownInitialEventsRef.current = events;
-        streamEventsRef.current = [];
-        setStreamEvents([]);
+        if (session) savedCursorRef.current = laterCursor(savedCursorRef.current, session);
+        savedCountRef.current = events.length;
+        knownEventsRef.current = events;
+        const rest = liveEventsRef.current.slice(liveEventsRef.current.indexOf(boundary) + 1);
+        liveEventsRef.current = rest;
+        setKnownEvents(events);
+        setLiveEvents(rest);
         touchChat({
           id: chatId,
           title: currentTitleRef.current,
@@ -331,185 +479,152 @@ export function AgentChatSession({
           session,
           title: currentTitleRef.current,
         });
-        onPendingUserMessageSettled?.();
-      } catch (error) {
-        setClientError(error instanceof Error ? error.message : "Failed to save chat.");
-      } finally {
-        finishFinalizingTurn();
-      }
+        for (const event of turn) {
+          const text =
+            event.type === "message.received" && !event.data.kind && receivedUserText(event);
+          if (text) onPendingUserMessageSettled?.(text);
+        }
+      }).catch(reportSaveError("Failed to save chat."));
     },
     [
-      finishFinalizingTurn,
       onActiveChatUpdated,
       onPendingUserMessageSettled,
-      stopFinalizingTurn,
-      touchChat,
+      reportSaveError,
+      runSaved,
       storageMode,
+      touchChat,
       viewer,
     ],
   );
 
-  const persistStreamEvent = useCallback(
-    (event: MessageStreamEvent) => {
-      const displayEvent = namespaceStreamEvent(
-        event,
-        persistedSessionRef.current?.state?.sessionId,
-      );
-      lastEventWasFragmentRef.current = STREAMED_FRAGMENTS.has(displayEvent.type);
-      const nextStreamEvents = appendUniqueStreamEvent(streamEventsRef.current, displayEvent);
-
-      if (nextStreamEvents !== streamEventsRef.current) {
-        streamEventsRef.current = nextStreamEvents;
-        setStreamEvents(nextStreamEvents);
-      }
-
-      if (displayEvent.type === "authorization.required") {
-        stopFinalizingTurn();
-      }
-
-      const chatId = activeChatIdRef.current;
-
-      if (!viewer || !chatId || lastEventWasFragmentRef.current) {
-        return;
-      }
-
-      const eventIndex = eventIndexRef.current;
-      eventIndexRef.current += 1;
-
-      void appendClientChatEvent(storageMode, {
-        chatId,
-        event: displayEvent,
-        eventIndex,
-      }).catch((error) => {
-        setClientError(error instanceof Error ? error.message : "Failed to save stream progress.");
-      });
-    },
-    [stopFinalizingTurn, storageMode, viewer],
-  );
-
-  const persistSessionState = useCallback(
-    async (session: ClientSessionState) => {
-      const chatId = activeChatIdRef.current;
-
-      if (!viewer || !chatId || !session.sessionId) {
-        return;
-      }
-
-      try {
-        await saveClientChatSession(storageMode, {
-          chatId,
-          session,
-        });
-      } catch (error) {
-        setClientError(error instanceof Error ? error.message : "Failed to save session state.");
-      }
-    },
-    [storageMode, viewer],
-  );
-
   const agent = useEveAgent({
-    initialEvents: activeChat?.events ?? [],
     initialSession: activeChat?.session,
-    onEvent: persistStreamEvent,
-    onSessionChange(session) {
-      persistedSessionRef.current = attachClientSession(session);
-      // eve reports the session right after the event that advanced it.
-      const afterFragment = lastEventWasFragmentRef.current;
-      lastEventWasFragmentRef.current = false;
-      if (session && !afterFragment) void persistSessionState(session);
+    onEvent(event) {
+      // eve reports a new session (onSessionChange) before its first event.
+      lastHookEventRef.current = ingestEvent(event, sessionRef.current?.sessionId);
     },
-    onFinish: (snapshot) => {
-      void persistSnapshot(snapshot);
+    onSessionChange(session) {
+      const shown = lastHookEventRef.current;
+      lastHookEventRef.current = null;
+      if (!session) return;
+      const previous = sessionRef.current;
+      noteCursor(session);
+      if (previous?.sessionId !== session.sessionId) {
+        // A session this page just created: keep it, so a reload can resume it.
+        setSessionId(session.sessionId);
+        saveCursor(session);
+      }
+      if (!shown) return;
+      if (!isStreamFragment(shown)) saveCursor(session);
+      if (isChatTurnSettledEvent(shown)) commitTurn(shown, session);
+    },
+    onError() {
+      // The hook stopped reading the session; this page reads it again.
+      if (!hookTurnRef.current) setHookFollowing(false);
     },
   });
 
-  const hasResumeOverlay = isResuming || (resumedEvents.length > 0 && streamEvents.length === 0);
-  const resumedEventLog = useMemo(
-    () => [...(activeChat?.events ?? []), ...resumedEvents],
-    [activeChat?.events, resumedEvents],
-  );
-  const agentEventLog = useMemo(
-    () => mergeStreamEventLogs(activeChat?.events ?? [], streamEvents),
-    [activeChat?.events, streamEvents],
-  );
-  const baseDisplayEvents = hasResumeOverlay ? resumedEventLog : agentEventLog;
-  const displayEvents = useMemo(
-    () => mergeLocalEvents(baseDisplayEvents, localEvents),
-    [baseDisplayEvents, localEvents],
-  );
-  const displayData = useMemo(() => reduceEventsToMessageData(displayEvents), [displayEvents]);
+  const displayEvents = useMemo(() => knownEvents.concat(liveEvents), [knownEvents, liveEvents]);
+  const displayData = useMessageData(knownEvents, liveEvents);
   const displayMessages = displayData.messages;
   const displayChatId = chatId ?? activeChatId ?? "new";
   const hasLocalPendingUserMessage = Boolean(localPendingUserMessage);
-  const pendingAuthorizations = getPendingAuthorizations(displayEvents);
+  const pendingAuthorizations = useMemo(
+    () => getPendingAuthorizations(displayEvents),
+    [displayEvents],
+  );
   const isWaitingForAuthorization = pendingAuthorizations.length > 0;
   const hasOpenTurn = useMemo(() => hasOpenChatTurn(displayEvents), [displayEvents]);
+  const followingSessionId =
+    viewer && isSetupReady && sessionId && !sessionEnded && !hookFollowing ? sessionId : null;
+  const isSyncing = followingSessionId !== null && caughtUpSessionId !== followingSessionId;
   const isBusy =
-    isResuming ||
-    hasLocalPendingUserMessage ||
-    (!isWaitingForAuthorization &&
-      (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming"));
+    hasLocalPendingUserMessage || (!isWaitingForAuthorization && (hookTurn || hasOpenTurn));
   const canSteer =
-    !isResuming &&
-    !hasLocalPendingUserMessage &&
-    !isWaitingForAuthorization &&
-    !isFinalizingTurn &&
-    (hasOpenTurn || agent.status === "submitted" || agent.status === "streaming");
-  const isTurnBlocked = isBusy || isFinalizingTurn;
-  const pendingMessage = pendingUserMessage
-    ? createPendingUserMessage(displayChatId, pendingUserMessage)
-    : null;
-  const localPendingMessage = localPendingUserMessage
-    ? createPendingUserMessage(displayChatId, localPendingUserMessage, "local-pending-user-message")
-    : null;
+    !hasLocalPendingUserMessage && !isWaitingForAuthorization && (hookTurn || hasOpenTurn);
+  const isTurnBlocked = isBusy;
+  const pendingMessage = useMemo(
+    () => (pendingUserMessage ? createPendingUserMessage(displayChatId, pendingUserMessage) : null),
+    [displayChatId, pendingUserMessage],
+  );
+  const localPendingMessage = useMemo(
+    () =>
+      localPendingUserMessage
+        ? createPendingUserMessage(
+            displayChatId,
+            localPendingUserMessage,
+            "local-pending-user-message",
+          )
+        : null,
+    [displayChatId, localPendingUserMessage],
+  );
   const disabledReason = isWaitingForAuthorization
     ? getConnectionAuthorizationDisabledReason(pendingAuthorizations)
-    : isFinalizingTurn
-      ? "Finishing response."
-      : undefined;
+    : undefined;
   const visibleMessages = appendPendingUserMessages(displayMessages, [
     pendingMessage,
     localPendingMessage,
   ]);
   const isEmpty = visibleMessages.length === 0 && !isTurnBlocked && !isWaitingForAuthorization;
   const isChatRoute = Boolean(shellActiveChatId || chatId);
+  // "Thinking…" shows while nothing else on screen is in progress: before the
+  // reply starts, and between a finished step and the next.
   const showThinking =
     !isWaitingForAuthorization &&
-    (Boolean(pendingMessage || localPendingMessage) || hasOpenTurn || isTurnBlocked);
+    (Boolean(pendingMessage || localPendingMessage) || hasOpenTurn || isTurnBlocked) &&
+    !isReplyInProgress(visibleMessages.at(-1));
   const thinkingPresence = useThinkingPresence(showThinking);
-  const savedTurnError = useMemo(() => lastTurnFailure(displayEvents), [displayEvents]);
-  const displayError = clientError ?? agent.error?.message ?? savedTurnError;
+  const turnFailure = useMemo(() => lastTurnFailure(displayEvents), [displayEvents]);
+  const rawError =
+    clientError ?? (agent.error ? readableChatError(agent.error, "The reply failed.") : null);
+  // A failed send reports the provider's raw text; show what to do about it instead.
+  const displayError = rawError
+    ? rawError === turnFailure?.raw
+      ? turnFailure.text
+      : describeTurnFailure({ message: rawError })
+    : (turnFailure?.text ?? null);
   const toastError = displayError && dismissedError !== displayError ? displayError : null;
 
   const resetSession = useCallback(() => {
-    persistedSessionRef.current = null;
     agent.reset();
+    sessionRef.current = undefined;
+    setSessionId(undefined);
     setActiveChatId(null);
     activeChatIdRef.current = null;
-    eventIndexRef.current = 0;
-    eventIndexChatIdRef.current = null;
-    knownInitialEventsRef.current = [];
+    knownEventsRef.current = [];
+    liveEventsRef.current = [];
+    seenRef.current = createSeenEvents();
+    savedCountRef.current = 0;
+    setKnownEvents([]);
+    setLiveEvents([]);
     setCurrentTitle("New chat");
     currentTitleRef.current = "New chat";
-    resumeStartedRef.current = false;
-    resumedEventsRef.current = [];
-    streamEventsRef.current = [];
-    localEventsRef.current = [];
-    setResumedEvents([]);
-    setStreamEvents([]);
-    setLocalEvents([]);
-    stopFinalizingTurn();
     clearLocalPendingUserMessage();
-    setIsResuming(false);
     setClientError(null);
-  }, [agent, clearLocalPendingUserMessage, stopFinalizingTurn]);
+  }, [agent, clearLocalPendingUserMessage]);
+
+  /**
+   * The chat's session can no longer take messages: the next one starts a new
+   * session (the chat shows where), and the chat forgets the old one.
+   */
+  const startFreshSession = useCallback(async () => {
+    const ended = sessionRef.current;
+    agent.reset();
+    sessionRef.current = undefined;
+    savedCursorRef.current = undefined;
+    sessionEndedRef.current = false;
+    setSessionEnded(false);
+    setSessionId(undefined);
+    if (ended)
+      await runSaved(() => forgetClientChatSession(storageMode, ended.sessionId)).catch(() => {});
+  }, [agent, runSaved, storageMode]);
 
   const prepareSend = useCallback(
     async (firstMessage: string) => {
       const limit = await checkClientSendLimit(storageMode, { message: firstMessage });
 
       if (!limit.allowed) {
-        setClientError(`${limit.message} Retry in ${limit.retryAfter}s.`);
+        setClientError(limit.message);
         return false;
       }
 
@@ -522,9 +637,8 @@ export function AgentChatSession({
         setActiveChatId(created.id);
         setShellActiveChatId(created.id);
         activeChatIdRef.current = created.id;
-        eventIndexChatIdRef.current = created.id;
-        eventIndexRef.current = 0;
-        knownInitialEventsRef.current = [];
+        knownEventsRef.current = [];
+        savedCountRef.current = 0;
         setCurrentTitle(created.title);
         currentTitleRef.current = created.title;
         router.replace(`/chat/${created.id}`, { scroll: false });
@@ -539,9 +653,18 @@ export function AgentChatSession({
     async (text: string, draftHandlers: DraftHandlers) => {
       const message = text.trim();
 
+      if (!message) return;
+
       const steering = canSteer;
 
-      if (!message || (isTurnBlocked && !steering) || localPendingUserMessageRef.current) {
+      // Never drop a message silently: it stays in the box with the reason.
+      if (localPendingUserMessageRef.current || (isTurnBlocked && !steering)) {
+        draftHandlers.restoreDraft(message);
+        setClientError(
+          localPendingUserMessageRef.current
+            ? "Your last message is still on its way. Send this one once it arrives."
+            : "Ægentica is still responding. Wait for the reply or stop it first.",
+        );
         return;
       }
 
@@ -562,13 +685,16 @@ export function AgentChatSession({
         setLocalPendingUserMessage(message);
         draftHandlers.clearDraft();
       };
-      const restoreAfterFailedSend = (errorMessage?: string) => {
+      const restoreAfterFailedSend = (error?: unknown, fallback = "Failed to send message.") => {
         clearLocalPendingUserMessage();
         draftHandlers.restoreDraft(message);
 
-        if (errorMessage) {
-          setClientError(errorMessage);
-        }
+        if (error === undefined) return;
+        // The message stays in the box; after signing in again it can be sent.
+        if (isSignInError(error)) requestSignIn(message);
+        setClientError(
+          readableChatError(error, fallback, "You're offline. Your message is still in the box."),
+        );
       };
       let ready = false;
 
@@ -584,9 +710,6 @@ export function AgentChatSession({
         return;
       }
 
-      resumedEventsRef.current = [];
-      setResumedEvents([]);
-      setIsResuming(false);
       showLocalPendingMessage();
       if (!steering) {
         onPendingUserMessageSettled?.(message);
@@ -595,7 +718,7 @@ export function AgentChatSession({
       try {
         ready = await prepareSend(message);
       } catch (error) {
-        restoreAfterFailedSend(error instanceof Error ? error.message : "Failed to prepare chat.");
+        restoreAfterFailedSend(error, "Failed to prepare chat.");
         return;
       }
 
@@ -612,51 +735,71 @@ export function AgentChatSession({
       const chatId = activeChatIdRef.current;
 
       if (!chatId) {
-        restoreAfterFailedSend("Chat is still getting ready.");
+        restoreAfterFailedSend(new Error("Chat is still getting ready."));
         return;
       }
 
       if (!steering) {
         try {
-          const updated = await markClientChatPendingMessage(storageMode, {
-            chatId,
-            message,
-          });
-          touchChat(updated);
-        } catch (error) {
-          restoreAfterFailedSend(
-            error instanceof Error ? error.message : "Failed to save pending message.",
+          // After any end-of-turn save still in the queue, which clears the pending mark.
+          const updated = await runSaved(() =>
+            markClientChatPendingMessage(storageMode, { chatId, message }),
           );
+          touchChat(updated);
+          // A chat still called "New chat" is named after its first message.
+          setCurrentTitle(updated.title);
+        } catch (error) {
+          restoreAfterFailedSend(error, "Failed to save pending message.");
           return;
         }
       }
 
+      hookTurnRef.current = true;
+      if (!steering) ownTurnRef.current = true;
+      setHookTurn(true);
+      // eve's hook reads the session from here on; this page's own reader stops.
+      setHookFollowing(true);
       try {
-        if (!steering) {
-          startFinalizingTurn();
-        }
         const turn = await composerTurn(chatId, message);
-        await agent.send(turn.message, {
-          headers: turn.headers,
-          clientContext: createConnectionClientContext(
-            enabledConnections,
-            setupStatus.connectionsAvailable,
-            setupStatus.configuredConnections,
-          ),
-          turnPolicy: steering ? "steer" : undefined,
-        });
+        const sendTurn = (policy: "steer" | undefined) =>
+          agent.send(turn.message, {
+            headers: turn.headers,
+            clientContext: createConnectionClientContext(
+              enabledConnections,
+              setupStatus.connectionsAvailable,
+              setupStatus.configuredConnections,
+            ),
+            turnPolicy: policy,
+          });
+        if (sessionEndedRef.current) await startFreshSession();
+        try {
+          await sendTurn(steering ? "steer" : undefined);
+        } catch (error) {
+          // The session ended without this page seeing it (its deadline, or a
+          // reset from Activity): send the message into a new session once.
+          if (!isEndedSessionError(error)) throw error;
+          await startFreshSession();
+          await sendTurn(undefined);
+        }
         // Clearing local attachment previews must not turn an accepted send into a retry.
         await clearComposerFiles(chatId).catch(() => {});
       } catch (error) {
         if (isAbortError(error)) {
+          // The page was left mid-reply (eve detaches the stream). The saved
+          // chat and its session cursor take over: coming back resumes the turn.
+          clearLocalPendingUserMessage();
           return;
         }
 
+        setHookFollowing(false);
         if (!steering) {
-          stopFinalizingTurn();
-          void clearClientChatPendingMessage(storageMode, chatId);
+          void runSaved(() => clearClientChatPendingMessage(storageMode, chatId)).catch(() => {});
         }
-        restoreAfterFailedSend(error instanceof Error ? error.message : "Failed to send message.");
+        restoreAfterFailedSend(error);
+      } finally {
+        hookTurnRef.current = false;
+        if (!steering) ownTurnRef.current = false;
+        setHookTurn(false);
       }
     },
     [
@@ -668,13 +811,15 @@ export function AgentChatSession({
       isSetupReady,
       isTurnBlocked,
       isWaitingForAuthorization,
+      localPendingUserMessageRef,
       prepareSend,
       requestSignIn,
+      runSaved,
       setLocalPendingUserMessage,
+      setupStatus.configuredConnections,
       setupStatus.connectionsAvailable,
-      startFinalizingTurn,
+      startFreshSession,
       storageMode,
-      stopFinalizingTurn,
       onPendingUserMessageSettled,
       touchChat,
       viewer,
@@ -689,317 +834,248 @@ export function AgentChatSession({
         readonly text?: string;
       }[],
     ) => {
-      if (isTurnBlocked) {
-        return;
+      // A second tap before the first answer is on its way is ignored: the
+      // flag is set before anything is awaited.
+      if (isTurnBlocked || hookTurnRef.current) {
+        return false;
       }
 
+      if (!viewer) {
+        requestSignIn();
+        return false;
+      }
+
+      if (!activeChatIdRef.current) {
+        setClientError("Start a chat before responding.");
+        return false;
+      }
+
+      hookTurnRef.current = true;
+      setHookTurn(true);
+      try {
+        const limit = await checkClientSendLimit(storageMode);
+
+        if (!limit.allowed) {
+          setClientError(limit.message);
+          return false;
+        }
+
+        setHookFollowing(true);
+        const draft = await readComposerDraft(activeChatIdRef.current ?? "new");
+        await agent.respond(responses, { headers: composerHeaders(draft) });
+        return true;
+      } catch (error) {
+        setHookFollowing(false);
+        // Leaving the page detaches the answer's stream; eve still has the answer.
+        if (isAbortError(error)) return false;
+        if (isSignInError(error)) requestSignIn();
+        setClientError(readableChatError(error, "Failed to send response."));
+        return false;
+      } finally {
+        hookTurnRef.current = false;
+        setHookTurn(false);
+      }
+    },
+    [agent, isTurnBlocked, requestSignIn, storageMode, viewer],
+  );
+
+  // One handler for every row, so a change of the chat's state does not
+  // re-render every message; it calls the latest handleInputResponses.
+  const inputResponderRef = useRef(handleInputResponses);
+  useEffect(() => {
+    inputResponderRef.current = handleInputResponses;
+  }, [handleInputResponses]);
+  const respondToInput = useCallback(
+    (responses: readonly AgentInputResponse[]) => inputResponderRef.current(responses),
+    [],
+  );
+
+  const handleSkipAuthorization = useCallback(
+    async (authorization: PendingConnectionAuthorization) => {
       if (!viewer) {
         requestSignIn();
         return;
       }
 
       if (!activeChatIdRef.current) {
-        setClientError("Start a chat before responding.");
-        return;
-      }
-
-      const limit = await checkClientSendLimit(storageMode);
-
-      if (!limit.allowed) {
-        setClientError(`${limit.message} Retry in ${limit.retryAfter}s.`);
-        return;
-      }
-
-      try {
-        startFinalizingTurn();
-        const draft = await readComposerDraft(activeChatIdRef.current ?? "new");
-        const headers: Record<string, string> = {
-          ...modelRequestHeaders(),
-          "x-aegentica-mode": draft.mode,
-        };
-        if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
-        await agent.respond(responses, { headers });
-      } catch (error) {
-        stopFinalizingTurn();
-        setClientError(error instanceof Error ? error.message : "Failed to send response.");
-      }
-    },
-    [
-      agent,
-      isTurnBlocked,
-      requestSignIn,
-      startFinalizingTurn,
-      stopFinalizingTurn,
-      storageMode,
-      viewer,
-    ],
-  );
-
-  const handleSkipAuthorization = useCallback(
-    async (authorization: PendingConnectionAuthorization) => {
-      const chatId = activeChatIdRef.current;
-
-      if (!viewer) {
-        requestSignIn();
-        return;
-      }
-
-      if (!chatId) {
         setClientError("Start a chat before skipping authorization.");
         return;
       }
 
-      const persistedSession = persistedSessionRef.current;
-      const sessionId = persistedSession?.state?.sessionId;
+      const session = attachClientSession(sessionRef.current);
 
-      if (!persistedSession || !sessionId) {
+      if (!session) {
         setClientError("Session is not ready to skip authorization.");
         return;
       }
 
-      const events = createAuthorizationDeclinedEvents(authorization, sessionId);
-      const previousSession = persistedSession.state;
-      const nextSession = undefined;
-
-      agent.reset();
-      persistedSessionRef.current = null;
-
-      const nextLocalEvents = mergeLocalEvents(localEventsRef.current, events);
-
-      localEventsRef.current = nextLocalEvents;
-      setLocalEvents(nextLocalEvents);
       setSkippingAuthorizationKey(authorization.key);
       setClientError(null);
 
       try {
-        const result = await skipClientChatAuthorization(storageMode, {
-          chatId,
-          events,
-          session: nextSession,
-        });
-        const skippedEvents = mergeLocalEvents(displayEvents, events);
-
-        eventIndexRef.current = Math.max(
-          eventIndexRef.current,
-          result.eventIndex + result.eventCount,
-        );
-        knownInitialEventsRef.current = skippedEvents;
-        const nextStreamEvents = events.reduce<MessageStreamEvent[]>(
-          (mergedEvents, event) => appendUniqueStreamEvent(mergedEvents, event),
-          streamEventsRef.current,
-        );
-
-        streamEventsRef.current = nextStreamEvents;
-        setStreamEvents(nextStreamEvents);
-        localEventsRef.current = [];
-        setLocalEvents([]);
-        touchChat(result.chat);
-        onActiveChatUpdated?.({
-          events: skippedEvents,
-          id: chatId,
-          pendingUserMessage: null,
-          session: nextSession,
-          title: currentTitleRef.current,
-        });
-        onPendingUserMessageSettled?.();
+        // Skip ends the turn that waits for the sign-in, through eve; the
+        // session and everything said in it stay (eve then streams
+        // turn.cancelled and session.waiting, and the chat takes messages).
+        const prefix = `${session.state.sessionId}:`;
+        const turnId = authorization.turnId.startsWith(prefix)
+          ? authorization.turnId.slice(prefix.length)
+          : authorization.turnId;
+        await session.cancel(turnId.startsWith("continued_") ? undefined : { turnId });
+        // The prompt shows as skipped at once, and in the saved chat.
+        ingestEvent(createAuthorizationDeclinedEvent(authorization), undefined);
       } catch (error) {
-        if (previousSession) {
-          persistedSessionRef.current = attachClientSession(previousSession);
-        }
-
-        const eventKeys = new Set(events.map(getLocalEventKey).filter(Boolean));
-        const revertedEvents = localEventsRef.current.filter((localEvent) => {
-          const key = getLocalEventKey(localEvent);
-
-          return !key || !eventKeys.has(key);
-        });
-
-        localEventsRef.current = revertedEvents;
-        setLocalEvents(revertedEvents);
-        setClientError(error instanceof Error ? error.message : "Failed to skip authorization.");
+        if (isSignInError(error)) requestSignIn();
+        setClientError(readableChatError(error, "Failed to skip authorization."));
       } finally {
         setSkippingAuthorizationKey(null);
       }
     },
-    [
-      agent,
-      displayEvents,
-      onActiveChatUpdated,
-      onPendingUserMessageSettled,
-      requestSignIn,
-      storageMode,
-      touchChat,
-      viewer,
-    ],
+    [ingestEvent, requestSignIn, viewer],
   );
-
-  useEffect(() => {
-    activeChatIdRef.current = activeChatId;
-  }, [activeChatId]);
 
   useEffect(() => {
     const nextChatId = activeChat?.id ?? chatId ?? null;
     const nextTitle = activeChat?.title ?? "New chat";
-    const nextEventIndex = activeChat?.events.length ?? 0;
 
     setActiveChatId(nextChatId);
     activeChatIdRef.current = nextChatId;
-    if (eventIndexChatIdRef.current !== nextChatId) {
-      eventIndexChatIdRef.current = nextChatId;
-      eventIndexRef.current = nextEventIndex;
-      knownInitialEventsRef.current = activeChat?.events ?? [];
-      streamEventsRef.current = [];
-      localEventsRef.current = [];
-      setStreamEvents([]);
-      setLocalEvents([]);
-      stopFinalizingTurn();
-      clearLocalPendingUserMessage();
-    } else if (!isTurnBlocked) {
-      eventIndexRef.current = Math.max(eventIndexRef.current, nextEventIndex);
-      if (activeChat) {
-        knownInitialEventsRef.current = activeChat.events;
-      }
-    }
     setCurrentTitle(nextTitle);
     currentTitleRef.current = nextTitle;
-  }, [
-    activeChat?.events.length,
-    activeChat?.id,
-    activeChat?.title,
-    chatId,
-    clearLocalPendingUserMessage,
-    isTurnBlocked,
-    stopFinalizingTurn,
-  ]);
+  }, [activeChat?.id, activeChat?.title, chatId]);
 
+  // A newer saved chat (loaded again when the page is shown, or saved by
+  // another tab) replaces the older one here; events already shown are not
+  // shown twice. Older data (a page shown again replays what it first rendered
+  // with) never replaces newer history.
   useEffect(() => {
-    if (
-      !viewer ||
-      !activeChat?.session?.sessionId ||
-      resumeStartedRef.current ||
-      agent.status !== "ready"
-    ) {
-      return;
-    }
+    if (!activeChat || activeChat.id !== activeChatIdRef.current) return;
+    const events = activeChat.events;
+    const session = activeChat.session;
+    if (events === knownEventsRef.current || events.length <= knownEventsRef.current.length) return;
 
-    const abortController = new AbortController();
-    const existingEvents = activeChat.events;
-    const pendingMessageText = pendingUserMessage ?? null;
-    const shouldResumeOpenTurn = hasOpenChatTurn(existingEvents);
+    void runSaved(async () => {
+      if (events.length <= knownEventsRef.current.length) return;
+      const seen = createSeenEvents(events);
+      const rest = liveEventsRef.current.filter((event) => !hasSeen(seen, event));
+      for (const event of rest) markSeen(seen, event);
+      seenRef.current = seen;
+      knownEventsRef.current = events;
+      liveEventsRef.current = rest;
+      savedCountRef.current = events.length;
+      setKnownEvents(events);
+      setLiveEvents(rest);
+      if (session) {
+        savedCursorRef.current = laterCursor(savedCursorRef.current, session);
+        const current = sessionRef.current;
+        if (current?.sessionId !== session.sessionId) {
+          sessionRef.current = session;
+          setSessionId(session.sessionId);
+        } else noteCursor(session);
+      }
+    });
+  }, [activeChat, noteCursor, runSaved]);
 
-    if (!pendingMessageText && !shouldResumeOpenTurn) {
-      return;
-    }
+  // Hiding the page detaches eve's hook from the session; reading it again is this page's job.
+  useEffect(() => () => setHookFollowing(false), []);
 
-    const startIndex = existingEvents.length;
-    const session = attachClientSession(activeChat.session);
-    if (!session) return;
-    let cancelled = false;
-    let completed = false;
+  const takeFollowedEvent = useEffectEvent((event: MessageStreamEvent, session: ClientSession) => {
+    const shown = ingestEvent(event, session.state.sessionId);
+    noteCursor(session.state);
+    if (!shown) return null;
+    if (!isStreamFragment(shown)) saveCursor(session.state);
+    if (isChatTurnSettledEvent(shown)) commitTurn(shown, session.state);
+    return shown;
+  });
 
-    resumeStartedRef.current = true;
-    resumedEventsRef.current = [];
-    setResumedEvents([]);
-    setIsResuming(true);
-    setClientError(null);
+  // A message still pending when the page closed is done if eve received it.
+  const settleReceivedPendingMessage = useEffectEvent((events: readonly MessageStreamEvent[]) => {
+    const pending = (pendingUserMessage ?? activeChat?.pendingUserMessage)?.trim();
+    if (!pending) return;
+    const received = events.some(
+      (event) =>
+        event.type === "message.received" &&
+        !event.data.kind &&
+        receivedUserText(event) === pending,
+    );
+    if (received) onPendingUserMessageSettled?.(pending);
+  });
+
+  const reportFollowError = useEffectEvent((error: unknown) => {
+    if (isSignInError(error)) requestSignIn();
+    setClientError(readableChatError(error, "Could not load the latest messages."));
+  });
+
+  // While the chat is shown and has a session, read it from the saved cursor:
+  // first to its current end (a turn that finished or started while the page
+  // was closed, the pending message eve already received), then live, so
+  // replies to background work and turns from another tab appear and are saved
+  // as they arrive. eve's hook takes over once this page sends.
+  useEffect(() => {
+    if (!followingSessionId) return;
+    const start = sessionRef.current;
+    if (start?.sessionId !== followingSessionId) return;
+    const session = attachClientSession(start)!;
+    const controller = new AbortController();
+    const { signal } = controller;
 
     void (async () => {
       try {
-        for await (const event of session.stream({
-          signal: abortController.signal,
-          startIndex,
-        })) {
-          if (cancelled) {
-            return;
+        const caughtUp: MessageStreamEvent[] = [];
+        let ended = false;
+        for await (const event of session.stream({ follow: false, signal })) {
+          const shown = takeFollowedEvent(event, session);
+          if (shown) caughtUp.push(shown);
+          ended ||= event.type === "session.completed" || event.type === "session.failed";
+        }
+        if (signal.aborted) return;
+        settleReceivedPendingMessage(caughtUp);
+        setCaughtUpSessionId(followingSessionId);
+        if (ended) return;
+
+        let failures = 0;
+        while (!signal.aborted) {
+          try {
+            for await (const event of session.stream({ signal })) {
+              failures = 0;
+              takeFollowedEvent(event, session);
+              if (event.type === "session.completed" || event.type === "session.failed") return;
+            }
+          } catch (error) {
+            if (signal.aborted || isAbortError(error)) return;
+            if (++failures > 5) throw error;
           }
-
-          const displayEvent = namespaceStreamEvent(event, activeChat.session?.sessionId);
-          const nextEvents = [...resumedEventsRef.current, displayEvent];
-          resumedEventsRef.current = nextEvents;
-          setResumedEvents(nextEvents);
-
-          await appendClientChatEvent(storageMode, {
-            chatId: activeChat.id,
-            event: displayEvent,
-            eventIndex: startIndex + nextEvents.length - 1,
-          });
-
-          if (isChatTurnSettledEvent(event)) {
-            break;
-          }
+          await sleep(Math.min(1000 * 2 ** failures, 15_000), signal);
         }
-
-        if (cancelled) {
-          return;
-        }
-
-        const newEvents = resumedEventsRef.current;
-        const allEvents = [...existingEvents, ...newEvents];
-
-        if (!newEvents.some(isChatTurnSettledEvent)) {
-          setClientError("Stream disconnected before the response completed.");
-          return;
-        }
-
-        await saveClientChatSnapshot(storageMode, {
-          chatId: activeChat.id,
-          events: allEvents,
-          session: session.state,
-        });
-        eventIndexRef.current = allEvents.length;
-        knownInitialEventsRef.current = allEvents;
-        resumedEventsRef.current = [];
-        setResumedEvents([]);
-        touchChat({
-          id: activeChat.id,
-          title: currentTitleRef.current,
-          updatedAt: new Date().toISOString(),
-        });
-        onActiveChatUpdated?.({
-          events: allEvents,
-          id: activeChat.id,
-          pendingUserMessage: null,
-          session: session.state,
-          title: currentTitleRef.current,
-        });
-
-        onPendingUserMessageSettled?.();
-        completed = true;
       } catch (error) {
-        if (!cancelled && !isAbortError(error)) {
-          setClientError(error instanceof Error ? error.message : "Failed to resume stream.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsResuming(false);
-        }
+        if (signal.aborted || isAbortError(error)) return;
+        setCaughtUpSessionId(followingSessionId);
+        reportFollowError(error);
       }
     })();
 
     return () => {
-      cancelled = true;
-      if (!completed) {
-        resumeStartedRef.current = false;
-      }
-      abortController.abort();
+      controller.abort();
+      setCaughtUpSessionId(null);
     };
-  }, [
-    activeChat?.events,
-    activeChat?.id,
-    activeChat?.session,
-    agent.status,
-    onActiveChatUpdated,
-    onPendingUserMessageSettled,
-    pendingUserMessage,
-    persistSessionState,
-    storageMode,
-    touchChat,
-    viewer,
-  ]);
+  }, [followingSessionId]);
 
   useEffect(() => {
     currentTitleRef.current = currentTitle;
   }, [currentTitle]);
+
+  // The window, the history, the app switcher and the share sheet name the
+  // chat, not only the app. Leaving the chat hands the title back unless the
+  // next page has set its own.
+  const hasChat = Boolean(activeChat);
+  useEffect(() => {
+    if (!hasChat) return;
+    const title = `${currentTitle} · Ægentica`;
+    const previous = document.title;
+    document.title = title;
+    return () => {
+      if (document.title === title) document.title = previous;
+    };
+  }, [currentTitle, hasChat]);
 
   useEffect(() => {
     setDismissedError(null);
@@ -1016,14 +1092,29 @@ export function AgentChatSession({
       {
         reset: resetSession,
         sendMessage,
-        stop: () => void agent.cancel(),
+        stop: () => {
+          // eve's hook cancels a turn it started once the turn has begun. Any
+          // other reply (resumed after a reload, corrected, answered, or
+          // started elsewhere) is cancelled through its session.
+          const session = attachClientSession(sessionRef.current);
+          const request = ownTurnRef.current || !session ? agent.cancel() : session.cancel();
+          // A failed stop leaves the reply running; say so instead of failing quietly.
+          request.catch((error: unknown) => {
+            if (isAbortError(error)) return;
+            const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+            setClientError(
+              `Could not stop the reply${detail}. Check the connection and try again.`,
+            );
+          });
+        },
       },
       {
         canSteer,
         disabledReason,
         isBusy,
-        isDisabled: !isSetupReady || isWaitingForAuthorization || isFinalizingTurn,
+        isDisabled: !isSetupReady || isWaitingForAuthorization,
         isEmpty,
+        isSyncing,
       },
     );
   }, [
@@ -1031,9 +1122,9 @@ export function AgentChatSession({
     canSteer,
     disabledReason,
     isBusy,
-    isFinalizingTurn,
     isEmpty,
     isSetupReady,
+    isSyncing,
     isWaitingForAuthorization,
     onControllerChange,
     resetSession,
@@ -1045,6 +1136,9 @@ export function AgentChatSession({
       onControllerChange(null, IDLE_CONTROLLER_STATUS);
     };
   }, [onControllerChange]);
+
+  const isReplyStreaming = hookTurn || hasOpenTurn;
+  let previousSession: string | undefined;
 
   return (
     <>
@@ -1061,23 +1155,35 @@ export function AgentChatSession({
             <BlankChatBody />
           ) : (
             <ChatConversation>
-              <ChatConversationContent>
-                {visibleMessages.map((message, index) => (
-                  <AgentMessage
-                    canRespond={
-                      !isTurnBlocked &&
-                      !isWaitingForAuthorization &&
-                      Boolean(viewer) &&
-                      isSetupReady
-                    }
-                    isStreaming={
-                      agent.status === "streaming" && index === visibleMessages.length - 1
-                    }
-                    key={message.id}
-                    message={message}
-                    onInputResponses={handleInputResponses}
-                  />
-                ))}
+              {/* Replies wrap long words; only code blocks and tables scroll sideways,
+                  so a swipe on the conversation still opens the phone drawer. */}
+              <ChatConversationContent scrollClassName="overflow-x-hidden">
+                {visibleMessages.map((message, index) => {
+                  const messageSession = messageSessionId(message);
+                  const startedOver =
+                    messageSession !== undefined &&
+                    previousSession !== undefined &&
+                    messageSession !== previousSession;
+                  previousSession = messageSession ?? previousSession;
+                  return (
+                    <Fragment key={message.id}>
+                      {startedOver ? <SessionRestartNote /> : null}
+                      <ChatMessage
+                        canRespond={
+                          // eve keeps a prompt pending until the server settles the answer,
+                          // so its controls stay disabled while a response is in flight.
+                          !isTurnBlocked &&
+                          !isWaitingForAuthorization &&
+                          Boolean(viewer) &&
+                          isSetupReady
+                        }
+                        isStreaming={isReplyStreaming && index === visibleMessages.length - 1}
+                        message={message}
+                        onInputResponses={respondToInput}
+                      />
+                    </Fragment>
+                  );
+                })}
                 {pendingAuthorizations.map((authorization) => (
                   <ConnectionAuthorizationPrompt
                     authorization={authorization}
@@ -1087,7 +1193,7 @@ export function AgentChatSession({
                   />
                 ))}
                 {thinkingPresence.shouldRender ? (
-                  <ThinkingMessage isVisible={thinkingPresence.isVisible} />
+                  <ThinkingLine isVisible={thinkingPresence.isVisible} />
                 ) : null}
               </ChatConversationContent>
               <ChatScrollButton />
@@ -1125,6 +1231,12 @@ function getPendingAuthorizations(events: readonly MessageStreamEvent[]) {
 
     if (event.type === "authorization.completed") {
       pending.delete(event.data.name);
+      continue;
+    }
+
+    if (event.type === "turn.cancelled" || event.type === "turn.failed") {
+      for (const [name, authorization] of pending)
+        if (authorization.turnId === event.data.turnId) pending.delete(name);
     }
   }
 
@@ -1163,6 +1275,9 @@ function toPendingAuthorization(
   };
 }
 
+// Finger-sized under a finger, dense beside a mouse.
+const CONNECTION_ACTION = "h-11 pointer-fine:md:h-6";
+
 function ConnectionAuthorizationPrompt({
   authorization,
   isSkipping,
@@ -1184,7 +1299,7 @@ function ConnectionAuthorizationPrompt({
             <p className="mt-1 text-muted-foreground">{authorization.description}</p>
             <div className="mt-2.5 flex items-center gap-2">
               {authorization.url ? (
-                <Button asChild size="xs" type="button">
+                <Button asChild className={CONNECTION_ACTION} size="xs" type="button">
                   <a href={authorization.url} rel="noreferrer" target="_blank">
                     Connect
                     <ExternalLinkIcon className="size-3" />
@@ -1192,6 +1307,7 @@ function ConnectionAuthorizationPrompt({
                 </Button>
               ) : null}
               <Button
+                className={CONNECTION_ACTION}
                 disabled={isSkipping}
                 onClick={() => {
                   void onSkip(authorization);
@@ -1210,214 +1326,26 @@ function ConnectionAuthorizationPrompt({
   );
 }
 
-function createAuthorizationDeclinedEvents(
+/** A skipped sign-in, recorded like eve records a declined one. */
+function createAuthorizationDeclinedEvent(
   authorization: PendingConnectionAuthorization,
-  sessionId: string,
-): readonly MessageStreamEvent[] {
-  return [
-    {
-      data: {
-        authorization: authorization.authorization,
-        name: authorization.name,
-        outcome: "declined",
-        reason: "skipped",
-        sequence: authorization.sequence,
-        stepIndex: authorization.stepIndex,
-        turnId: authorization.turnId,
-      },
-      meta: createLocalEventMeta(),
-      type: "authorization.completed",
-    },
-    createSessionWaitingEvent(sessionId),
-  ];
-}
-
-function createSessionWaitingEvent(sessionId: string): MessageStreamEvent {
+): MessageStreamEvent {
   return {
     data: {
-      continuationToken: sessionId,
-      wait: "next-user-message",
+      authorization: authorization.authorization,
+      name: authorization.name,
+      outcome: "declined",
+      reason: "skipped",
+      sequence: authorization.sequence,
+      stepIndex: authorization.stepIndex,
+      turnId: authorization.turnId,
     },
-    meta: createLocalEventMeta(),
-    type: "session.waiting",
+    meta: {
+      at: new Date().toISOString(),
+      id: `local_${crypto.randomUUID()}`,
+    },
+    type: "authorization.completed",
   };
-}
-
-function createLocalEventMeta() {
-  return {
-    at: new Date().toISOString(),
-    id: `local_${crypto.randomUUID()}`,
-  };
-}
-
-function advanceSessionWithLocalEvents(
-  session: ClientSessionState | undefined,
-  events: readonly MessageStreamEvent[],
-) {
-  if (events.length === 0 || !session) {
-    return session;
-  }
-
-  return advanceBrowserSession({
-    baseStreamIndex: session.streamIndex,
-    events,
-    sessionId: session.sessionId,
-  });
-}
-
-function mergeLocalEvents(
-  events: readonly MessageStreamEvent[],
-  localEvents: readonly MessageStreamEvent[],
-): MessageStreamEvent[] {
-  const merged = [...events];
-
-  if (localEvents.length === 0) {
-    return merged;
-  }
-
-  const keys = new Set(events.map(getLocalEventKey).filter(Boolean));
-
-  for (const event of localEvents) {
-    const key = getLocalEventKey(event);
-
-    if (!key || keys.has(key)) {
-      continue;
-    }
-
-    keys.add(key);
-    merged.push(event);
-  }
-
-  return merged;
-}
-
-function mergeStreamEventLogs(
-  events: readonly MessageStreamEvent[],
-  streamedEvents: readonly MessageStreamEvent[],
-): MessageStreamEvent[] {
-  if (streamedEvents.length === 0) {
-    return events as MessageStreamEvent[];
-  }
-
-  let merged: MessageStreamEvent[] = [...events];
-
-  for (const event of streamedEvents) {
-    const next = appendUniqueStreamEvent(merged, event);
-
-    if (next !== merged) {
-      merged = next;
-    }
-  }
-
-  return merged;
-}
-
-function appendUniqueStreamEvent(
-  events: readonly MessageStreamEvent[],
-  event: MessageStreamEvent,
-): MessageStreamEvent[] {
-  if (events.some((existingEvent) => areSameStreamEvent(existingEvent, event))) {
-    return events as MessageStreamEvent[];
-  }
-
-  return [...events, event];
-}
-
-function preserveKnownInitialEvents(
-  snapshotEvents: readonly MessageStreamEvent[],
-  knownEvents: readonly MessageStreamEvent[],
-) {
-  if (knownEvents.length === 0) {
-    return snapshotEvents;
-  }
-
-  if (snapshotEvents.length === 0) {
-    return knownEvents;
-  }
-
-  const sharedPrefixLength = countSharedEventPrefix(snapshotEvents, knownEvents);
-
-  if (sharedPrefixLength === knownEvents.length) {
-    return snapshotEvents;
-  }
-
-  if (sharedPrefixLength === snapshotEvents.length) {
-    return knownEvents;
-  }
-
-  if (sharedPrefixLength > 0) {
-    return [...knownEvents, ...snapshotEvents.slice(sharedPrefixLength)];
-  }
-
-  return [...knownEvents, ...snapshotEvents];
-}
-
-function countSharedEventPrefix(
-  events: readonly MessageStreamEvent[],
-  knownEvents: readonly MessageStreamEvent[],
-) {
-  const count = Math.min(events.length, knownEvents.length);
-
-  for (let index = 0; index < count; index += 1) {
-    if (!areSameStreamEvent(knownEvents[index]!, events[index])) {
-      return index;
-    }
-  }
-
-  return count;
-}
-
-function areSameStreamEvent(left: MessageStreamEvent, right: MessageStreamEvent | undefined) {
-  return right !== undefined && areEqualJsonValues(left, right);
-}
-
-function areEqualJsonValues(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true;
-  }
-
-  if (typeof left !== typeof right || left === null || right === null) {
-    return false;
-  }
-
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-      return false;
-    }
-
-    return left.every((item, index) => areEqualJsonValues(item, right[index]));
-  }
-
-  if (typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-
-  if (leftKeys.length !== rightKeys.length) {
-    return false;
-  }
-
-  return leftKeys.every(
-    (key) =>
-      Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-      areEqualJsonValues(leftRecord[key], rightRecord[key]),
-  );
-}
-
-function getLocalEventKey(event: MessageStreamEvent) {
-  if (event.type === "authorization.completed") {
-    return `${event.type}:${event.data.turnId}:${event.data.name}:${event.data.outcome}:${event.data.reason ?? ""}`;
-  }
-
-  if (event.type === "session.waiting") {
-    return `${event.type}:${event.meta?.at ?? "local"}`;
-  }
-
-  return null;
 }
 
 function appendPendingUserMessages(
@@ -1546,20 +1474,16 @@ function useThinkingPresence(active: boolean) {
   return { isVisible, shouldRender };
 }
 
-function ThinkingMessage({ isVisible }: { readonly isVisible: boolean }) {
+/** Where a chat continued in a new eve session, whose context starts empty. */
+function SessionRestartNote() {
   return (
-    <article
-      aria-live={isVisible ? "polite" : "off"}
-      className={[
-        "flex w-full justify-start overflow-hidden transition-[opacity,transform,max-height] duration-200 ease-out",
-        isVisible ? "max-h-8 translate-y-0 opacity-100" : "max-h-0 -translate-y-1 opacity-0",
-      ].join(" ")}
-      role="status"
-    >
-      <div className="px-3 text-[15px] font-medium leading-6 text-muted-foreground">
-        <span className="shimmer-text">Thinking...</span>
-      </div>
-    </article>
+    <div className="flex items-center gap-3 px-3 text-xs text-muted-foreground" role="note">
+      <span aria-hidden className="h-px flex-1 bg-border" />
+      <span className="max-w-[80%] text-center">
+        Ægentica started over here and doesn&apos;t remember the messages above.
+      </span>
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
   );
 }
 

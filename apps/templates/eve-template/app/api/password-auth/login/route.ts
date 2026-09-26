@@ -1,10 +1,19 @@
-import { enforceLoginLimit } from "@/lib/login-limit";
+import {
+  enforceLoginLimit,
+  isKnownDevice,
+  KNOWN_DEVICE_COOKIE_NAME,
+  KNOWN_DEVICE_MAX_AGE,
+  knownDeviceToken,
+  loginClient,
+  loginSucceeded,
+} from "@/lib/login-limit";
 import { NextResponse } from "next/server";
 import {
   createPasswordSessionToken,
   hasSameOriginRequest,
   PASSWORD_SESSION_COOKIE_NAME,
   PASSWORD_SESSION_MAX_AGE,
+  readCookie,
   verifyChatPassword,
 } from "@/lib/password-auth";
 import {
@@ -21,7 +30,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Password sign-in is not configured." }, { status: 409 });
   if (!hasSameOriginRequest(request))
     return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
-  const retryAfter = enforceLoginLimit();
+  const client = loginClient(request.headers);
+  const knownDevice = isKnownDevice(readCookie(request.headers, KNOWN_DEVICE_COOKIE_NAME));
+  const retryAfter = enforceLoginLimit(client, Date.now(), knownDevice);
   if (retryAfter)
     return NextResponse.json(
       { error: "Too many sign-in attempts. Try again in a minute." },
@@ -53,6 +64,7 @@ export async function POST(request: Request) {
   const password = typeof body?.password === "string" ? body.password : "";
   if (!(await verifyChatPassword(password, username)))
     return NextResponse.json({ error: "Incorrect username or password." }, { status: 401 });
+  loginSucceeded(client);
   const response = NextResponse.json({ ok: true });
   const secure = isSecureAuthHintCookie();
   response.cookies.set(PASSWORD_SESSION_COOKIE_NAME, createPasswordSessionToken(), {
@@ -62,6 +74,16 @@ export async function POST(request: Request) {
     sameSite: "lax",
     secure,
   });
+  // Lets this browser past the overall sign-in cap next time; sent only to this route.
+  const deviceToken = knownDeviceToken();
+  if (deviceToken)
+    response.cookies.set(KNOWN_DEVICE_COOKIE_NAME, deviceToken, {
+      httpOnly: true,
+      maxAge: KNOWN_DEVICE_MAX_AGE,
+      path: "/api/password-auth/login",
+      sameSite: "lax",
+      secure,
+    });
   response.cookies.set(AUTH_HINT_COOKIE_NAME, AUTH_HINT_COOKIE_VALUE, {
     httpOnly: false,
     maxAge: AUTH_HINT_COOKIE_MAX_AGE,

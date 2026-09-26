@@ -2,6 +2,7 @@ import { AlertCircleIcon, ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
+import { isPasswordConfigured } from "@/lib/setup";
 
 const SETUP_DOCS_URL =
   "https://github.com/vercel/eve/blob/main/apps/templates/eve-chat-template/docs/setup-and-deploy.md";
@@ -16,8 +17,9 @@ export default async function AuthErrorPage({
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-10 text-foreground">
-      <Suspense fallback={<AuthErrorCard message={getAuthErrorMessage()} />}>
+    <main className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-background px-4 py-10 text-foreground">
+      {/* The static shell cannot know the auth mode, so it names none. */}
+      <Suspense fallback={<AuthErrorCard message={NEUTRAL_MESSAGE} />}>
         <AuthErrorContent searchParams={searchParams} />
       </Suspense>
     </main>
@@ -30,19 +32,35 @@ async function AuthErrorContent({
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  // Password mode (the self-hosted default) has no OAuth app to configure; read
+  // at request time, since the server's environment arrives at runtime.
+  if (isPasswordConfigured()) return <AuthErrorCard message={PASSWORD_MESSAGE} />;
   const error = getParam(params.error);
   const errorDescription = getParam(params.error_description);
   const message = getAuthErrorMessage(error, errorDescription);
 
-  return <AuthErrorCard error={error} message={message} />;
+  return <AuthErrorCard error={error} message={message} vercel />;
 }
+
+const NEUTRAL_MESSAGE = {
+  title: "Sign-in could not finish",
+  body: "Go back to the chat and try signing in again.",
+};
+
+const PASSWORD_MESSAGE = {
+  title: "Sign-in could not finish",
+  body: "Ægentica signs in with its operator username and password. Go back to the chat and sign in there.",
+};
 
 function AuthErrorCard({
   error,
   message,
+  vercel = false,
 }: {
   readonly error?: string;
-  readonly message: ReturnType<typeof getAuthErrorMessage>;
+  readonly message: { readonly title: string; readonly body: string };
+  /** Sign in with Vercel: name the setup and link its guides. */
+  readonly vercel?: boolean;
 }) {
   return (
     <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -51,7 +69,9 @@ function AuthErrorCard({
           <AlertCircleIcon className="size-4" />
         </div>
         <div className="min-w-0 space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Authentication setup</p>
+          {vercel ? (
+            <p className="text-sm font-medium text-muted-foreground">Authentication setup</p>
+          ) : null}
           <h1 className="text-2xl font-semibold tracking-normal">{message.title}</h1>
           <p className="text-sm leading-6 text-muted-foreground">{message.body}</p>
           {error ? (
@@ -63,34 +83,43 @@ function AuthErrorCard({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Button asChild className="h-8 rounded-md px-3 text-sm">
+        <Button asChild className={ACTION}>
           <Link href="/">
             <ArrowLeftIcon className="size-4" />
             Back to chat
           </Link>
         </Button>
-        <Button asChild className="h-8 rounded-md px-3 text-sm" variant="outline">
-          <a href={SETUP_DOCS_URL} rel="noreferrer" target="_blank">
-            Setup guide
-            <ExternalLinkIcon className="size-3.5" />
-          </a>
-        </Button>
-        <Button asChild className="h-8 rounded-md px-3 text-sm" variant="outline">
-          <a
-            href={
-              error === "email_not_found" ? SIGN_IN_WITH_VERCEL_SCOPES_URL : SIGN_IN_WITH_VERCEL_URL
-            }
-            rel="noreferrer"
-            target="_blank"
-          >
-            Vercel OAuth docs
-            <ExternalLinkIcon className="size-3.5" />
-          </a>
-        </Button>
+        {vercel ? (
+          <>
+            <Button asChild className={ACTION} variant="outline">
+              <a href={SETUP_DOCS_URL} rel="noreferrer" target="_blank">
+                Setup guide
+                <ExternalLinkIcon className="size-3.5" />
+              </a>
+            </Button>
+            <Button asChild className={ACTION} variant="outline">
+              <a
+                href={
+                  error === "email_not_found"
+                    ? SIGN_IN_WITH_VERCEL_SCOPES_URL
+                    : SIGN_IN_WITH_VERCEL_URL
+                }
+                rel="noreferrer"
+                target="_blank"
+              >
+                Vercel OAuth docs
+                <ExternalLinkIcon className="size-3.5" />
+              </a>
+            </Button>
+          </>
+        ) : null}
       </div>
     </div>
   );
 }
+
+// Finger-sized under a finger, dense beside a mouse.
+const ACTION = "h-11 rounded-md px-3 text-sm pointer-fine:md:h-8";
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;

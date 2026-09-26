@@ -1,5 +1,7 @@
 import { connection, NextResponse } from "next/server";
+import { chatPageSize } from "@/lib/chat/paging";
 import { listChatsPageByUser } from "@/lib/db/queries";
+import { jsonResponse } from "@/lib/http/json";
 import { getServerViewer } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
 
@@ -19,9 +21,14 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const page = await listChatsPageByUser(viewer.id, searchParams.get("cursor"));
+  // Search asks for up to 100 at once (?limit=); the sidebar pages 20 at a time.
+  const page = await listChatsPageByUser(
+    viewer.id,
+    searchParams.get("cursor"),
+    chatPageSize(searchParams.get("limit")),
+  );
 
-  return NextResponse.json({
+  return jsonResponse(request, {
     chats: page.items,
     nextCursor: page.nextCursor,
   });

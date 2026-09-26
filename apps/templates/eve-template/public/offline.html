@@ -76,11 +76,35 @@
   <body>
     <main>
       <img src="/icons/icon-192.png" alt="" />
-      <h1>You’re offline</h1>
-      <p>
+      <h1 id="title">You’re offline</h1>
+      <p id="reason">
         Ægentica needs a connection to reach your agent. Your conversations are safe on your server.
+        It continues on its own when you are back online.
       </p>
       <button type="button" onclick="location.reload()">Try again</button>
     </main>
+    <script>
+      // Carry on as soon as the connection returns, as a native app would.
+      addEventListener("online", () => location.reload());
+      // Online, the server itself is not answering: usually for a moment while
+      // a deploy restarts it (the service worker shows this page for the
+      // proxy's 502, 503 and 504). Ask again every few seconds while in view.
+      if (navigator.onLine) {
+        document.title = "Reconnecting · Ægentica";
+        document.getElementById("title").textContent = "Ægentica is not answering";
+        document.getElementById("reason").textContent =
+          "Your server is not reachable right now, usually for a moment while it updates. " +
+          "Your conversations are safe on it. This page continues on its own when it is back.";
+      }
+      setInterval(async () => {
+        if (!navigator.onLine || document.visibilityState !== "visible") return;
+        try {
+          const response = await fetch(location.href, { cache: "no-store" });
+          if (![502, 503, 504].includes(response.status)) location.reload();
+        } catch {
+          // Still unreachable; ask again shortly.
+        }
+      }, 5000);
+    </script>
   </body>
 </html>

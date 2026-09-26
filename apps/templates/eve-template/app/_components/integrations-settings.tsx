@@ -7,12 +7,16 @@ import {
   ImageIcon,
   MicIcon,
   SearchIcon,
-  SendIcon,
   TerminalIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { type ComponentType, type ReactNode, useEffect, useState } from "react";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useState } from "react";
 import { GitHubIcon, LinearIcon, NotionIcon, SentryIcon } from "@/components/icons";
+import { BrandIcon } from "@/components/brand-icon";
+
+const TelegramIcon = ({ className }: { className?: string }) => (
+  <BrandIcon brand="telegram" className={className} name="Telegram" />
+);
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -24,7 +28,7 @@ import { GithubSettings } from "./github-settings";
 import { SettingsShell } from "./settings-shell";
 import { TelegramSettings } from "./telegram-settings";
 
-type Status = "on" | "connected" | "setup";
+type Status = "on" | "connected" | "configured" | "setup";
 type Integration = {
   id: string;
   name: string;
@@ -35,29 +39,46 @@ type Integration = {
   href?: string;
   panel?: ReactNode;
   note?: string;
+  /** Called when an expanded panel closes, so its row badge catches up. */
+  onClose?: () => void;
 };
 
-const STATUS_LABEL: Record<Status, string> = { on: "On", connected: "Connected", setup: "Set up" };
+const STATUS_LABEL: Record<Status, string> = {
+  on: "On",
+  connected: "Connected",
+  configured: "Configured",
+  setup: "Set up",
+};
 
-async function connected(path: string) {
+async function readStatus(path: string) {
   const response = await fetch(path, { cache: "no-store" }).catch(() => null);
-  if (!response?.ok) return false;
-  const data = (await response.json().catch(() => ({}))) as { connected?: boolean };
-  return Boolean(data.connected);
+  if (!response?.ok) return {};
+  return (await response.json().catch(() => ({}))) as { connected?: boolean; available?: boolean };
 }
 
 /** Everything Ægentica can use, in the shape of a plugin directory. */
 export function IntegrationsSettings() {
   const { setupStatus, viewer } = useChatShell();
   const [query, setQuery] = useState("");
-  const [accounts, setAccounts] = useState({ github: false, telegram: false });
+  const [accounts, setAccounts] = useState({ github: false, telegram: false, memory: true });
+
+  const refreshAccounts = useCallback(() => {
+    void Promise.all([
+      readStatus("/api/settings/github"),
+      readStatus("/api/settings/telegram"),
+      readStatus("/api/settings/memory"),
+    ]).then(([github, telegram, memory]) =>
+      setAccounts({
+        github: Boolean(github.connected),
+        telegram: Boolean(telegram.connected),
+        memory: memory.available !== false,
+      }),
+    );
+  }, []);
 
   useEffect(() => {
-    if (!viewer) return;
-    void Promise.all([connected("/api/settings/github"), connected("/api/settings/telegram")]).then(
-      ([github, telegram]) => setAccounts({ github, telegram }),
-    );
-  }, [viewer]);
+    if (viewer) refreshAccounts();
+  }, [viewer, refreshAccounts]);
 
   const configured = new Set<ConfiguredConnection>(setupStatus.configuredConnections ?? []);
   const workApp = (
@@ -71,10 +92,11 @@ export function IntegrationsSettings() {
     description,
     icon,
     group: "Work apps",
-    status: configured.has(id) ? "connected" : "setup",
+    // The server only knows a connector id is set, not that the account answers.
+    status: configured.has(id) ? "configured" : "setup",
     note: configured.has(id)
       ? "Turn it on for a chat from the connections menu in the message box."
-      : `Needs a Vercel Connect connector (${id.toUpperCase()}_CONNECTOR) on the server; see the setup guide.`,
+      : `Needs a Vercel Connect connector: set ${id.toUpperCase()}_CONNECTOR on the server.`,
   });
 
   const integrations: Integration[] = [
@@ -116,7 +138,7 @@ export function IntegrationsSettings() {
       name: "Memory",
       description: "Remembers your preferences across chats",
       icon: BrainIcon,
-      status: "on",
+      status: accounts.memory ? "on" : "setup",
       group: "Built in",
       href: "/memory",
     },
@@ -137,15 +159,17 @@ export function IntegrationsSettings() {
       status: accounts.github ? "connected" : "setup",
       group: "Accounts",
       panel: <GithubSettings />,
+      onClose: refreshAccounts,
     },
     {
       id: "telegram",
       name: "Telegram",
       description: "Chat with Ægentica from Telegram",
-      icon: SendIcon,
+      icon: TelegramIcon,
       status: accounts.telegram ? "connected" : "setup",
       group: "Accounts",
       panel: <TelegramSettings />,
+      onClose: refreshAccounts,
     },
     workApp("linear", "Linear", "Issues, projects and cycles", LinearIcon),
     workApp("notion", "Notion", "Pages and databases", NotionIcon),
@@ -163,8 +187,8 @@ export function IntegrationsSettings() {
       title="Connections"
       description="The tools and accounts Ægentica can use. Anything that changes an account asks you first."
       actions={
-        <Button asChild className="h-11 md:h-9" variant="outline">
-          <Link href="/capabilities">Browse directory</Link>
+        <Button asChild className="h-11 pointer-fine:md:h-9" variant="outline">
+          <Link href="/capabilities?scope=directory">Browse directory</Link>
         </Button>
       }
     >
@@ -223,7 +247,13 @@ function IntegrationRow({ item }: { readonly item: Integration }) {
   if (item.panel || item.note) {
     return (
       <li>
-        <Collapsible open={open} onOpenChange={setOpen}>
+        <Collapsible
+          open={open}
+          onOpenChange={(next) => {
+            setOpen(next);
+            if (!next) item.onClose?.();
+          }}
+        >
           <CollapsibleTrigger className={cn(rowClass, "hover:bg-muted/40")}>
             {summary}
             <ChevronDownIcon

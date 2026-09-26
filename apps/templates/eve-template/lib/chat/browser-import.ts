@@ -1,6 +1,7 @@
 "use client";
 
 import { importBrowserChatAction } from "@/app/actions/chat";
+import { callChatAction } from "@/lib/chat/errors";
 import { deleteLocalChat, getLocalChat, listLocalChats } from "@/lib/chat/local-store";
 
 let running: Promise<number> | undefined;
@@ -18,11 +19,13 @@ export function importBrowserChats() {
       if (!chat) continue;
       try {
         if (chat.events.length > 0)
-          await importBrowserChatAction({
-            title: chat.title,
-            events: chat.events,
-            session: chat.session,
-          });
+          await callChatAction(() =>
+            importBrowserChatAction({
+              title: chat.title,
+              events: chat.events,
+              session: chat.session,
+            }),
+          );
         deleteLocalChat(item.id);
         imported += chat.events.length > 0 ? 1 : 0;
       } catch {

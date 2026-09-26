@@ -41,6 +41,7 @@ eve runtime 127.0.0.1:4274          chats.sqlite · profile.sqlite · settings/*
   ├─ memory: profile (fileMemory, SQLite backend)
   ├─ extensions: github (github-tools)
   ├─ schedules: scheduled-tasks (1-minute dispatcher) → lib/task-runner.ts
+  │             nightly-backup (03:17 local) → lib/backup.ts → backups/<day>/
   └─ routed model: AI Gateway or OpenRouter, per step
 ```
 
@@ -118,4 +119,4 @@ This keeps the base clone runnable while still making all official integrations 
 
 The browser's persisted composer stores device-local attachments and profile/mode selection in IndexedDB. On send, files become standard AI SDK content passed to the existing eve React client. The auth adapter validates the operator before resolving a saved profile to immutable turn attributes; dynamic instructions and the existing model router consume that snapshot. Model and provider switching still happen at the next model step.
 
-Encrypted profile CRUD is shared by Next.js and eve, with an inter-process lock and optimistic edit versions. Profile creation from chat uses eve approval. Delegation is a background `defineWorkflowTool` invoking `ctx.agent("researcher", ...)`, retaining eve's durability instead of introducing an application queue. It is a profile on the existing runtime, not an independently isolated agent. The image library indexes the existing media directory with explicit scan/page caps and authenticated serving.
+Encrypted profile CRUD is shared by Next.js and eve, with an inter-process lock and optimistic edit versions. Profile creation from chat uses eve approval. Delegation is a background `defineWorkflowTool` invoking the root copy with `ctx.agent("agent", ...)`, retaining eve's durability instead of introducing an application queue. It is a profile on the existing runtime, not an independently isolated agent. The image library indexes the existing media directory with explicit scan/page caps and authenticated serving.

@@ -1,5 +1,19 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { readlinkSync } from "node:fs";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 
 /**
@@ -40,8 +54,20 @@ async function atomicWrite(name: string, data: string) {
   const directory = settingsDirectory();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const temp = join(directory, `${name}.${randomBytes(8).toString("hex")}.tmp`);
-  await writeFile(temp, data, { mode: 0o600 });
-  await rename(temp, join(directory, name));
+  try {
+    const file = await open(temp, "wx", 0o600);
+    try {
+      await file.writeFile(data);
+      // Flushed before the rename, so a power loss cannot leave an empty file in place.
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temp, join(directory, name));
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /** Decrypts a settings file; undefined when absent, throws when tampered or unreadable. */
@@ -90,33 +116,107 @@ export async function removeSetting(name: string) {
 }
 
 const LOCK_STALE_MS = 30_000;
+const LOCK_WAIT_MS = 10_000;
+
+// The process table this process shares with its siblings (the container's PID
+// namespace on Linux), so a lock left by a sibling that has since died is free at once.
+const PROCESS_SPACE = (() => {
+  try {
+    return `${hostname()}:${readlinkSync("/proc/self/ns/pid")}`;
+  } catch {
+    return hostname();
+  }
+})();
+
+function isRunning(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** The lock's owner token, and whether that owner can no longer be holding it. */
+async function lockOwner(lock: string) {
+  const entries = await readdir(lock).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const token = entries[0];
+  if (!token) return undefined;
+  const file = join(lock, token);
+  const info = await stat(file).catch(() => undefined);
+  if (!info) return undefined;
+  const owner = (await readFile(file, "utf8")
+    .then(JSON.parse)
+    .catch(() => ({}))) as { pid?: unknown; space?: unknown };
+  const gone =
+    owner.space === PROCESS_SPACE && typeof owner.pid === "number" && !isRunning(owner.pid);
+  return { token, stale: gone || Date.now() - info.mtimeMs > LOCK_STALE_MS };
+}
+
+/**
+ * Removes the lock only while `token` still owns it: unlinking the owner file
+ * is the single step that can succeed for one caller, so two waiters breaking
+ * the same stale lock never both win, and a stale lock is never confused with
+ * the fresh one that replaced it.
+ */
+async function releaseLock(lock: string, token: string) {
+  try {
+    await unlink(join(lock, token));
+  } catch {
+    return;
+  }
+  // Fails harmlessly when a waiter has already claimed the emptied lock.
+  await rmdir(lock).catch(() => {});
+}
 
 /**
  * Serializes read-modify-write across the Next.js and eve processes with an
- * exclusive lock directory. A lock older than 30s belongs to a crashed writer.
+ * exclusive lock directory holding one owner file (pid and process table). A
+ * lock whose owner has exited, or that is older than 30s, belongs to a crashed
+ * writer and is broken.
  */
 export async function withSettingsLock<T>(name: string, task: () => Promise<T>): Promise<T> {
-  await mkdir(settingsDirectory(), { recursive: true, mode: 0o700 });
-  const lock = join(settingsDirectory(), `${name}.lock`);
-  const deadline = Date.now() + 10_000;
-  while (true) {
-    try {
-      await mkdir(lock);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const age = await stat(lock).then(
-        (info) => Date.now() - info.mtimeMs,
-        () => 0,
-      );
-      if (age > LOCK_STALE_MS) await rmdir(lock).catch(() => {});
-      else if (Date.now() > deadline) throw new Error("Settings are busy. Try again.");
-      else await new Promise((resolve) => setTimeout(resolve, 25));
+  const directory = settingsDirectory();
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const lock = join(directory, `${name}.lock`);
+  const token = randomBytes(8).toString("hex");
+  // The claim is complete before it becomes the lock: renaming a directory
+  // only succeeds while nothing, or an empty directory, is in the way.
+  const claim = join(directory, `${name}.lock.${token}.tmp`);
+  let held = false;
+  try {
+    await mkdir(claim, { mode: 0o700 });
+    await writeFile(
+      join(claim, token),
+      JSON.stringify({ pid: process.pid, space: PROCESS_SPACE }),
+      { mode: 0o600 },
+    );
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    while (!held) {
+      try {
+        await rename(claim, lock);
+        held = true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+        if (Date.now() > deadline) throw new Error("Settings are busy. Try again.");
+        const owner = await lockOwner(lock);
+        if (owner?.stale) await releaseLock(lock, owner.token);
+        else await new Promise((resolve) => setTimeout(resolve, 25));
+      }
     }
+  } finally {
+    if (!held) await rm(claim, { recursive: true, force: true }).catch(() => {});
   }
+  // The lock ages from now, not from when this caller started waiting.
+  const now = new Date();
+  await utimes(join(lock, token), now, now).catch(() => {});
   try {
     return await task();
   } finally {
-    await rmdir(lock).catch(() => {});
+    await releaseLock(lock, token);
   }
 }

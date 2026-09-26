@@ -44,6 +44,10 @@ export function createLocalChat(pendingUserMessage?: string) {
   return toListItem(chat);
 }
 
+export function renameLocalChat(chatId: string, title: string) {
+  updateState((chats) => chats.map((chat) => (chat.id === chatId ? { ...chat, title } : chat)));
+}
+
 export function deleteLocalChat(chatId: string) {
   updateState((chats) => chats.filter((chat) => chat.id !== chatId));
 }
@@ -94,6 +98,12 @@ export function appendLocalChatEvent({
 
 export function saveLocalChatSession(chatId: string, session: ClientSessionState) {
   updateChat(chatId, (chat) => ({ ...chat, session }));
+}
+
+export function forgetLocalChatSession(sessionId: string) {
+  for (const chat of readState().chats)
+    if (chat.session?.sessionId === sessionId)
+      updateChat(chat.id, (stored) => ({ ...stored, session: undefined }));
 }
 
 export function saveLocalChatSnapshot({

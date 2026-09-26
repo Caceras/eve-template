@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { AUTH_HINT_COOKIE_NAME, AUTH_HINT_COOKIE_VALUE } from "../auth-hint";
 import type { CatalogModel, ProviderId } from "../model-catalog";
 import { notifyModelSettingsChanged, subscribeModelPreference } from "./model-preference";
@@ -40,43 +40,79 @@ function loadStatus() {
   // Signed-out visitors cannot manage providers; skip a request that can only be denied.
   if (!document.cookie.includes(`${AUTH_HINT_COOKIE_NAME}=${AUTH_HINT_COOKIE_VALUE}`))
     return Promise.resolve(null);
-  statusRequest ??= fetch("/api/settings/providers", { cache: "no-store" })
-    .then(async (response) => (response.ok ? ((await response.json()) as ProviderStatus) : null))
-    .catch(() => null);
-  return statusRequest;
+  if (statusRequest) return statusRequest;
+  const request = fetch("/api/settings/providers", { cache: "no-store" }).then(async (response) => {
+    if (response.ok) return (await response.json()) as ProviderStatus;
+    if (response.status === 401 || response.status === 403) return null;
+    throw new Error("Provider status unavailable");
+  });
+  // Offline or a passing server error is retried on the next refresh instead of
+  // being remembered as "not the operator".
+  request.catch(() => {
+    if (statusRequest === request) statusRequest = undefined;
+  });
+  return (statusRequest = request);
 }
 
-/** Shared catalog and provider status; every hook instance refreshes after a provider change. */
+type ModelSettings = {
+  readonly catalog: ClientCatalog | null;
+  readonly status: ProviderStatus | undefined;
+  readonly catalogError: boolean;
+  /** The provider status request failed (offline, server error); Retry calls retryModelSettings. */
+  readonly statusError: boolean;
+};
+const NOT_LOADED: ModelSettings = {
+  catalog: null,
+  status: undefined,
+  catalogError: false,
+  statusError: false,
+};
+// One shared answer: a picker mounted by navigation (a new chat, another page)
+// shows the loaded model at once instead of a loading label, while hydration
+// still starts from the server's not-loaded snapshot.
+let settings = NOT_LOADED;
+const listeners = new Set<() => void>();
+function publish(patch: Partial<ModelSettings>) {
+  settings = { ...settings, ...patch };
+  for (const listener of listeners) listener();
+}
+function subscribeSettings(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+function refreshSettings() {
+  loadCatalog()
+    .then((catalog) => publish({ catalog, catalogError: false }))
+    .catch(() => publish({ catalogError: true }));
+  loadStatus().then(
+    (status) => publish({ status, statusError: false }),
+    () => publish({ statusError: true }),
+  );
+}
+
+/** Loads the catalog and provider status again after a failure. */
+export function retryModelSettings() {
+  publish({ catalogError: false, statusError: false });
+  refreshSettings();
+}
+
+/** Shared catalog and provider status, refreshed on mount and after a provider change. */
 export function useModelSettings() {
-  const [catalog, setCatalog] = useState<ClientCatalog | null>(null);
-  const [status, setStatus] = useState<ProviderStatus | undefined>(undefined);
-  const [catalogError, setCatalogError] = useState(false);
   useEffect(() => {
-    let stopped = false;
-    const refresh = () => {
-      loadCatalog()
-        .then((value) => {
-          if (stopped) return;
-          setCatalog(value);
-          setCatalogError(false);
-        })
-        .catch(() => !stopped && setCatalogError(true));
-      void loadStatus().then((value) => !stopped && setStatus(value));
-    };
     let seen = version;
-    refresh();
-    const unsubscribe = subscribeModelPreference(() => {
+    refreshSettings();
+    return subscribeModelPreference(() => {
       // Model choices fire this event too; refetch only after a provider change.
       if (seen === version) return;
       seen = version;
-      refresh();
+      refreshSettings();
     });
-    return () => {
-      stopped = true;
-      unsubscribe();
-    };
   }, []);
-  return { catalog, status, catalogError };
+  return useSyncExternalStore(
+    subscribeSettings,
+    () => settings,
+    () => NOT_LOADED,
+  );
 }
 
 export async function providerAction(body: {

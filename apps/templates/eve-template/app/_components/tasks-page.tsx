@@ -6,6 +6,7 @@ import {
   MessageSquareIcon,
   PencilIcon,
   SearchIcon,
+  SparklesIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -44,21 +45,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { loadRuntimeSkills, skillLabel, skillSummary, type RuntimeSkill } from "@/lib/skills";
 import { cn } from "@/lib/utils";
+import { StickyBar } from "@/components/chat/sticky-bar";
 import { useChatShell } from "./chat-shell-context";
+import { PageSignInButton } from "./page-sign-in";
 
 type Task = {
   id: string;
   title: string;
   prompt: string;
+  skill?: string | null;
   cron: string | null;
   timezone: string;
   enabled: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
-  lastStatus: "sent" | "failed" | null;
+  lastStatus: "sent" | "failed" | "waiting" | null;
   lastChatId?: string | null;
   failures: number;
+  /** A queued Run now; the schedule itself is unchanged. */
+  runNowAt?: string | null;
 };
 
 type Repeat = "once" | "daily" | "weekdays" | "weekly" | "custom";
@@ -66,6 +73,8 @@ type Draft = {
   id?: string;
   title: string;
   prompt: string;
+  /** Skill name, or NO_SKILL. */
+  skill: string;
   repeat: Repeat;
   date: string;
   time: string;
@@ -74,6 +83,8 @@ type Draft = {
   timezone: string;
 };
 
+// Skill names start with a letter or digit, so this never collides with one.
+const NO_SKILL = "__none";
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const REPEATS: { value: Repeat; label: string }[] = [
   { value: "once", label: "Once" },
@@ -93,12 +104,15 @@ function localParts(date: Date) {
   };
 }
 
-function newDraft(): Draft {
-  const soon = new Date(Date.now() + 60 * 60_000);
-  soon.setMinutes(0, 0, 0);
+function newDraft(skill?: RuntimeSkill): Draft {
+  // The next 08:00, the usual time for a briefing, whether it repeats or runs once.
+  const soon = new Date();
+  if (soon.getHours() >= 8) soon.setDate(soon.getDate() + 1);
+  soon.setHours(8, 0, 0, 0);
   return {
-    title: "",
+    title: skill ? skillLabel(skill.name) : "",
     prompt: "",
+    skill: skill?.name ?? NO_SKILL,
     repeat: "daily",
     ...localParts(soon),
     weekday: "1",
@@ -108,7 +122,13 @@ function newDraft(): Draft {
 }
 
 function draftFromTask(task: Task): Draft {
-  const base = { ...newDraft(), id: task.id, title: task.title, prompt: task.prompt };
+  const base = {
+    ...newDraft(),
+    id: task.id,
+    title: task.title,
+    prompt: task.prompt,
+    skill: task.skill || NO_SKILL,
+  };
   base.timezone = task.timezone;
   if (!task.cron) {
     if (task.nextRunAt) Object.assign(base, localParts(new Date(task.nextRunAt)));
@@ -166,6 +186,7 @@ function repeatLabel(task: Task) {
 
 function statusLine(task: Task) {
   const failed = task.lastStatus === "failed";
+  if (task.runNowAt) return failed ? "Run now failed · retrying soon" : "Starting within a minute";
   if (failed && task.failures > 0 && task.enabled) return "Last run failed · retrying soon";
   const state = !task.enabled
     ? task.cron || task.nextRunAt
@@ -174,7 +195,8 @@ function statusLine(task: Task) {
     : task.nextRunAt
       ? `Next ${formatWhen(task.nextRunAt, task.timezone)}`
       : "Scheduled";
-  return failed ? `Last run hit an error · ${state}` : state;
+  if (failed) return `Last run hit an error · ${state}`;
+  return task.lastStatus === "waiting" ? `Last run is waiting for you · ${state}` : state;
 }
 
 type Filter = "all" | "active" | "paused" | "completed";
@@ -191,6 +213,7 @@ function taskState(task: Task): Exclude<Filter, "all"> {
 }
 
 const CREATE_PROMPT = "Schedule a task for me: ";
+const LOAD_ERROR = "Could not load tasks. Check your connection and try again.";
 
 async function request(body?: Record<string, unknown>): Promise<Task[]> {
   const response = await fetch("/api/settings/schedules", {
@@ -198,6 +221,8 @@ async function request(body?: Record<string, unknown>): Promise<Task[]> {
     cache: "no-store",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+  }).catch(() => {
+    throw new Error("Could not reach Ægentica. Check your connection and try again.");
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Could not complete the request.");
@@ -205,7 +230,7 @@ async function request(body?: Record<string, unknown>): Promise<Task[]> {
 }
 
 export function TasksPage() {
-  const { viewer, requestSignIn } = useChatShell();
+  const { viewer } = useChatShell();
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -214,6 +239,7 @@ export function TasksPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
+  const [skills, setSkills] = useState<RuntimeSkill[]>([]);
   const router = useRouter();
 
   const createWithAgent = () => {
@@ -234,10 +260,18 @@ export function TasksPage() {
   const refresh = useCallback(async () => {
     try {
       setTasks(await request());
-    } catch (reason) {
-      setError((reason as Error).message);
+      // A later successful refresh clears an earlier failed one.
+      setError((current) => (current === LOAD_ERROR ? "" : current));
+    } catch {
+      setError(LOAD_ERROR);
     }
   }, []);
+
+  useEffect(() => {
+    if (!viewer) return;
+    // Skills are optional here; the form still works when inspection fails.
+    loadRuntimeSkills().then(setSkills, () => setSkills([]));
+  }, [viewer]);
 
   useEffect(() => {
     if (!viewer) return;
@@ -270,7 +304,7 @@ export function TasksPage() {
           {viewer && tasks !== null && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="h-11 md:h-9">
+                <Button className="h-11 pointer-fine:md:h-9">
                   Create
                   <ChevronDownIcon className="size-4" />
                 </Button>
@@ -297,7 +331,7 @@ export function TasksPage() {
         {!viewer ? (
           <div className="mt-8 rounded-lg border p-5">
             <p className="mb-4 text-sm">Sign in to manage tasks.</p>
-            <Button onClick={() => requestSignIn()}>Sign in</Button>
+            <PageSignInButton />
           </div>
         ) : tasks === null ? (
           !error && <p className="mt-8 text-sm text-muted-foreground">Loading tasks…</p>
@@ -308,18 +342,40 @@ export function TasksPage() {
               Create a reminder, a daily briefing or a weekly check-in.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button className="h-11 md:h-9" onClick={createWithAgent}>
+              <Button className="h-11 pointer-fine:md:h-9" onClick={createWithAgent}>
                 <MessageSquareIcon className="size-4" />
                 Create with Ægentica
               </Button>
               <Button
-                className="h-11 md:h-9"
+                className="h-11 pointer-fine:md:h-9"
                 onClick={() => setDraft(newDraft())}
                 variant="outline"
               >
                 Set up manually
               </Button>
             </div>
+            {skills.length > 0 && (
+              <>
+                <p className="mt-5 text-xs font-medium text-muted-foreground">
+                  Or start from a skill
+                </p>
+                <div className="scroll-row -mx-5 mt-2 gap-2 px-5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none]">
+                  {skills.map((skill) => (
+                    <Button
+                      className="h-11 shrink-0 snap-start pointer-fine:md:h-8"
+                      key={skill.name}
+                      onClick={() => setDraft(newDraft(skill))}
+                      size="sm"
+                      title={skillSummary(skill.description)}
+                      variant="secondary"
+                    >
+                      <SparklesIcon className="size-3.5" />
+                      {skillLabel(skill.name)}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -333,29 +389,30 @@ export function TasksPage() {
                 value={query}
               />
             </div>
-            <div
-              aria-label="Filter tasks"
-              className="mt-3 flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              role="tablist"
-            >
-              {FILTERS.map((item) => (
-                <button
-                  aria-selected={filter === item.value}
-                  className={cn(
-                    "h-11 shrink-0 snap-start rounded-md px-3 text-sm transition-colors md:h-8",
-                    filter === item.value
-                      ? "bg-muted/70 text-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                  key={item.value}
-                  onClick={() => setFilter(item.value)}
-                  role="tab"
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            <StickyBar className="mt-3">
+              <div
+                aria-label="Filter tasks"
+                className="scroll-row -mx-4 gap-1 px-4 sm:-mx-6 sm:px-6"
+                role="group"
+              >
+                {FILTERS.map((item) => (
+                  <button
+                    aria-pressed={filter === item.value}
+                    className={cn(
+                      "h-11 shrink-0 rounded-md px-3 text-sm transition-colors pointer-fine:md:h-8",
+                      filter === item.value
+                        ? "bg-muted/70 text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    )}
+                    key={item.value}
+                    onClick={() => setFilter(item.value)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </StickyBar>
             {shown.length === 0 ? (
               <p className="mt-6 text-sm text-muted-foreground">No tasks match.</p>
             ) : (
@@ -366,13 +423,14 @@ export function TasksPage() {
                       <p className="truncate text-sm font-medium">{task.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {repeatLabel(task)}
+                        {task.skill && ` · ${skillLabel(task.skill)}`}
                         <span className="hidden sm:inline"> · </span>
                         <br className="sm:hidden" />
                         {statusLine(task)}
                       </p>
                       {task.lastChatId && (
                         <Link
-                          className="mt-1 inline-flex min-h-8 items-center text-xs underline underline-offset-4"
+                          className="mt-1 inline-flex min-h-11 items-center text-xs underline underline-offset-4 pointer-fine:md:min-h-8"
                           href={`/chat/${task.lastChatId}`}
                         >
                           View latest result
@@ -381,7 +439,7 @@ export function TasksPage() {
                     </div>
                     <Button
                       variant="outline"
-                      className="h-11 md:h-8"
+                      className="h-11 pointer-fine:md:h-8"
                       disabled={Boolean(busy)}
                       onClick={() => void act("run", task)}
                     >
@@ -393,7 +451,7 @@ export function TasksPage() {
                         <Button
                           aria-label={`More actions for ${task.title}`}
                           variant="ghost"
-                          className="size-11 md:size-8"
+                          className="size-11 pointer-fine:md:size-8"
                           disabled={Boolean(busy)}
                         >
                           {busy && busy.endsWith(task.id) && !busy.startsWith("run") ? (
@@ -434,9 +492,18 @@ export function TasksPage() {
           </p>
         )}
         {error && (
-          <p role="alert" className="mt-3 text-sm text-destructive">
-            {error}
-          </p>
+          <div role="alert" className="mt-3 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-destructive">{error}</p>
+            {error === LOAD_ERROR && (
+              <Button
+                className="h-11 pointer-fine:md:h-8"
+                onClick={() => void refresh()}
+                variant="outline"
+              >
+                Retry
+              </Button>
+            )}
+          </div>
         )}
       </div>
       <AlertDialog
@@ -455,9 +522,9 @@ export function TasksPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11 md:h-9">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="h-11 pointer-fine:md:h-9">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="h-11 md:h-9"
+              className="h-11 pointer-fine:md:h-9"
               variant="destructive"
               onClick={() => {
                 if (!deleteTask) return;
@@ -472,6 +539,7 @@ export function TasksPage() {
       </AlertDialog>
       <TaskDialog
         draft={draft}
+        skills={skills}
         onClose={() => setDraft(null)}
         onSaved={(next) => {
           setTasks(next);
@@ -484,10 +552,12 @@ export function TasksPage() {
 
 function TaskDialog({
   draft,
+  skills,
   onClose,
   onSaved,
 }: {
   draft: Draft | null;
+  skills: RuntimeSkill[];
   onClose: () => void;
   onSaved: (tasks: Task[]) => void;
 }) {
@@ -501,6 +571,7 @@ function TaskDialog({
 
   const update = (patch: Partial<Draft>) =>
     setValue((current) => current && { ...current, ...patch });
+  const chosen = skills.find(({ name }) => name === value?.skill);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -513,6 +584,7 @@ function TaskDialog({
         id: value.id,
         title: value.title,
         prompt: value.prompt,
+        skill: value.skill === NO_SKILL ? null : value.skill,
         ...scheduleOf(value),
       };
       onSaved(await request(body));
@@ -525,7 +597,7 @@ function TaskDialog({
 
   return (
     <Dialog open={Boolean(draft)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg">
         {value && (
           <form className="grid gap-4" onSubmit={(event) => void submit(event)}>
             <DialogHeader>
@@ -542,16 +614,49 @@ function TaskDialog({
                 placeholder="Morning briefing"
                 value={value.title}
                 onChange={(event) => update({ title: event.target.value })}
-                className="h-11 md:h-9"
+                className="h-11 pointer-fine:md:h-9"
               />
             </label>
+            <div className="grid gap-1.5 text-sm">
+              <span className="font-medium">Skill</span>
+              <Select value={value.skill} onValueChange={(skill) => update({ skill })}>
+                <SelectTrigger
+                  aria-label="Skill"
+                  className="w-full data-[size=default]:h-11 pointer-fine:md:data-[size=default]:h-9"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SKILL}>None: follow the instructions</SelectItem>
+                  {value.skill !== NO_SKILL && !skills.some(({ name }) => name === value.skill) && (
+                    <SelectItem value={value.skill}>{skillLabel(value.skill)}</SelectItem>
+                  )}
+                  {skills.map(({ name }) => (
+                    <SelectItem key={name} value={name}>
+                      {skillLabel(name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {chosen?.description && (
+                <span className="text-xs text-muted-foreground">
+                  {skillSummary(chosen.description)}
+                </span>
+              )}
+            </div>
             <label className="grid gap-1.5 text-sm">
-              <span className="font-medium">What should Ægentica do?</span>
+              <span className="font-medium">
+                {value.skill === NO_SKILL ? "What should Ægentica do?" : "Extra instructions"}
+              </span>
               <Textarea
-                required
+                required={value.skill === NO_SKILL}
                 maxLength={4000}
                 rows={4}
-                placeholder="Check the weather in Stockholm and suggest what to wear."
+                placeholder={
+                  value.skill === NO_SKILL
+                    ? "Check the weather in Stockholm and suggest what to wear."
+                    : "Optional, for example: keep it under five bullet points."
+                }
                 value={value.prompt}
                 onChange={(event) => update({ prompt: event.target.value })}
               />
@@ -562,7 +667,10 @@ function TaskDialog({
                 value={value.repeat}
                 onValueChange={(repeat) => update({ repeat: repeat as Repeat })}
               >
-                <SelectTrigger aria-label="Repeat" className="h-11 w-full md:h-9">
+                <SelectTrigger
+                  aria-label="Repeat"
+                  className="w-full data-[size=default]:h-11 pointer-fine:md:data-[size=default]:h-9"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -579,7 +687,7 @@ function TaskDialog({
                 <span className="font-medium">Cron expression</span>
                 <Input
                   required
-                  className="h-11 font-mono md:h-9"
+                  className="h-11 font-mono pointer-fine:md:h-9"
                   placeholder="0 8 * * 1-5"
                   value={value.cron}
                   onChange={(event) => update({ cron: event.target.value })}
@@ -596,7 +704,7 @@ function TaskDialog({
                     <Input
                       required
                       type="date"
-                      className="h-11 md:h-9"
+                      className="h-11 pointer-fine:md:h-9"
                       value={value.date}
                       onChange={(event) => update({ date: event.target.value })}
                     />
@@ -606,7 +714,10 @@ function TaskDialog({
                   <div className="grid gap-1.5 text-sm">
                     <span className="font-medium">Day</span>
                     <Select value={value.weekday} onValueChange={(weekday) => update({ weekday })}>
-                      <SelectTrigger aria-label="Day" className="h-11 w-full md:h-9">
+                      <SelectTrigger
+                        aria-label="Day"
+                        className="w-full data-[size=default]:h-11 pointer-fine:md:data-[size=default]:h-9"
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -624,7 +735,7 @@ function TaskDialog({
                   <Input
                     required
                     type="time"
-                    className="h-11 md:h-9"
+                    className="h-11 pointer-fine:md:h-9"
                     value={value.time}
                     onChange={(event) => update({ time: event.target.value })}
                   />
@@ -640,10 +751,15 @@ function TaskDialog({
               </p>
             )}
             <DialogFooter>
-              <Button type="button" variant="ghost" className="h-11 md:h-9" onClick={onClose}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 pointer-fine:md:h-9"
+                onClick={onClose}
+              >
                 Cancel
               </Button>
-              <Button type="submit" className="h-11 md:h-9" disabled={saving}>
+              <Button type="submit" className="h-11 pointer-fine:md:h-9" disabled={saving}>
                 {saving && <Loader2Icon className="size-4 animate-spin" />}
                 {value.id ? "Save" : "Create task"}
               </Button>

@@ -3,11 +3,37 @@
 import * as React from "react";
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { useControllableState } from "@radix-ui/react-use-controllable-state";
 
 import { cn } from "@/lib/utils";
 
-function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+// Radix opens menus on touch-down, so a scroll or swipe that starts on a
+// trigger pops its menu. Under a finger the trigger opens on tap instead, as
+// native menus do; mouse and keyboard keep Radix's behavior.
+const TouchToggleContext = React.createContext<(() => void) | null>(null);
+
+function DropdownMenu({
+  defaultOpen,
+  onOpenChange,
+  open: openProp,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+  const [open, setOpen] = useControllableState({
+    prop: openProp,
+    defaultProp: defaultOpen ?? false,
+    onChange: onOpenChange,
+  });
+  const toggle = React.useCallback(() => setOpen((value) => !value), [setOpen]);
+  return (
+    <TouchToggleContext.Provider value={toggle}>
+      <DropdownMenuPrimitive.Root
+        data-slot="dropdown-menu"
+        onOpenChange={setOpen}
+        open={open}
+        {...props}
+      />
+    </TouchToggleContext.Provider>
+  );
 }
 
 function DropdownMenuPortal({
@@ -17,9 +43,29 @@ function DropdownMenuPortal({
 }
 
 function DropdownMenuTrigger({
+  onClick,
+  onPointerDown,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
-  return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
+  const toggle = React.useContext(TouchToggleContext);
+  const touch = React.useRef(false);
+  return (
+    <DropdownMenuPrimitive.Trigger
+      data-slot="dropdown-menu-trigger"
+      onClick={(event) => {
+        onClick?.(event);
+        if (touch.current && !event.defaultPrevented) toggle?.();
+        touch.current = false;
+      }}
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        touch.current = event.pointerType === "touch";
+        // Skips Radix's touch-down toggle; the tap's click opens the menu.
+        if (touch.current) event.preventDefault();
+      }}
+      {...props}
+    />
+  );
 }
 
 function DropdownMenuContent({

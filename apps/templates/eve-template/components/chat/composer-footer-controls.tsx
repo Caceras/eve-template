@@ -36,7 +36,7 @@ function ComposerHint({ setupStatus }: { readonly setupStatus: SetupStatus }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className="inline-flex h-11 min-w-0 max-w-full items-center gap-1 rounded-md px-2 text-sm text-muted-foreground/60 md:h-8"
+          className="inline-flex h-11 min-w-0 max-w-full items-center gap-1 rounded-md px-2 text-sm text-muted-foreground pointer-fine:md:h-8"
           tabIndex={0}
         >
           <LockIcon className="size-3.5 shrink-0" />

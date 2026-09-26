@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { ChevronsUpDownIcon, Loader2Icon, LogOutIcon, UserRoundIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 import { clearComposerStorage } from "@/lib/chat/composer-draft";
+import { clearDraftTexts } from "@/lib/chat/draft-text";
 import type { AuthMode, Viewer } from "@/lib/chat/types";
+import { forgetThisDevice } from "@/lib/pwa/push-subscription";
 
 export function UserMenu({
   authMode,
@@ -22,7 +23,6 @@ export function UserMenu({
   readonly authMode: AuthMode;
   readonly viewer: Viewer;
 }) {
-  const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
   if (authMode === "local-dev") {
@@ -43,7 +43,7 @@ export function UserMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:min-h-8"
+          className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none pointer-fine:md:min-h-8"
           type="button"
         >
           <UserAvatar viewer={viewer} />
@@ -77,20 +77,23 @@ export function UserMenu({
             }
 
             setSigningOut(true);
-            const signOut =
+            // This device stops getting notifications while the session can still say so.
+            const signOut = forgetThisDevice().then(() =>
               authMode === "password"
                 ? fetch("/api/password-auth/logout", { method: "POST" }).then((response) => {
                     if (!response.ok) {
                       throw new Error("Failed to sign out.");
                     }
                   })
-                : authClient.signOut().then(() => undefined);
+                : authClient.signOut().then(() => undefined),
+            );
 
             void signOut
               .then(async () => {
                 await clearComposerStorage().catch(() => {});
-                router.replace("/");
-                router.refresh();
+                clearDraftTexts();
+                // A full load: Back must not reveal signed-in pages the app keeps in the DOM.
+                window.location.replace("/");
               })
               .catch(() => {
                 setSigningOut(false);

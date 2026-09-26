@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export default defineWorkflowTool({
   description:
-    "Demonstrate a blocking durable workflow: ask the human, then delegate approved work to the research subagent.",
+    "Demonstrate a blocking durable workflow: ask the human, then delegate approved work to a copy of Ægentica.",
   inputSchema: z.object({
     topic: z.string().min(1),
   }),
@@ -22,7 +22,7 @@ export default defineWorkflowTool({
       return { approved: false };
     }
 
-    const result = await ctx.agent("researcher", {
+    const result = await ctx.agent("agent", {
       message: `Research this topic carefully and return a concise evidence-oriented synthesis:\n\n${topic}`,
     });
 

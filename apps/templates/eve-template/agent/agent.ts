@@ -3,7 +3,7 @@ import { routedModel } from "./lib/routed-model";
 
 export default defineAgent({
   description:
-    "General-purpose Ægentica agent. Keep simple work in the root; delegate deep research and review when their narrower contexts are useful.",
+    "General-purpose Ægentica agent with every skill, tool and connection. Handles delegated work unless it is an independent review.",
   model: routedModel(),
   reasoning: "high",
   compaction: {

@@ -1,7 +1,10 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
-import { CheckIcon, ChevronDownIcon, Loader2Icon } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useChatShell } from "@/app/_components/chat-shell-context";
+import { rememberModelLabel } from "@/lib/chat/model-label";
+import { ChevronDownIcon, Loader2Icon } from "lucide-react";
 import {
   PROVIDERS,
   PROVIDER_IDS,
@@ -11,26 +14,13 @@ import {
 } from "@/lib/model-catalog";
 import {
   readModelPreference,
-  readRecentModels,
   setModelPreference,
   subscribeModelPreference,
 } from "@/lib/chat/model-preference";
-import {
-  formatContext,
-  formatPrice,
-  providerAction,
-  useModelSettings,
-} from "@/lib/chat/provider-client";
+import { providerAction, useModelSettings } from "@/lib/chat/provider-client";
+import { markLayerNavigation, useBackToClose } from "@/lib/pwa/back-layer";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -39,100 +29,41 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { BrandIcon } from "@/components/brand-icon";
+import { makerBrand, PROVIDER_BRANDS } from "@/lib/brands";
 
-const MAKER_LABELS: Record<string, string> = {
-  anthropic: "Anthropic",
-  google: "Google",
-  openai: "OpenAI",
-  xai: "xAI",
-  "x-ai": "xAI",
-  meta: "Meta",
-  "meta-llama": "Meta",
-  mistral: "Mistral",
-  mistralai: "Mistral",
-  deepseek: "DeepSeek",
-  alibaba: "Alibaba",
-  qwen: "Qwen",
-  moonshotai: "Moonshot AI",
-  zai: "Z.ai",
-  "z-ai": "Z.ai",
-  amazon: "Amazon",
-  cohere: "Cohere",
-  nvidia: "NVIDIA",
-  perplexity: "Perplexity",
-  minimax: "MiniMax",
-};
-const makerLabel = (maker: string) =>
-  MAKER_LABELS[maker] ?? maker.charAt(0).toUpperCase() + maker.slice(1);
-
-function ModelRow({
-  model,
-  selected,
-  value,
-  onSelect,
-}: {
-  model: CatalogModel;
-  selected: boolean;
-  value: string;
-  onSelect: () => void;
-}) {
-  const details = [
-    formatContext(model.contextWindow),
-    formatPrice(model),
-    model.reasoning && "Reasoning",
-    model.vision && "Vision",
-  ].filter(Boolean);
-  return (
-    <CommandItem
-      value={value}
-      keywords={[model.name, model.id, makerLabel(model.maker)]}
-      onSelect={onSelect}
-      className="min-h-12 items-start gap-3 px-3 py-2.5"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{model.name}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {model.id}
-          {details.length > 0 && <span className="hidden sm:inline"> · {details.join(" · ")}</span>}
-        </p>
-        {details.length > 0 && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground sm:hidden">
-            {details.join(" · ")}
-          </p>
-        )}
-      </div>
-      {selected && <CheckIcon className="mt-0.5 size-4 text-foreground" aria-label="Selected" />}
-    </CommandItem>
-  );
-}
+// The searchable list (cmdk) loads when the picker first opens, or earlier when
+// the browser is idle, instead of with every page that shows a composer.
+const loadList = () => import("./model-picker-list");
+const ModelPickerList = dynamic(() => loadList().then((module) => module.ModelPickerList), {
+  ssr: false,
+  loading: () => (
+    <p className="min-h-0 flex-1 p-6 text-center text-sm text-muted-foreground">Loading models…</p>
+  ),
+});
 
 export function ModelPicker({ className }: { className?: string }) {
   const requested = useSyncExternalStore(subscribeModelPreference, readModelPreference, () => "");
   const { catalog, status, catalogError } = useModelSettings();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const [switching, setSwitching] = useState<ProviderId | null>(null);
   const [switchError, setSwitchError] = useState("");
-  const provider = catalog?.provider ?? status?.active ?? "gateway";
+  useBackToClose(open, () => setOpen(false));
+  const { modelLabel } = useChatShell();
+  const provider = catalog?.provider ?? status?.active ?? modelLabel?.provider ?? "gateway";
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const effective = catalog ? pickModel(provider, models, requested) : undefined;
   const unavailable = Boolean(catalog && requested && effective?.id !== requested);
 
-  const groups = useMemo(() => {
-    const byId = new Map(models.map((model) => [model.id, model]));
-    const byMaker = new Map<string, CatalogModel[]>();
-    for (const model of [...models].sort((a, b) => a.name.localeCompare(b.name))) {
-      const label = makerLabel(model.maker);
-      byMaker.set(label, [...(byMaker.get(label) ?? []), model]);
+  useEffect(() => {
+    const prefetch = () => void loadList().catch(() => {});
+    if (typeof window.requestIdleCallback !== "function") {
+      const timer = setTimeout(prefetch, 3_000);
+      return () => clearTimeout(timer);
     }
-    const pick = (ids: readonly string[]) =>
-      ids.map((id) => byId.get(id)).filter((model): model is CatalogModel => Boolean(model));
-    return {
-      recent: open ? pick(readRecentModels()) : [],
-      recommended: pick(PROVIDERS[provider].recommended),
-      makers: [...byMaker].sort(([a], [b]) => a.localeCompare(b)),
-    };
-  }, [models, provider, open]);
+    const idle = window.requestIdleCallback(prefetch, { timeout: 10_000 });
+    return () => window.cancelIdleCallback(idle);
+  }, []);
 
   async function switchProvider(next: ProviderId) {
     setSwitchError("");
@@ -146,20 +77,21 @@ export function ModelPicker({ className }: { className?: string }) {
     // The operator's pick also becomes the model for Telegram and schedules.
     if (status) void providerAction({ action: "model", model: model.id });
     setOpen(false);
-    setQuery("");
   }
 
-  const label = effective?.name ?? (catalogError ? "Model" : "Loading models…");
-  const searching = query.trim().length > 0;
+  const label =
+    effective?.name ?? modelLabel?.label ?? (catalogError ? "Model" : "Loading models…");
+  const brand = effective ? makerBrand(effective.maker) : modelLabel?.brand;
+  useEffect(() => {
+    if (effective)
+      rememberModelLabel({ label: effective.name, provider, brand: makerBrand(effective.maker) });
+  }, [effective, provider]);
   return (
     <Dialog
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
-        if (!value) {
-          setQuery("");
-          setSwitchError("");
-        }
+        if (!value) setSwitchError("");
       }}
     >
       <DialogTrigger asChild>
@@ -168,10 +100,11 @@ export function ModelPicker({ className }: { className?: string }) {
           type="button"
           aria-label={`Model: ${label} via ${PROVIDERS[provider].label}. Change model`}
           className={cn(
-            "min-h-11 min-w-0 max-w-full gap-1.5 px-2 text-xs font-medium text-muted-foreground sm:max-w-[260px] sm:text-sm md:min-h-9",
+            "min-h-11 min-w-0 max-w-full gap-1.5 px-2 text-xs font-medium text-muted-foreground sm:max-w-[260px] sm:text-sm pointer-fine:md:min-h-9",
             className,
           )}
         >
+          {brand ? <BrandIcon brand={brand} className="size-3.5" name={label} /> : null}
           <span className="truncate">{label}</span>
           <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
             {PROVIDERS[provider].shortLabel}
@@ -179,7 +112,7 @@ export function ModelPicker({ className }: { className?: string }) {
           <ChevronDownIcon className="size-3.5 shrink-0" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[85%] w-[calc(100%-2rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="gap-1 border-b px-4 pb-3 pt-4 text-left sm:px-5">
           <DialogTitle>Choose a model</DialogTitle>
           <DialogDescription>
@@ -209,7 +142,15 @@ export function ModelPicker({ className }: { className?: string }) {
                         : "text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground",
                     )}
                   >
-                    {switching === id && <Loader2Icon className="size-3.5 animate-spin" />}
+                    {switching === id ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : (
+                      <BrandIcon
+                        brand={PROVIDER_BRANDS[id]}
+                        className="size-3.5"
+                        name={PROVIDERS[id].shortLabel}
+                      />
+                    )}
                     {PROVIDERS[id].shortLabel}
                     {!configured && <span className="text-xs">· no key</span>}
                   </button>
@@ -232,66 +173,14 @@ export function ModelPicker({ className }: { className?: string }) {
             </p>
           )}
         </DialogHeader>
-        <Command className="min-h-0 flex-1 rounded-none **:data-[slot=command-input-wrapper]:h-12">
-          <CommandInput
-            autoFocus
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search models or makers…"
-            aria-label="Search models"
-            className="h-12 text-base sm:text-sm"
-          />
-          <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain">
-            {!catalog ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                {catalogError ? "Could not load models. Close and try again." : "Loading models…"}
-              </p>
-            ) : (
-              <>
-                <CommandEmpty>No matching models.</CommandEmpty>
-                {!searching && groups.recent.length > 0 && (
-                  <CommandGroup heading="Recent">
-                    {groups.recent.map((model) => (
-                      <ModelRow
-                        key={model.id}
-                        value={`recent ${model.id}`}
-                        model={model}
-                        selected={effective?.id === model.id}
-                        onSelect={() => choose(model)}
-                      />
-                    ))}
-                  </CommandGroup>
-                )}
-                {!searching && groups.recommended.length > 0 && (
-                  <CommandGroup heading="Recommended">
-                    {groups.recommended.map((model) => (
-                      <ModelRow
-                        key={model.id}
-                        value={`recommended ${model.id}`}
-                        model={model}
-                        selected={effective?.id === model.id}
-                        onSelect={() => choose(model)}
-                      />
-                    ))}
-                  </CommandGroup>
-                )}
-                {groups.makers.map(([maker, makerModels]) => (
-                  <CommandGroup key={maker} heading={maker}>
-                    {makerModels.map((model) => (
-                      <ModelRow
-                        key={model.id}
-                        value={model.id}
-                        model={model}
-                        selected={effective?.id === model.id}
-                        onSelect={() => choose(model)}
-                      />
-                    ))}
-                  </CommandGroup>
-                ))}
-              </>
-            )}
-          </CommandList>
-        </Command>
+        <ModelPickerList
+          failed={Boolean(catalogError)}
+          loaded={Boolean(catalog)}
+          models={models}
+          onChoose={choose}
+          provider={provider}
+          selectedId={effective?.id}
+        />
         <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-xs text-muted-foreground sm:px-5">
           <span>
             {models.length} models ·{" "}
@@ -301,7 +190,11 @@ export function ModelPicker({ className }: { className?: string }) {
           </span>
           <Link
             href="/settings"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              markLayerNavigation();
+              setOpen(false);
+            }}
+            replace
             className="underline underline-offset-4 hover:text-foreground"
           >
             API keys

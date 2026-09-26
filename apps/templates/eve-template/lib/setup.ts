@@ -1,5 +1,6 @@
 import type { SetupStatus } from "@/lib/chat/types";
 import { isDatabaseConfigured, isDatabaseSchemaReady } from "@/lib/db/client";
+import { CONNECTION_ENV_KEYS, isLocalDevelopment } from "@/lib/connectors";
 import { isChatPasswordConfigured } from "@/lib/password-auth";
 
 const PASSWORD_ENV_KEY = "EVE_SESSION_SECRET";
@@ -8,12 +9,6 @@ const AUTH_ENV_KEYS = [
   "NEXT_PUBLIC_VERCEL_APP_CLIENT_ID",
   "VERCEL_APP_CLIENT_SECRET",
 ] as const;
-
-const CONNECTION_ENV_KEYS = {
-  linear: "LINEAR_CONNECTOR",
-  notion: "NOTION_CONNECTOR",
-  sentry: "SENTRY_CONNECTOR",
-} as const;
 
 const RATE_LIMIT_ENV_GROUPS = [
   ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
@@ -123,8 +118,4 @@ function createSetupStatus({
     rateLimitReady,
     storageMode: "browser",
   };
-}
-
-function isLocalDevelopment() {
-  return process.env.NODE_ENV === "development" && process.env.VERCEL !== "1";
 }

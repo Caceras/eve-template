@@ -1,10 +1,19 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { ExternalLinkIcon, Loader2Icon } from "lucide-react";
+import { BrandIcon } from "@/components/brand-icon";
 import { ModelPicker } from "@/components/chat/model-picker";
+import { PROVIDER_BRANDS } from "@/lib/brands";
 import { readModelPreference } from "@/lib/chat/model-preference";
-import { providerAction, useModelSettings, type ProviderState } from "@/lib/chat/provider-client";
+import {
+  providerAction,
+  retryModelSettings,
+  useModelSettings,
+  type ProviderState,
+} from "@/lib/chat/provider-client";
 import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/model-catalog";
+import { ConfirmButton } from "./confirm-button";
+import { LoadError } from "./load-error";
 import { SettingsShell } from "./settings-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +87,7 @@ function ProviderCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id={`${provider}-title`} className="flex items-center gap-2 font-medium">
+            <BrandIcon brand={PROVIDER_BRANDS[provider]} name={info.label} />
             {info.label}
             {active && <Badge variant="secondary">Active</Badge>}
           </h2>
@@ -94,7 +104,7 @@ function ProviderCard({
         {!active && (
           <Button
             variant="outline"
-            className="h-11 shrink-0 md:h-9"
+            className="h-11 shrink-0 pointer-fine:md:h-9"
             disabled={!state.configured || Boolean(busy)}
             onClick={() => void run("activate")}
           >
@@ -133,7 +143,7 @@ function ProviderCard({
         {state.configured && (
           <Button
             variant="ghost"
-            className="-ml-2 h-11 px-2 md:h-9"
+            className="-ml-2 h-11 px-2 pointer-fine:md:h-9"
             disabled={Boolean(busy)}
             onClick={() => void run("test")}
           >
@@ -142,18 +152,25 @@ function ProviderCard({
           </Button>
         )}
         {(state.source === "app" || state.source === "unreadable") && (
-          <Button
+          <ConfirmButton
             variant="ghost"
-            className="-ml-2 h-11 px-2 text-muted-foreground md:h-9"
+            className="-ml-2 h-11 px-2 text-muted-foreground pointer-fine:md:h-9"
             disabled={Boolean(busy)}
-            onClick={() => void run("remove")}
+            title={`Remove the ${info.label} key?`}
+            description={
+              active
+                ? `The key is deleted and can't be shown again. Chats switch to the other provider if it has a key; otherwise they stop until you add one.`
+                : "The key is deleted and can't be shown again."
+            }
+            confirmLabel="Remove key"
+            onConfirm={() => void run("remove")}
           >
             {busy === "remove" && <Loader2Icon className="size-4 animate-spin" />}
             Remove saved key
-          </Button>
+          </ConfirmButton>
         )}
         <a
-          className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline md:min-h-9"
+          className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline pointer-fine:md:min-h-9"
           href={info.keysUrl}
           target="_blank"
           rel="noreferrer"
@@ -161,7 +178,7 @@ function ProviderCard({
           Get a key <ExternalLinkIcon className="size-3.5" />
         </a>
         <a
-          className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline md:min-h-9"
+          className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline pointer-fine:md:min-h-9"
           href={info.billingUrl}
           target="_blank"
           rel="noreferrer"
@@ -184,7 +201,7 @@ function ProviderCard({
 }
 
 export function ProviderSettings() {
-  const { status } = useModelSettings();
+  const { status, statusError } = useModelSettings();
   return (
     <SettingsShell
       section="general"
@@ -192,7 +209,17 @@ export function ProviderSettings() {
       description="Choose where Ægentica gets its AI models. Changes apply to the next message, with no restart."
     >
       {status === undefined ? (
-        <p className="text-sm text-muted-foreground">Loading settings…</p>
+        statusError ? (
+          <LoadError
+            className="mt-0"
+            message="Couldn't load provider settings. Check the connection and try again."
+            onRetry={retryModelSettings}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading settings…
+          </p>
+        )
       ) : status === null ? (
         <p className="rounded-lg border p-5 text-sm">
           Provider settings are available to the operator account that signs in with the app

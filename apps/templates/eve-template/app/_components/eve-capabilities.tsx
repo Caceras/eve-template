@@ -11,6 +11,7 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import { useChatShell } from "./chat-shell-context";
+import { PageSignInButton } from "./page-sign-in";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,12 +23,18 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { eveSurface } from "@/lib/eve-surface.generated";
+import { skillLabel } from "@/lib/skills";
+import { registryBrand, serviceBrand } from "@/lib/brands";
+import { BrandIcon } from "@/components/brand-icon";
 import { cn } from "@/lib/utils";
+import { StickyBar } from "@/components/chat/sticky-bar";
 
 type Scope = "runtime" | "included" | "directory";
 type Category = "All" | "Tools" | "Skills" | "Agents" | "Connections" | "Channels" | "System";
 type Item = {
   name: string;
+  /** The runtime's own identifier, when the name shown is a readable form of it. */
+  id?: string;
   description: string;
   category: Category;
   group: string;
@@ -36,6 +43,8 @@ type Item = {
   docs?: string;
   access: string;
   details?: Record<string, unknown>;
+  /** Declared but not in effect: turned off in this build, or replaced by an override. */
+  inactive?: "disabled" | "shadowed";
 };
 const categories: Category[] = [
   "All",
@@ -52,26 +61,92 @@ const record = (value: unknown): Record<string, unknown> =>
     : {};
 const array = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown) => (typeof value === "string" ? value : "");
+// Descriptions are plain text written for the model: "- " lines become lists
+// and `backticks` become code, rendered as JSX text so nothing is parsed as HTML.
+function CapabilityText({ text }: { readonly text: string }) {
+  const blocks: { list: boolean; lines: string[] }[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      blocks.push({ list: false, lines: [] });
+      continue;
+    }
+    const item = /^[-*•]\s+(.*)$/.exec(line)?.[1];
+    const list = item !== undefined;
+    const last = blocks.at(-1);
+    if (last && last.list === list && last.lines.length) last.lines.push(item ?? line);
+    else blocks.push({ list, lines: [item ?? line] });
+  }
+  const inline = (value: string) =>
+    value.split("`").map((part, index) =>
+      index % 2 ? (
+        <code className="rounded bg-muted px-1 py-0.5 text-[0.8125rem]" key={index}>
+          {part}
+        </code>
+      ) : (
+        part
+      ),
+    );
+  return (
+    <div className="space-y-3 text-sm leading-6">
+      {blocks
+        .filter((block) => block.lines.length)
+        .map((block, index) =>
+          block.list ? (
+            <ul className="list-disc space-y-1 pl-5 marker:text-muted-foreground" key={index}>
+              {block.lines.map((line, item) => (
+                <li key={item}>{inline(line)}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="break-words" key={index}>
+              {block.lines.map((line, item) => (
+                <span key={item}>
+                  {item > 0 && <br />}
+                  {inline(line)}
+                </span>
+              ))}
+            </p>
+          ),
+        )}
+    </div>
+  );
+}
+
 // Tool descriptions are written for the model; rows show only their opening sentence.
 const summary = (description: string) => description.split(/(?<=[.!?])\s/)[0] ?? description;
 const pair = (value: unknown) => [...array(record(value).static), ...array(record(value).dynamic)];
+/** The service an entry belongs to, for its logo: registry items by name, runtime ones by id. */
+const brandOf = (item: Item) =>
+  item.scope === "directory"
+    ? registryBrand(item.source ?? "")
+    : item.scope === "runtime"
+      ? serviceBrand(item.id ?? item.name)
+      : undefined;
+
+// Code identifiers read as words in lists (read_file → Read file,
+// profile__save_memory → Profile · Save memory); details keep the identifier.
+const readable = (id: string) =>
+  /^[a-z0-9]+(?:[_-]+[a-z0-9]+)*$/.test(id) ? id.split("__").map(skillLabel).join(" · ") : id;
 function entry(value: unknown, category: Category, group: string): Item {
   const r = record(value);
   const annotations = record(r.annotations);
   const readOnly = r.readOnlyHint ?? annotations.readOnlyHint;
+  const id =
+    typeof value === "string"
+      ? value
+      : text(r.name) ||
+        text(r.connectionName) ||
+        text(r.slug) ||
+        text(r.slot) ||
+        text(r.id) ||
+        text(r.logicalPath) ||
+        text(r.path) ||
+        text(r.route) ||
+        group;
   return {
-    name:
-      typeof value === "string"
-        ? value
-        : text(r.name) ||
-          text(r.connectionName) ||
-          text(r.slug) ||
-          text(r.slot) ||
-          text(r.id) ||
-          text(r.logicalPath) ||
-          text(r.path) ||
-          text(r.route) ||
-          group,
+    name: readable(id),
+    id: readable(id) === id ? undefined : id,
     description:
       text(r.description) ||
       text(r.summary) ||
@@ -94,52 +169,91 @@ function entry(value: unknown, category: Category, group: string): Item {
             : "Access policy is not specified in this listing. Listing a capability does not grant permission.",
   };
 }
-const included: Item[] = [
+// Composition entries the runtime reports but does not run; they must not read as live.
+const INACTIVE = {
+  disabled: {
+    label: "Disabled in this build",
+    description: "Disabled in this build. The runtime does not load it, so it cannot run.",
+    access: "Disabled in this build: nothing can call it until the build enables it again.",
+  },
+  shadowed: {
+    label: "Replaced by an authored override",
+    description:
+      "Replaced by an authored override. The override with the same path runs instead of this definition.",
+    access:
+      "Replaced by an authored override: this definition never runs; the override's policy applies.",
+  },
+} as const;
+function inactiveEntry(
+  value: unknown,
+  category: Category,
+  group: string,
+  kind: keyof typeof INACTIVE,
+) {
+  const r = record(value);
+  const source = record(r.source);
+  // Shadowed routes carry their method and path; composition entries a logical path.
+  const route = text(r.urlPath) ? `${text(r.method)} ${text(r.urlPath)}`.trim() : "";
+  const id = route || text(r.logicalPath) || text(source.logicalPath) || text(r.sourceId) || group;
+  const winner = text(r.winnerSourceId);
+  return {
+    ...entry(value, category, group),
+    name: route || readable(id),
+    id: route || readable(id) === id ? undefined : id,
+    description: `${INACTIVE[kind].description}${winner ? `\n\nIn effect: \`${winner}\`` : ""}`,
+    source: text(r.sourceId) || text(source.sourceId),
+    access: INACTIVE[kind].access,
+    inactive: kind,
+  } satisfies Item;
+}
+const included: Item[] = (
   [
-    "Tools",
-    "Typed tools and approval flows",
-    "Typed and dynamic tools, web and file tools, image creation and durable workflow tools.",
-  ],
-  [
-    "Skills",
-    "Progressive skill loading",
-    "Flat, packaged and dynamic playbooks, loaded on demand.",
-  ],
-  [
-    "Agents",
-    "Delegation",
-    "Compiled researcher and reviewer agents, background review and saved profile delegation.",
-  ],
-  [
-    "Apps",
-    "Connections",
-    "MCP, OpenAPI and Vercel Connect examples. Credentials and explicit configuration may be required.",
-  ],
-  [
-    "Channels",
-    "Communication channels",
-    "Web chat, owner-paired Telegram, and reference custom channel patterns.",
-  ],
-  [
-    "More",
-    "Memory, state and scheduling",
-    "Cross-session memory, durable session state, tasks, schedules and lifecycle hooks.",
-  ],
-  [
-    "More",
-    "Sandbox and evaluation",
-    "The configured just-bash backend, evaluation fixtures and upstream test patterns; not an unrestricted host terminal.",
-  ],
-].map(([category, name, description]) => ({
-  category: category as Category,
-  name: name!,
-  description: description!,
+    [
+      "Tools",
+      "Typed tools and approval flows",
+      "Typed and dynamic tools, web and file tools, image creation and durable workflow tools.",
+    ],
+    [
+      "Skills",
+      "Progressive skill loading",
+      "Flat, packaged and dynamic playbooks, loaded on demand.",
+    ],
+    [
+      "Agents",
+      "Delegation",
+      "Copies of Ægentica for delegated work, an independent reviewer, background review and saved profile delegation.",
+    ],
+    [
+      "Connections",
+      "MCP and OpenAPI connections",
+      "MCP, OpenAPI and Vercel Connect examples. Credentials and explicit configuration may be required.",
+    ],
+    [
+      "Channels",
+      "Communication channels",
+      "Web chat, owner-paired Telegram, and reference custom channel patterns.",
+    ],
+    [
+      "System",
+      "Memory, state and scheduling",
+      "Cross-session memory, durable session state, tasks, schedules and lifecycle hooks.",
+    ],
+    [
+      "System",
+      "Sandbox and evaluation",
+      "The configured just-bash backend, evaluation fixtures and upstream test patterns; not an unrestricted host terminal.",
+    ],
+  ] satisfies [Category, string, string][]
+).map(([category, name, description]) => ({
+  category,
+  name,
+  description,
   group: "Scaffold",
   scope: "included",
   access: "Included source is not proof that an external service is connected.",
 }));
 export function EveCapabilities() {
-  const { viewer, requestSignIn } = useChatShell();
+  const { viewer } = useChatShell();
   const router = useRouter();
   const [scope, setScope] = useState<Scope>("runtime");
   const [category, setCategory] = useState<Category>("All");
@@ -148,6 +262,11 @@ export function EveCapabilities() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Item | null>(null);
+  useEffect(() => {
+    // Deep links such as Connections → Browse directory open a given scope.
+    const requested = new URLSearchParams(window.location.search).get("scope");
+    if (requested === "included" || requested === "directory") setScope(requested);
+  }, []);
   const load = useCallback(async () => {
     if (!viewer) {
       setInfo(null);
@@ -189,15 +308,22 @@ export function EveCapabilities() {
       ["System", "Hooks", array(info.hooks)],
       ["System", "Sandbox", info.sandbox ? [info.sandbox] : []],
       ["System", "Workspace", array(record(info.workspace).rootEntries)],
-      ["System", "Disabled", array(record(info.composition).disabled)],
-      ["System", "Shadowed", array(record(info.composition).shadowed)],
-      ["Channels", "Shadowed routes", array(record(info.channels).shadowed)],
       ["System", "Kernel effects", array(info.kernelEffects)],
       ["System", "Instrumentation", info.instrumentation ? [info.instrumentation] : []],
     ];
-    return groups.flatMap(([category, group, entries]) =>
-      entries.map((value) => entry(value, category, group)),
-    );
+    const inactive: [Category, string, unknown[], keyof typeof INACTIVE][] = [
+      ["System", "Disabled", array(record(info.composition).disabled), "disabled"],
+      ["System", "Shadowed", array(record(info.composition).shadowed), "shadowed"],
+      ["Channels", "Shadowed routes", array(record(info.channels).shadowed), "shadowed"],
+    ];
+    return [
+      ...groups.flatMap(([category, group, entries]) =>
+        entries.map((value) => entry(value, category, group)),
+      ),
+      ...inactive.flatMap(([category, group, entries, kind]) =>
+        entries.map((value) => inactiveEntry(value, category, group, kind)),
+      ),
+    ];
   }, [info]);
   const directory = useMemo<Item[]>(
     () =>
@@ -229,7 +355,7 @@ export function EveCapabilities() {
   const filtered = inventory.filter(
     (item) =>
       (category === "All" || item.category === category) &&
-      `${item.name} ${item.description} ${item.source || ""} ${item.group}`
+      `${item.name} ${item.id || ""} ${item.description} ${item.source || ""} ${item.group}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
@@ -237,7 +363,7 @@ export function EveCapabilities() {
     try {
       window.sessionStorage.setItem(
         "eve-chat-draft",
-        `Help me understand and use ${item.name}${item.source ? ` (${item.source})` : ""}. First check whether it is configured, which permissions it needs, and what is safe to do. Do not claim it is connected from a registry listing.`,
+        `Help me understand and use ${item.name}${item.id || item.source ? ` (${item.id || item.source})` : ""}. First check whether it is configured, which permissions it needs, and what is safe to do. Do not claim it is connected from a registry listing.`,
       );
       setSelected(null);
       router.push("/");
@@ -267,7 +393,11 @@ export function EveCapabilities() {
           </Button>
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg bg-muted p-1" aria-label="Capability source">
+          <div
+            className="inline-flex rounded-lg bg-muted p-1"
+            aria-label="Capability source"
+            role="group"
+          >
             {(
               [
                 ["runtime", "Live"],
@@ -293,7 +423,7 @@ export function EveCapabilities() {
             ))}
           </div>
           <Link
-            className="ml-auto inline-flex min-h-11 items-center gap-1 px-1 text-sm text-muted-foreground hover:text-foreground md:min-h-0"
+            className="ml-auto inline-flex min-h-11 items-center gap-1 px-1 text-sm text-muted-foreground hover:text-foreground pointer-fine:md:min-h-0"
             href="/agents"
           >
             Your agents
@@ -317,24 +447,30 @@ export function EveCapabilities() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="mt-3 flex gap-1 overflow-x-auto pb-2" aria-label="Capability category">
-          {categories.map((label) => (
-            <button
-              type="button"
-              key={label}
-              aria-pressed={category === label}
-              onClick={() => setCategory(label)}
-              className={cn(
-                "min-h-10 shrink-0 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring",
-                category === label
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <StickyBar className="mt-3 pb-2">
+          <div
+            className="scroll-row -mx-4 gap-1 px-4 sm:-mx-6 sm:px-6"
+            aria-label="Capability category"
+            role="group"
+          >
+            {categories.map((label) => (
+              <button
+                type="button"
+                key={label}
+                aria-pressed={category === label}
+                onClick={() => setCategory(label)}
+                className={cn(
+                  "min-h-10 shrink-0 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring",
+                  category === label
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </StickyBar>
         {error && (
           <p className="my-3 text-sm text-destructive" role="alert">
             {error}
@@ -347,7 +483,7 @@ export function EveCapabilities() {
               Sign in for live capabilities. Included patterns and the official directory are
               public.
             </p>
-            <Button onClick={() => requestSignIn()}>Sign in</Button>
+            <PageSignInButton />
           </div>
         ) : loading && scope === "runtime" ? (
           <p className="py-8 text-sm text-muted-foreground" role="status">
@@ -362,7 +498,15 @@ export function EveCapabilities() {
                 onClick={() => setSelected(item)}
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <BlocksIcon className="size-4 text-muted-foreground" />
+                  {brandOf(item) ? (
+                    <BrandIcon
+                      brand={brandOf(item)}
+                      className="text-foreground/80"
+                      name={item.name}
+                    />
+                  ) : (
+                    <BlocksIcon className="size-4 text-muted-foreground" />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{item.name}</span>
@@ -370,7 +514,11 @@ export function EveCapabilities() {
                     {summary(item.description)}
                   </span>
                 </span>
-                <Badge variant="outline" className="hidden shrink-0 font-normal sm:flex">
+                {/* Phones keep the badge that says an entry is not in effect. */}
+                <Badge
+                  variant="outline"
+                  className={cn("shrink-0 font-normal", item.inactive ? "flex" : "hidden sm:flex")}
+                >
                   {item.group}
                 </Badge>
                 <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -421,20 +569,32 @@ export function EveCapabilities() {
             if (!open) setSelected(null);
           }}
         >
-          <DialogContent className="max-h-[85dvh] max-w-xl overflow-y-auto">
+          <DialogContent className="max-h-[85%] max-w-xl overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="break-words pr-6">{selected?.name}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2 break-words pr-6">
+                {selected && brandOf(selected) ? (
+                  <BrandIcon brand={brandOf(selected)} className="size-5" name={selected.name} />
+                ) : null}
+                {selected?.name}
+              </DialogTitle>
               <DialogDescription>
-                {selected?.scope === "runtime"
-                  ? "Declared by the runtime"
-                  : selected?.scope === "included"
-                    ? "Included source pattern"
-                    : "Official registry entry"}
+                {selected?.inactive
+                  ? INACTIVE[selected.inactive].label
+                  : selected?.scope === "runtime"
+                    ? "Declared by the runtime"
+                    : selected?.scope === "included"
+                      ? "Included source pattern"
+                      : "Official registry entry"}
               </DialogDescription>
             </DialogHeader>
             {selected && (
               <>
-                <p className="text-sm leading-6 whitespace-pre-line">{selected.description}</p>
+                {selected.id && (
+                  <p className="text-xs text-muted-foreground">
+                    Identifier <code className="break-all text-foreground">{selected.id}</code>
+                  </p>
+                )}
+                <CapabilityText text={selected.description} />
                 <div className="rounded-lg bg-muted p-4 text-sm">
                   <p className="font-medium">Access</p>
                   <p className="mt-1 leading-6 text-muted-foreground">{selected.access}</p>
@@ -476,7 +636,7 @@ export function EveCapabilities() {
                   {selected.docs?.startsWith("/") && (
                     <Button asChild variant="outline" className="min-h-11">
                       <a
-                        href={`https://eve.dev/docs${selected.docs}`}
+                        href={`https://eve.dev${selected.docs}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

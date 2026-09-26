@@ -1,25 +1,51 @@
 "use client";
+import {
+  loadSpeechChoice,
+  speakWithOpenRouter,
+  stopOpenRouterSpeech,
+  type SpeechHandlers,
+} from "./openrouter-speech";
 import { readVoicePreferences, resolveLanguage } from "./preferences";
+import type { SpeechChoice } from "./speech-models";
 
-/** Markdown and URLs read badly aloud; speak the prose only. */
+/**
+ * Markdown and URLs read badly aloud; speak the prose only. A minus sign
+ * (-5°C) and hyphens inside words and dates stay; bullets and rules go.
+ */
 export function speakableText(markdown: string) {
   return markdown
     .replace(/```[\s\S]*?```/g, " (code block) ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[#>*_`|~-]+/g, " ")
+    .replace(/[#>*_`|~]+/g, " ")
+    .replace(/-+/g, (dashes, at: number, text: string) =>
+      dashes.length === 1 && (/\w/.test(text[at - 1] ?? "") ? /\w/ : /\d/).test(text[at + 1] ?? "")
+        ? "-"
+        : " ",
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
 
-export const canSpeak = () => typeof window !== "undefined" && "speechSynthesis" in window;
+const hasSynthesis = () => typeof window !== "undefined" && "speechSynthesis" in window;
+/** Replies can be read aloud: with an OpenRouter voice, or the device's own. */
+export const canSpeak = () =>
+  typeof window !== "undefined" && (hasSynthesis() || typeof Audio !== "undefined");
 
-export function speak(markdown: string, handlers: { onEnd?: () => void } = {}) {
-  if (!canSpeak()) return;
+// Each speak() outlives an await (the voice choice); a later speak() or stop()
+// makes an earlier one a no-op instead of a second voice.
+let speakToken = 0;
+
+function speakWithDevice(text: string, handlers: SpeechHandlers) {
+  if (!hasSynthesis()) {
+    handlers.onError?.("This browser cannot speak replies aloud.");
+    handlers.onEnd?.();
+    return;
+  }
   const preferences = readVoicePreferences();
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(speakableText(markdown));
+  const utterance = new SpeechSynthesisUtterance(text);
   const voice = window.speechSynthesis
     .getVoices()
     .find((item) => item.voiceURI === preferences.voice);
@@ -31,8 +57,46 @@ export function speak(markdown: string, handlers: { onEnd?: () => void } = {}) {
   window.speechSynthesis.speak(utterance);
 }
 
+/**
+ * Reads markdown aloud: with the OpenRouter voice chosen in Settings when the
+ * operator saved a key, else with this device's voice. An OpenRouter voice
+ * that cannot start (no credits, offline) reports why and the device voice
+ * takes over, so a reply is never silent without a word.
+ */
+export function speak(markdown: string, handlers: SpeechHandlers = {}, preview?: SpeechChoice) {
+  const text = speakableText(markdown);
+  stopSpeaking();
+  if (!text) {
+    handlers.onEnd?.();
+    return;
+  }
+  const token = ++speakToken;
+  void (async () => {
+    const choice = preview ?? (await loadSpeechChoice().catch(() => null));
+    if (token !== speakToken) return;
+    if (choice) {
+      const failure = await speakWithOpenRouter(
+        text,
+        readVoicePreferences().rate,
+        handlers,
+        choice,
+      );
+      if (token !== speakToken) return;
+      if (!failure) return;
+      handlers.onError?.(failure);
+      if (preview) {
+        handlers.onEnd?.();
+        return;
+      }
+    }
+    speakWithDevice(text, handlers);
+  })();
+}
+
 export function stopSpeaking() {
-  if (canSpeak()) window.speechSynthesis.cancel();
+  speakToken += 1;
+  stopOpenRouterSpeech();
+  if (hasSynthesis()) window.speechSynthesis.cancel();
 }
 
 type Recognition = {

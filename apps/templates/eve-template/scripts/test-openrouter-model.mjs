@@ -40,7 +40,7 @@ const model = openRouterModel(
     reasoning: true,
     vision: true,
   },
-  fetch,
+  { fetch },
 );
 const result = await generateText({
   model,
@@ -65,6 +65,33 @@ assert.deepEqual(body.reasoning, { effort: "high" });
 assert.deepEqual(body.usage, { include: true });
 assert.equal(result.text, "OK");
 assert.equal(result.providerMetadata?.gateway?.cost, 0.0042, "cost mirrored for eve's limit");
+
+// A saved agent's reasoning reaches OpenRouter; "provider-default" leaves it to the model.
+const catalogModel = {
+  ...JSON.parse(
+    JSON.stringify({
+      id: "anthropic/claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      maker: "anthropic",
+      contextWindow: 1_000_000,
+      inputPrice: 2,
+      outputPrice: 10,
+      reasoning: true,
+      vision: true,
+    }),
+  ),
+};
+for (const [reasoning, expected] of [
+  ["low", { effort: "low" }],
+  ["provider-default", undefined],
+]) {
+  requests.length = 0;
+  await generateText({
+    model: openRouterModel("sk-or-v1-test", catalogModel, { fetch, reasoning }),
+    prompt: "Reply with OK.",
+  });
+  assert.deepEqual(requests[0].body.reasoning, expected, `reasoning ${reasoning}`);
+}
 console.log(
   "PASS: OpenRouter requests carry openrouter:web_search instead of Gateway search, reasoning and usage settings, and cost for the session limit",
 );

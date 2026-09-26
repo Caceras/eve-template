@@ -11,6 +11,8 @@ import {
   CopyIcon,
 } from "lucide-react";
 import { useChatShell } from "./chat-shell-context";
+import { PageSignInButton } from "./page-sign-in";
+import { LoadError } from "./load-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,8 +31,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModelSettings } from "@/lib/chat/provider-client";
+import { makerBrand, makerLabel } from "@/lib/brands";
+import { BrandIcon } from "@/components/brand-icon";
 import { chooseProfile } from "@/lib/chat/composer-draft";
 import type { AgentProfile } from "@/lib/agent-profiles";
+import { focusOpensKeyboard } from "@/lib/pwa/keyboard";
 
 type Fields = Pick<
   AgentProfile,
@@ -64,6 +69,9 @@ const starters = [
       "Clarify the desired outcome and constraints. Break work into testable milestones, identify the next action and risks, and coordinate specialists. Ask before external changes and report completed work separately from plans.",
   },
 ];
+// Finger-sized on phones. The trigger sets its height under data-size, which a
+// plain h-11 cannot outrank, so the size is set under the same selector.
+const FIELD_SELECT = "w-full data-[size=default]:h-11 pointer-fine:md:data-[size=default]:h-9";
 export function AgentProfilesPage() {
   const { viewer, requestSignIn, setupStatus } = useChatShell();
   const { catalog } = useModelSettings();
@@ -73,6 +81,7 @@ export function AgentProfilesPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentProfile | null>(null);
   const [fields, setFields] = useState<Fields>(blank);
@@ -86,13 +95,13 @@ export function AgentProfilesPage() {
     }
     setLoading(true);
     setError("");
+    setLoadFailed(false);
     try {
       const response = await fetch("/api/agents", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not load agents.");
-      setProfiles(data.profiles);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not load agents.");
+      if (!response.ok) throw new Error("Could not load agents.");
+      setProfiles((await response.json()).profiles);
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -173,10 +182,7 @@ export function AgentProfilesPage() {
         </div>
         {error && !open && (
           <p className="mt-4 text-sm text-destructive" role="alert">
-            {error}{" "}
-            <button className="underline" onClick={() => void refresh()}>
-              Retry
-            </button>
+            {error}
           </p>
         )}
         {!viewer ? (
@@ -185,7 +191,7 @@ export function AgentProfilesPage() {
             <p className="my-3 text-sm text-muted-foreground">
               Sign in to create and manage agents. No model API key is needed to set them up.
             </p>
-            <Button onClick={() => requestSignIn()}>Sign in</Button>
+            <PageSignInButton />
           </div>
         ) : (
           <>
@@ -203,6 +209,12 @@ export function AgentProfilesPage() {
               <p className="py-8 text-sm text-muted-foreground" role="status">
                 Loading agents...
               </p>
+            ) : loadFailed ? (
+              <LoadError
+                className="mt-4"
+                message="Couldn't load your agents. Check the connection and try again."
+                onRetry={() => void refresh()}
+              />
             ) : visible.length ? (
               <div className="mt-4 divide-y overflow-hidden rounded-xl border">
                 {visible.map((p) => (
@@ -281,7 +293,7 @@ export function AgentProfilesPage() {
             if (!saving) setOpen(value);
           }}
         >
-          <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col overflow-hidden p-0">
+          <DialogContent className="flex max-h-[90%] max-w-2xl flex-col overflow-hidden p-0">
             <DialogHeader className="border-b px-5 py-4 text-left">
               <DialogTitle>{editing ? `Edit ${editing.name}` : "Create an agent"}</DialogTitle>
               <DialogDescription>
@@ -301,6 +313,7 @@ export function AgentProfilesPage() {
                     {starters.map((s) => (
                       <Button
                         key={s.name}
+                        className="h-11 pointer-fine:md:h-8"
                         size="sm"
                         type="button"
                         variant="outline"
@@ -314,7 +327,8 @@ export function AgentProfilesPage() {
                 <label className="block space-y-1.5 text-sm">
                   <span>Name</span>
                   <Input
-                    autoFocus
+                    autoFocus={!focusOpensKeyboard()}
+                    className="h-11 pointer-fine:md:h-9"
                     required
                     maxLength={64}
                     value={fields.name}
@@ -325,6 +339,7 @@ export function AgentProfilesPage() {
                 <label className="block space-y-1.5 text-sm">
                   <span>Description</span>
                   <Input
+                    className="h-11 pointer-fine:md:h-9"
                     maxLength={240}
                     value={fields.description}
                     onChange={(e) => setFields({ ...fields, description: e.target.value })}
@@ -361,7 +376,7 @@ export function AgentProfilesPage() {
                         setFields({ ...fields, model: value === "default" ? "" : value })
                       }
                     >
-                      <SelectTrigger id="profile-model" className="w-full">
+                      <SelectTrigger id="profile-model" className={FIELD_SELECT}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -373,6 +388,11 @@ export function AgentProfilesPage() {
                         )}
                         {catalog?.models.map((m) => (
                           <SelectItem key={m.id} value={m.id}>
+                            <BrandIcon
+                              brand={makerBrand(m.maker)}
+                              className="text-foreground/80"
+                              name={makerLabel(m.maker)}
+                            />
                             {m.name}
                           </SelectItem>
                         ))}
@@ -387,7 +407,7 @@ export function AgentProfilesPage() {
                         setFields({ ...fields, reasoning: value as Fields["reasoning"] })
                       }
                     >
-                      <SelectTrigger id="profile-reasoning" className="w-full">
+                      <SelectTrigger id="profile-reasoning" className={FIELD_SELECT}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -416,6 +436,7 @@ export function AgentProfilesPage() {
                   {editing && (
                     <>
                       <Button
+                        className="h-11 pointer-fine:md:h-9"
                         disabled={saving}
                         variant="ghost"
                         type="button"
@@ -429,6 +450,7 @@ export function AgentProfilesPage() {
                         Duplicate
                       </Button>
                       <Button
+                        className="h-11 pointer-fine:md:h-9"
                         disabled={saving}
                         variant={confirmDelete ? "destructive" : "ghost"}
                         type="button"
@@ -440,7 +462,7 @@ export function AgentProfilesPage() {
                   )}
                 </div>
                 <Button
-                  className="min-h-11"
+                  className="h-11 pointer-fine:md:h-9"
                   disabled={saving || !fields.name.trim() || !fields.instructions.trim()}
                   type="submit"
                 >

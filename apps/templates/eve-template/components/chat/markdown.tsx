@@ -1,14 +1,10 @@
 "use client";
 
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import { memo, type ComponentProps } from "react";
 import { Streamdown } from "streamdown";
+import { markdownRehypePlugins } from "@/lib/markdown-images";
+import { useMarkdownPlugins } from "@/lib/markdown-plugins";
 import { cn } from "@/lib/utils";
-
-const streamdownPlugins = { cjk, code, math, mermaid };
 
 export type MarkdownProps = ComponentProps<typeof Streamdown>;
 
@@ -114,14 +110,16 @@ const markdownComponents: MarkdownProps["components"] = {
 };
 
 export const Markdown = memo(function Markdown({ className, ...props }: MarkdownProps) {
+  const plugins = useMarkdownPlugins(props.children);
   return (
     <Streamdown
       className={cn(
-        "min-w-0 text-[15px] leading-6 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "min-w-0 text-[15px] leading-6 wrap-anywhere [&_table]:wrap-normal [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className,
       )}
       components={markdownComponents}
-      plugins={streamdownPlugins}
+      plugins={plugins}
+      rehypePlugins={markdownRehypePlugins}
       {...props}
     />
   );

@@ -2,26 +2,33 @@
 
 import type { EveDynamicToolPart, EveMessage, EveMessagePart } from "eve/react";
 import {
+  BrainIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CheckIcon,
+  CircleSlashIcon,
   CopyIcon,
+  FileIcon,
   Loader2Icon,
+  Share2Icon,
   SquareIcon,
   Volume2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { BrandIcon } from "@/components/brand-icon";
+import { ImageViewer } from "@/components/chat/image-viewer";
 import { Markdown } from "@/components/chat/markdown";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { serviceBrand } from "@/lib/brands";
+import { canShare, shareOrCopy } from "@/lib/pwa/share";
 import { cn } from "@/lib/utils";
 import { readVoicePreferences } from "@/lib/voice/preferences";
 import { announceReplySpoken, isVoiceConversation } from "@/lib/voice/conversation";
 import { canSpeak, speak, stopSpeaking } from "@/lib/voice/speech";
 
-const STREAM_TEXT_TICK_MS = 60;
 const STREAM_TEXT_CACHE_LIMIT = 40;
 const streamingTextCache = new Map<string, string>();
 
@@ -30,6 +37,11 @@ export type AgentInputResponse = {
   readonly requestId: string;
   readonly text?: string;
 };
+
+/** Answers input requests; resolves false when the answer was not accepted. */
+export type InputResponder = (
+  responses: readonly AgentInputResponse[],
+) => void | boolean | Promise<void | boolean>;
 
 export function AgentMessage({
   canRespond,
@@ -40,7 +52,7 @@ export function AgentMessage({
   readonly canRespond: boolean;
   readonly isStreaming: boolean;
   readonly message: EveMessage;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
 }) {
   const lastTextIndex = message.parts.reduce(
     (last, part, index) => (part.type === "text" ? index : last),
@@ -56,9 +68,16 @@ export function AgentMessage({
 
   return (
     <article
+      // Screen readers hear who spoke, and wait for a reply that is still streaming.
+      aria-busy={isStreaming && !isUser ? true : undefined}
+      aria-label={isUser ? "You" : "Ægentica"}
       className={cn(
         "group flex w-full min-w-0",
+        // A long chat lays out only the messages near the screen.
+        !isStreaming && "[content-visibility:auto] [contain-intrinsic-size:auto_480px]",
         isUser ? "justify-end" : "justify-start",
+        // A reply settles in instead of popping; the sent message is already in place.
+        isStreaming && !isUser && "animate-in fade-in-0 slide-in-from-bottom-1 duration-300",
         message.metadata?.optimistic ? "opacity-90" : undefined,
       )}
     >
@@ -85,7 +104,11 @@ export function AgentMessage({
   );
 }
 
-/** Copy and read-aloud under a finished reply; also speaks new replies when the user chose that. */
+/**
+ * Copy, share and read-aloud under a finished reply; also speaks new replies
+ * when the user chose that. Share opens the device's share sheet where there
+ * is one.
+ */
 function ReplyActions({
   isStreaming,
   text,
@@ -95,21 +118,28 @@ function ReplyActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState("");
   const [speechAvailable, setSpeechAvailable] = useState(false);
+  const [shareAvailable, setShareAvailable] = useState(false);
   const wasStreaming = useRef(isStreaming);
 
-  useEffect(() => setSpeechAvailable(canSpeak()), []);
+  useEffect(() => {
+    setSpeechAvailable(canSpeak());
+    setShareAvailable(canShare());
+  }, []);
   useEffect(() => {
     const conversation = isVoiceConversation();
     if (wasStreaming.current && !isStreaming && conversation && !canSpeak()) announceReplySpoken();
     if (wasStreaming.current && !isStreaming && canSpeak()) {
       if (conversation || readVoicePreferences().readReplies) {
         setSpeaking(true);
+        setSpeechError("");
         speak(text, {
           onEnd: () => {
             setSpeaking(false);
             if (conversation) announceReplySpoken();
           },
+          onError: setSpeechError,
         });
       }
     }
@@ -119,10 +149,10 @@ function ReplyActions({
   if (isStreaming) return null;
 
   return (
-    <div className="-ml-2 mt-1 flex items-center gap-0.5 text-muted-foreground opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+    <div className="-ml-2 mt-1 flex items-center gap-0.5 text-muted-foreground opacity-100 transition-opacity pointer-fine:md:opacity-0 pointer-fine:md:group-hover:opacity-100 pointer-fine:md:focus-within:opacity-100">
       <Button
         aria-label={copied ? "Copied" : "Copy reply"}
-        className="size-8"
+        className="size-10 pointer-fine:md:size-8"
         onClick={() => {
           void navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
@@ -135,10 +165,22 @@ function ReplyActions({
       >
         {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
       </Button>
+      {shareAvailable ? (
+        <Button
+          aria-label="Share reply"
+          className="size-10 pointer-fine:md:size-8"
+          onClick={() => void shareOrCopy({ text }).catch(() => undefined)}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <Share2Icon className="size-3.5" />
+        </Button>
+      ) : null}
       {speechAvailable ? (
         <Button
           aria-label={speaking ? "Stop reading" : "Read aloud"}
-          className="size-8"
+          className="size-10 pointer-fine:md:size-8"
           onClick={() => {
             if (speaking) {
               stopSpeaking();
@@ -146,7 +188,8 @@ function ReplyActions({
               return;
             }
             setSpeaking(true);
-            speak(text, { onEnd: () => setSpeaking(false) });
+            setSpeechError("");
+            speak(text, { onEnd: () => setSpeaking(false), onError: setSpeechError });
           }}
           size="icon-sm"
           type="button"
@@ -158,6 +201,11 @@ function ReplyActions({
             <Volume2Icon className="size-3.5" />
           )}
         </Button>
+      ) : null}
+      {speechError ? (
+        <p className="ml-1 truncate text-xs text-destructive" role="alert" title={speechError}>
+          {speechError}
+        </p>
       ) : null}
     </div>
   );
@@ -176,7 +224,7 @@ function AgentMessageParts({
   readonly isUser: boolean;
   readonly lastTextIndex: number;
   readonly messageId: string;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
   readonly parts: readonly EveMessagePart[];
   readonly showCaret: boolean;
 }) {
@@ -212,7 +260,8 @@ function AgentMessageParts({
       return;
     }
 
-    flushTools(true);
+    // A tool call followed by more of a reply that is still streaming may yet run.
+    flushTools(!showCaret);
     const key = partKey(part, index);
 
     elements.push(
@@ -253,9 +302,68 @@ function AgentMessagePart({
       );
     case "reasoning":
       return <ReasoningPart isStreaming={part.state === "streaming"} text={part.text} />;
+    case "file":
+      return <AttachmentPart part={part} />;
     case "dynamic-tool":
       return null;
   }
+}
+
+type EveFilePart = Extract<EveMessagePart, { type: "file" }>;
+
+/**
+ * A file sent with a message, as on the native page: a picture as a thumbnail
+ * that opens the full-screen viewer, any other file as a chip with its name,
+ * type and size.
+ */
+function AttachmentPart({ part }: { readonly part: EveFilePart }) {
+  const [viewing, setViewing] = useState(false);
+  const label = part.filename ?? "Attachment";
+
+  if (part.mediaType.startsWith("image/") && part.url) {
+    return (
+      <>
+        <button
+          aria-label={`View ${label}`}
+          className="my-1 block overflow-hidden rounded-xl border border-border/60 bg-background/40"
+          onClick={() => setViewing(true)}
+          type="button"
+        >
+          <img
+            alt={label}
+            className="max-h-48 w-auto max-w-full object-cover"
+            loading="lazy"
+            src={part.url}
+          />
+        </button>
+        <ImageViewer
+          image={viewing ? { alt: label, name: label, url: part.url } : null}
+          onClose={() => setViewing(false)}
+        />
+      </>
+    );
+  }
+
+  const detail = [part.mediaType, formatBytes(part.size)].filter(Boolean).join(" · ");
+
+  return (
+    <span className="my-1 flex max-w-full items-center gap-2.5 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1.5 text-left">
+      <FileIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">{label}</span>
+        {detail ? (
+          <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function formatBytes(size: number | undefined) {
+  if (size === undefined) return undefined;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function UserTextPart({ text }: { readonly text: string }) {
@@ -277,7 +385,7 @@ function AssistantTextPart({
 
   return (
     <Markdown
-      animated={isRevealActive ? { duration: 0, stagger: 0 } : undefined}
+      animated={isRevealActive ? STREAM_ANIMATION : undefined}
       caret={showVisibleCaret ? "block" : undefined}
       isAnimating={isRevealActive}
     >
@@ -286,11 +394,28 @@ function AssistantTextPart({
   );
 }
 
+/** New words fade in as the reveal reaches them. */
+const STREAM_ANIMATION = { animation: "fadeIn", duration: 0.35, sep: "word", stagger: 0 } as const;
+/** While streaming, the shown text closes in on what has arrived within about this long. */
+const STREAM_LAG_MS = 500;
+/** Once the reply is complete, the rest shows within about this long. */
+const STREAM_CATCH_UP_MS = 260;
+const STREAM_MIN_CPS = 30;
+const STREAM_MAX_CPS = 2_400;
+
+/**
+ * Reveals a streaming reply at a steady pace instead of in the bursts it
+ * arrives in: each frame shows as much as keeps the shown text about half a
+ * second behind what has arrived, whole words at a time, so fast models
+ * flow and slow ones never stall. A remount (leaving and returning to the
+ * chat) continues from where it was.
+ */
 function useStreamingText(text: string, isStreaming: boolean, streamKey: string) {
   const [visibleText, setVisibleText] = useState(() =>
     getInitialStreamingText(text, isStreaming, streamKey),
   );
   const visibleTextRef = useRef(visibleText);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     visibleTextRef.current = visibleText;
@@ -298,49 +423,37 @@ function useStreamingText(text: string, isStreaming: boolean, streamKey: string)
 
   useEffect(() => {
     const current = visibleTextRef.current;
+    const show = (next: string) => {
+      visibleTextRef.current = next;
+      rememberStreamingText(streamKey, next);
+      setVisibleText(next);
+    };
 
-    if (!isStreaming && (current === text || !text.startsWith(current))) {
-      if (current !== text) {
-        visibleTextRef.current = text;
-        rememberStreamingText(streamKey, text);
-        setVisibleText(text);
-      }
-
+    // A rewrite (or a reduced-motion preference) shows the text as it is.
+    if (current === text) return;
+    if (!text.startsWith(current) || reduced) {
+      show(text);
       return;
     }
 
-    const catchUp = !isStreaming;
-    let interval: number | undefined;
-
-    const advance = () => {
-      const next = nextStreamingText(visibleTextRef.current, text, catchUp);
-
-      if (next !== visibleTextRef.current) {
-        visibleTextRef.current = next;
-        rememberStreamingText(streamKey, next);
-        setVisibleText(next);
-      }
-
-      if (catchUp && next === text && interval !== undefined) {
-        window.clearInterval(interval);
-        interval = undefined;
-      }
+    let frame = 0;
+    let last = performance.now();
+    let shown = current.length;
+    const step = (now: number) => {
+      const target = text.length;
+      const remaining = target - shown;
+      if (remaining <= 0) return;
+      const lag = isStreaming ? STREAM_LAG_MS : STREAM_CATCH_UP_MS;
+      const rate = Math.min(STREAM_MAX_CPS, Math.max(STREAM_MIN_CPS, (remaining / lag) * 1000));
+      shown = Math.min(target, shown + (rate * (now - last)) / 1000);
+      last = now;
+      const cut = wordBoundary(text, Math.floor(shown), target);
+      if (cut > visibleTextRef.current.length) show(text.slice(0, cut));
+      if (cut < target) frame = window.requestAnimationFrame(step);
     };
-
-    advance();
-
-    if (catchUp && visibleTextRef.current === text) {
-      return;
-    }
-
-    interval = window.setInterval(advance, STREAM_TEXT_TICK_MS);
-
-    return () => {
-      if (interval !== undefined) {
-        window.clearInterval(interval);
-      }
-    };
-  }, [isStreaming, streamKey, text]);
+    frame = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isStreaming, reduced, streamKey, text]);
 
   useEffect(() => {
     if (!isStreaming && visibleText === text) {
@@ -349,6 +462,28 @@ function useStreamingText(text: string, isStreaming: boolean, streamKey: string)
   }, [isStreaming, streamKey, text, visibleText]);
 
   return visibleText;
+}
+
+/** The end of the word the reveal has reached, so words appear whole. */
+function wordBoundary(text: string, at: number, end: number) {
+  if (at >= end) return end;
+  const space = text.indexOf(" ", at);
+  const newline = text.indexOf("\n", at);
+  const next = Math.min(space === -1 ? end : space, newline === -1 ? end : newline);
+  return Math.min(end, next);
+}
+
+const reducedMotionQuery = () => window.matchMedia("(prefers-reduced-motion: reduce)");
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const query = reducedMotionQuery();
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return reduced;
 }
 
 function getInitialStreamingText(text: string, isStreaming: boolean, streamKey: string) {
@@ -380,39 +515,11 @@ function rememberStreamingText(streamKey: string, text: string) {
   }
 }
 
-function nextStreamingText(current: string, target: string, catchUp = false) {
-  if (current === target) {
-    return current;
-  }
-
-  if (!target.startsWith(current)) {
-    return target;
-  }
-
-  const remaining = target.length - current.length;
-  const step = catchUp
-    ? remaining > 160
-      ? 18
-      : remaining > 80
-        ? 12
-        : remaining > 32
-          ? 7
-          : remaining > 12
-            ? 4
-            : 2
-    : remaining > 160
-      ? 6
-      : remaining > 80
-        ? 5
-        : remaining > 32
-          ? 3
-          : remaining > 12
-            ? 2
-            : 1;
-
-  return target.slice(0, current.length + Math.min(remaining, step));
-}
-
+/**
+ * The model's reasoning: open while it streams, showing the last lines as
+ * they arrive, then folded to one line ("Thought for 12s") that a tap opens
+ * and closes again. A fold or unfold by hand is kept.
+ */
 function ReasoningPart({
   isStreaming,
   text,
@@ -421,23 +528,69 @@ function ReasoningPart({
   readonly text: string;
 }) {
   const [open, setOpen] = useState(isStreaming);
+  const [seconds, setSeconds] = useState<number | null>(null);
+  const startedAt = useRef<number | null>(isStreaming ? Date.now() : null);
+  const touched = useRef(false);
+  const preview = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isStreaming) {
-      setOpen(true);
+      startedAt.current ??= Date.now();
+      if (!touched.current) setOpen(true);
+      return;
+    }
+    if (startedAt.current !== null) {
+      setSeconds(Math.max(1, Math.round((Date.now() - startedAt.current) / 1000)));
+      startedAt.current = null;
+      if (!touched.current) setOpen(false);
     }
   }, [isStreaming]);
 
+  // The preview keeps the newest reasoning in view.
+  useEffect(() => {
+    const box = preview.current;
+    if (isStreaming && box) box.scrollTop = box.scrollHeight;
+  }, [isStreaming, text]);
+
+  const label = isStreaming
+    ? "Thinking…"
+    : seconds === null
+      ? "Reasoning"
+      : `Thought for ${seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`}`;
+
   return (
-    <Collapsible className="my-3 w-full" onOpenChange={setOpen} open={open}>
-      <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        <span className={isStreaming ? "shimmer-text" : undefined}>
-          {isStreaming ? "Thinking..." : "Reasoning"}
-        </span>
-        <ChevronDownIcon className={cn("size-4 transition-transform", open ? "rotate-180" : "")} />
+    <Collapsible
+      className="my-3 w-full"
+      onOpenChange={(next) => {
+        touched.current = true;
+        setOpen(next);
+      }}
+      open={open}
+    >
+      <CollapsibleTrigger
+        className="group/reasoning flex min-h-9 items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground pointer-fine:md:min-h-7"
+        title={open ? "Hide reasoning" : "Show reasoning"}
+      >
+        <BrainIcon className="size-3.5 shrink-0" />
+        <span className={isStreaming ? "shimmer-text" : undefined}>{label}</span>
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 transition-transform duration-200",
+            open ? "rotate-180" : "",
+          )}
+        />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3 border-l border-border pl-4 text-muted-foreground">
-        <Markdown>{text}</Markdown>
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+        <div
+          className={cn(
+            "mt-2 border-l-2 border-border/70 pl-3 text-muted-foreground [&_li]:text-sm [&_li]:text-muted-foreground [&_p]:text-sm [&_p]:text-muted-foreground",
+            isStreaming &&
+              "max-h-36 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_2rem)] [scrollbar-width:none]",
+          )}
+          ref={preview}
+        >
+          <Markdown>{text}</Markdown>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -451,7 +604,7 @@ function ToolGroup({
 }: {
   readonly canRespond: boolean;
   readonly isSettled: boolean;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
   readonly parts: readonly EveDynamicToolPart[];
 }) {
   const shouldOpen = parts.some(needsInputResponse);
@@ -481,7 +634,11 @@ function ToolGroup({
       >
         <ToolStatusIcon status={status} />
         <span className="truncate">{label}</span>
-        <span className="sr-only">{toolStatusLabel(status)}</span>
+        {status === "skipped" ? (
+          <span className="shrink-0 text-xs">{toolStatusLabel(status)}</span>
+        ) : (
+          <span className="sr-only">{toolStatusLabel(status)}</span>
+        )}
         {canExpand ? (
           <ChevronRightIcon
             className={cn(
@@ -531,19 +688,28 @@ function generatedImages(part: EveDynamicToolPart): GeneratedImage[] {
 }
 
 function GeneratedImages({ images }: { readonly images: readonly GeneratedImage[] }) {
+  const [viewing, setViewing] = useState<GeneratedImage | null>(null);
   return (
     <div className={cn("my-2 grid gap-2", images.length > 1 && "sm:grid-cols-2")}>
       {images.map((image) => (
         <a
+          aria-label={image.alt ? `View image: ${image.alt}` : "View image"}
           className="block overflow-hidden rounded-xl border border-border/60 bg-muted/30"
           href={image.url}
           key={image.url}
+          // A tap opens the full-screen viewer; Ctrl/⌘-click still opens a tab.
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            setViewing(image);
+          }}
           rel="noreferrer"
           target="_blank"
         >
           <img alt={image.alt} className="h-auto w-full" loading="lazy" src={image.url} />
         </a>
       ))}
+      <ImageViewer image={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }
@@ -556,7 +722,7 @@ function ToolCallItem({
 }: {
   readonly canRespond: boolean;
   readonly isSettled: boolean;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
   readonly part: EveDynamicToolPart;
 }) {
   const shouldOpen = needsInputResponse(part);
@@ -612,7 +778,7 @@ function ToolDetails({
   part,
 }: {
   readonly canRespond: boolean;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
   readonly part: EveDynamicToolPart;
 }) {
   const hasOutput = part.state === "output-available" || part.state === "output-error";
@@ -647,6 +813,14 @@ function ToolStatusIcon({ status }: { readonly status: ToolStatus }) {
     );
   }
 
+  if (status === "skipped") {
+    return (
+      <span className="flex size-4 shrink-0 items-center justify-center self-center">
+        <CircleSlashIcon className={cn(className, "text-muted-foreground")} />
+      </span>
+    );
+  }
+
   if (status === "error" || status === "denied") {
     return (
       <span className="flex size-4 shrink-0 items-center justify-center self-center">
@@ -663,9 +837,13 @@ function ToolStatusIcon({ status }: { readonly status: ToolStatus }) {
 }
 
 function ToolNameLabel({ part }: { readonly part: EveDynamicToolPart }) {
+  const name = resolveToolName(part);
+  // Tools of a connected service (github__…, linear…) carry its logo.
+  const brand = serviceBrand(name);
   return (
-    <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-      {formatToolName(resolveToolName(part))}
+    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+      {brand ? <BrandIcon brand={brand} className="size-3" name={name} /> : null}
+      {formatToolName(name)}
     </span>
   );
 }
@@ -704,10 +882,11 @@ function InputRequestActions({
   part,
 }: {
   readonly canRespond: boolean;
-  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly onInputResponses: InputResponder;
   readonly part: EveDynamicToolPart;
 }) {
   const [freeformText, setFreeformText] = useState("");
+  const promptId = useId();
   const inputRequest = part.toolMetadata?.eve?.inputRequest;
 
   if (!inputRequest) {
@@ -730,18 +909,21 @@ function InputRequestActions({
     );
   }
 
-  const sendTextResponse = () => {
+  const sendTextResponse = async () => {
     const text = freeformText.trim();
     if (!text) {
       return;
     }
-    void onInputResponses([{ requestId: inputRequest.requestId, text }]);
-    setFreeformText("");
+    // eve keeps a refused answer's prompt open: keep the text until it is accepted.
+    if ((await onInputResponses([{ requestId: inputRequest.requestId, text }])) !== false)
+      setFreeformText("");
   };
 
   return (
     <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-      <p className="text-sm text-muted-foreground">{inputRequest.prompt}</p>
+      <p className="text-sm text-muted-foreground" id={promptId}>
+        {inputRequest.prompt}
+      </p>
       {inputRequest.options?.length ? (
         <div className="flex flex-wrap gap-2">
           {inputRequest.options.map((option) => (
@@ -756,6 +938,8 @@ function InputRequestActions({
                   },
                 ]);
               }}
+              // Finger-sized under a finger, dense beside a mouse.
+              className="h-11 pointer-fine:md:h-8"
               size="sm"
               type="button"
               variant={option.style === "danger" ? "destructive" : "default"}
@@ -768,9 +952,13 @@ function InputRequestActions({
       {inputRequest.allowFreeform || inputRequest.display === "text" ? (
         <div className="flex gap-2">
           <Input
+            aria-labelledby={promptId}
+            className="h-11 pointer-fine:md:h-9"
             disabled={!canRespond}
             onChange={(event) => setFreeformText(event.target.value)}
             onKeyDown={(event) => {
+              // Enter that confirms an IME composition (keyCode 229 in Safari) is not a reply.
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (event.key === "Enter") {
                 event.preventDefault();
                 sendTextResponse();
@@ -780,6 +968,7 @@ function InputRequestActions({
             value={freeformText}
           />
           <Button
+            className="h-11 pointer-fine:md:h-9"
             disabled={!canRespond || freeformText.trim().length === 0}
             onClick={sendTextResponse}
             type="button"
@@ -792,7 +981,7 @@ function InputRequestActions({
   );
 }
 
-type ToolStatus = "completed" | "denied" | "error" | "running";
+type ToolStatus = "completed" | "denied" | "error" | "running" | "skipped";
 
 function needsInputResponse(part: EveDynamicToolPart) {
   return Boolean(part.toolMetadata?.eve?.inputRequest && !part.toolMetadata.eve.inputResponse);
@@ -833,8 +1022,9 @@ function getToolStatus(part: EveDynamicToolPart): ToolStatus {
   }
 }
 
+/** A call still waiting when its reply finished never ran (a cancelled or failed turn). */
 function getSettledToolStatus(status: ToolStatus, isSettled: boolean): ToolStatus {
-  return isSettled && status === "running" ? "completed" : status;
+  return isSettled && status === "running" ? "skipped" : status;
 }
 
 function getToolGroupStatus(parts: readonly EveDynamicToolPart[]): ToolStatus {
@@ -852,6 +1042,10 @@ function getToolGroupStatus(parts: readonly EveDynamicToolPart[]): ToolStatus {
     return "running";
   }
 
+  if (statuses.every((status) => status === "skipped")) {
+    return "skipped";
+  }
+
   return "completed";
 }
 
@@ -865,6 +1059,8 @@ function toolStatusLabel(status: ToolStatus) {
       return "Error";
     case "running":
       return "Running";
+    case "skipped":
+      return "Not run";
   }
 }
 

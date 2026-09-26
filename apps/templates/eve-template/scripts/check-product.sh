@@ -14,9 +14,11 @@ run_check() {
     exit 1
   fi
 }
+run_check upstream-template pnpm upstream:sync
 run_check unit pnpm test
+run_check lint pnpm lint
+run_check format pnpm fmt:check
 run_check eve-surface pnpm eve:surface:check
-run_check upstream-template pnpm upstream:check
 run_check build-eve pnpm build:eve
 run_check typecheck pnpm typecheck
 run_check build-next pnpm build
@@ -61,4 +63,13 @@ const result=JSON.parse(readFileSync(process.env.QA_ARTIFACTS+"/browser-results.
 if(result.checks.length<10 || result.checks.some(check=>!check.passed) || result.pageErrors.length) process.exit(1);
 console.log(`PASS: ${result.checks.length} browser acceptance groups; no uncaught page errors`);
 '
+# Before browser-security, which rotates the test password.
+run_check browser-chat node scripts/test-chat-resilience-browser.mjs
 run_check browser-security node scripts/test-security-browser.mjs
+# eve logs and skips a dynamic tool resolver that fails (the memory tools once
+# vanished after a photo this way), so any such line is a failure.
+if grep -n "Dynamic tool resolver" "$QA_ARTIFACTS/server.log"; then
+  echo "FAIL: dynamic-tools"
+  exit 1
+fi
+echo "PASS: dynamic-tools"

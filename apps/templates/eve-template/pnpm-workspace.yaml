@@ -13,3 +13,10 @@ allowBuilds:
   esbuild: true
   "@mongodb-js/zstd": true
   node-liblzma: true
+
+patchedDependencies:
+  eve@0.67.0: patches/eve@0.67.0.patch
+
+# drizzle-kit's @esbuild-kit loader pins esbuild <=0.24.2 (GHSA-67mh-4wv8-2f99).
+overrides:
+  "@esbuild-kit/core-utils>esbuild": ^0.25.12

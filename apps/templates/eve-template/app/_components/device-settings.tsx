@@ -3,16 +3,10 @@ import { Loader2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { installPrompt, onInstallPromptChange, promptInstall } from "@/lib/pwa/install-prompt";
+import { currentSubscription } from "@/lib/pwa/push-subscription";
 import { SettingsShell } from "./settings-shell";
 
 type Support = "loading" | "unsupported" | "ios-browser" | "ready";
-
-function base64UrlToBytes(value: string) {
-  const base64 = (value + "=".repeat((4 - (value.length % 4)) % 4))
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-}
 
 function deviceLabel() {
   const agent = navigator.userAgent;
@@ -88,9 +82,14 @@ export function DeviceSettings() {
       setSupport(ios && !standalone ? "ios-browser" : "unsupported");
     else {
       setSupport("ready");
-      void navigator.serviceWorker.ready
-        .then((registration) => registration.pushManager.getSubscription())
-        .then(async (subscription) => {
+      void Promise.all([navigator.serviceWorker.ready, notificationsApi()])
+        .then(async ([registration, status]) => {
+          // A subscription made with a key the server no longer has is renewed.
+          const { subscription, replaced } = status.publicKey
+            ? await currentSubscription(registration.pushManager, status.publicKey)
+            : { subscription: await registration.pushManager.getSubscription(), replaced: null };
+          if (replaced)
+            await notificationsApi({ action: "unsubscribe", endpoint: replaced }).catch(() => {});
           setSubscribed(Boolean(subscription));
           // Re-register so a server that lost its device list keeps notifying this one.
           const data = subscription
@@ -99,7 +98,7 @@ export function DeviceSettings() {
                 subscription: subscription.toJSON(),
                 label: deviceLabel(),
               })
-            : await notificationsApi();
+            : status;
           setDevices(data.devices ?? 0);
         })
         .catch(() => undefined);
@@ -133,12 +132,14 @@ export function DeviceSettings() {
       const { publicKey } = await notificationsApi();
       if (!publicKey) throw new Error("The server did not return a notification key.");
       const registration = await navigator.serviceWorker.ready;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: base64UrlToBytes(publicKey),
-        }));
+      const { subscription, replaced } = await currentSubscription(
+        registration.pushManager,
+        publicKey,
+        true,
+      );
+      if (!subscription) throw new Error("This browser did not turn notifications on.");
+      if (replaced)
+        await notificationsApi({ action: "unsubscribe", endpoint: replaced }).catch(() => {});
       const data = await notificationsApi({
         action: "subscribe",
         subscription: subscription.toJSON(),
@@ -191,7 +192,11 @@ export function DeviceSettings() {
             </p>
           </div>
           {!installed && canInstall && (
-            <Button className="h-11 md:h-8" disabled={Boolean(busy)} onClick={() => void install()}>
+            <Button
+              className="h-11 pointer-fine:md:h-8"
+              disabled={Boolean(busy)}
+              onClick={() => void install()}
+            >
               {busy === "install" && <Loader2Icon className="size-4 animate-spin" />}
               Install
             </Button>
@@ -215,7 +220,7 @@ export function DeviceSettings() {
           {support === "ready" && subscribed && (
             <Button
               variant="ghost"
-              className="h-11 md:h-8"
+              className="h-11 pointer-fine:md:h-8"
               disabled={Boolean(busy)}
               onClick={() => void test()}
             >
@@ -226,7 +231,7 @@ export function DeviceSettings() {
           {support === "ready" && (
             <Button
               variant={subscribed ? "outline" : "default"}
-              className="h-11 md:h-8"
+              className="h-11 pointer-fine:md:h-8"
               disabled={Boolean(busy)}
               onClick={() => void (subscribed ? turnOff() : turnOn())}
             >

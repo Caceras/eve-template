@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, lt, or, type SQL, sql } from "drizzle-orm";
 import type { ClientSessionState, MessageStreamEvent } from "eve/client";
 import { isChatTurnSettledEvent } from "@/lib/chat/events";
+import { CHAT_PAGE_SIZE, chatPageSize } from "@/lib/chat/paging";
 import type { ActiveChat, ChatListItem, ChatListPage } from "@/lib/chat/types";
 import { createFallbackTitle, DEFAULT_CHAT_TITLE } from "@/lib/chat/title";
-import { chat, chatEvent } from "@/lib/db/schema";
+import { chat, chatEvent, user } from "@/lib/db/schema";
 import { db } from "@/lib/db/client";
-
-const CHAT_HISTORY_PAGE_SIZE = 20;
+import { OPERATOR_PRINCIPAL_ID } from "@/lib/operator";
 
 function encodeChatCursor(updatedAt: Date, id: string) {
   return `${updatedAt.toISOString()}::${id}`;
@@ -29,6 +29,60 @@ function decodeChatCursor(cursor: string) {
   return { id, updatedAt };
 }
 
+/*
+ * neon-http has no interactive transactions, but `db.batch` runs its statements
+ * as one transaction. Statements in a batch cannot read each other's results,
+ * so ownership is checked inside every write: for a chat that is not the
+ * caller's, the batch changes nothing and the lock query comes back empty.
+ */
+
+/** Locks the caller's chat row until the batch commits; empty when not theirs. */
+function lockOwnedChat(chatId: string, userId: string) {
+  return db
+    .select({ id: chat.id })
+    .from(chat)
+    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
+    .for("update");
+}
+
+/** Upserts `events` at `firstIndex`, `firstIndex + 1`, … when the chat is the caller's. */
+function insertOwnedEvents({
+  chatId,
+  events,
+  firstIndex,
+  userId,
+}: {
+  readonly chatId: string;
+  readonly events: readonly MessageStreamEvent[];
+  readonly firstIndex: SQL;
+  readonly userId: string;
+}) {
+  const rows = JSON.stringify(events.map((event) => ({ event, id: randomUUID() })));
+  return db.execute<{ event_index: number }>(sql`
+    insert into chat_event (id, chat_id, event_index, event)
+    select item.value->>'id', ${chatId}, (${firstIndex} + item.position - 1)::integer, item.value->'event'
+    from jsonb_array_elements(${rows}::jsonb) with ordinality as item(value, position)
+    where exists (select 1 from "chat" where id = ${chatId} and user_id = ${userId})
+    on conflict (chat_id, event_index) do update set event = excluded.event
+    returning event_index
+  `);
+}
+
+/**
+ * Password sign-in and scheduled tasks use the operator principal, which never
+ * signs up through Better Auth, but `chat.user_id` references "user". Its row
+ * is created once, before the operator's first chat.
+ */
+let operatorUserSaved = false;
+async function ensureUserRow(userId: string) {
+  if (userId !== OPERATOR_PRINCIPAL_ID || operatorUserSaved) return;
+  await db
+    .insert(user)
+    .values({ email: "local@aegentica.local", id: OPERATOR_PRINCIPAL_ID, name: "Operator" })
+    .onConflictDoNothing({ target: user.id });
+  operatorUserSaved = true;
+}
+
 export async function listChatsByUser(userId: string): Promise<ChatListItem[]> {
   const page = await listChatsPageByUser(userId);
 
@@ -38,7 +92,9 @@ export async function listChatsByUser(userId: string): Promise<ChatListItem[]> {
 export async function listChatsPageByUser(
   userId: string,
   cursor?: string | null,
+  limit: number = CHAT_PAGE_SIZE,
 ): Promise<ChatListPage> {
+  const size = chatPageSize(limit);
   const cursorValue = cursor?.trim();
   const parsedCursor = cursorValue ? decodeChatCursor(cursorValue) : null;
   const rows = await db
@@ -60,10 +116,10 @@ export async function listChatsPageByUser(
       ),
     )
     .orderBy(desc(chat.updatedAt), desc(chat.id))
-    .limit(CHAT_HISTORY_PAGE_SIZE + 1);
+    .limit(size + 1);
 
-  const hasMore = rows.length > CHAT_HISTORY_PAGE_SIZE;
-  const pageRows = hasMore ? rows.slice(0, CHAT_HISTORY_PAGE_SIZE) : rows;
+  const hasMore = rows.length > size;
+  const pageRows = hasMore ? rows.slice(0, size) : rows;
   const last = pageRows[pageRows.length - 1];
 
   return {
@@ -88,6 +144,7 @@ export async function createChat(
 ) {
   const pendingMessage = pendingUserMessage?.trim();
   const pendingMessageCreatedAt = pendingMessage ? new Date() : null;
+  await ensureUserRow(userId);
   const [row] = await db
     .insert(chat)
     .values({
@@ -114,6 +171,15 @@ export async function createChat(
     title: row.title,
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export async function chatExistsForUser(chatId: string, userId: string) {
+  const [row] = await db
+    .select({ id: chat.id })
+    .from(chat)
+    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
+    .limit(1);
+  return Boolean(row);
 }
 
 export async function getChatForUser(chatId: string, userId: string): Promise<ActiveChat | null> {
@@ -239,57 +305,39 @@ export async function skipChatAuthorization({
     throw new Error("No authorization events to save.");
   }
 
-  const [ownedChat] = await db
-    .select({ id: chat.id })
-    .from(chat)
-    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
-    .limit(1);
+  // One transaction: the events go after the last saved one, counted in SQL
+  // after the chat row is locked, so two saves of one chat never pick the
+  // same indexes and overwrite each other.
+  const [locked, inserted, updated] = await db.batch([
+    lockOwnedChat(chatId, userId),
+    insertOwnedEvents({
+      chatId,
+      events,
+      firstIndex: sql`(select coalesce(max(event_index), -1) + 1 from chat_event where chat_id = ${chatId})`,
+      userId,
+    }),
+    db
+      .update(chat)
+      .set({
+        eveSession: session ?? null,
+        pendingUserMessage: null,
+        pendingUserMessageCreatedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
+      .returning({
+        id: chat.id,
+        title: chat.title,
+        updatedAt: chat.updatedAt,
+      }),
+  ]);
+  const [row] = updated;
 
-  if (!ownedChat) {
+  if (locked.length === 0 || !row) {
     throw new Error("Chat not found.");
   }
 
-  const [lastEvent] = await db
-    .select({ eventIndex: chatEvent.eventIndex })
-    .from(chatEvent)
-    .where(eq(chatEvent.chatId, chatId))
-    .orderBy(desc(chatEvent.eventIndex))
-    .limit(1);
-  const eventIndex = (lastEvent?.eventIndex ?? -1) + 1;
-
-  await db
-    .insert(chatEvent)
-    .values(
-      events.map((event, offset) => ({
-        chatId,
-        event,
-        eventIndex: eventIndex + offset,
-        id: randomUUID(),
-      })),
-    )
-    .onConflictDoUpdate({
-      set: { event: sql`excluded.event` },
-      target: [chatEvent.chatId, chatEvent.eventIndex],
-    });
-
-  const [row] = await db
-    .update(chat)
-    .set({
-      eveSession: session ?? null,
-      pendingUserMessage: null,
-      pendingUserMessageCreatedAt: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
-    .returning({
-      id: chat.id,
-      title: chat.title,
-      updatedAt: chat.updatedAt,
-    });
-
-  if (!row) {
-    throw new Error("Chat not found.");
-  }
+  const eventIndex = Math.min(...inserted.rows.map((saved) => Number(saved.event_index)));
 
   return {
     chat: {
@@ -317,6 +365,24 @@ export async function saveChatSessionState({
       eveSession: session,
     })
     .where(and(eq(chat.id, chatId), eq(chat.userId, userId)));
+}
+
+/**
+ * Forgets an eve session that can no longer take messages (ended, or reset
+ * from Activity) in every chat of the user that uses it, so the chat's next
+ * message starts a new session instead of failing.
+ */
+export async function forgetChatSession({
+  sessionId,
+  userId,
+}: {
+  readonly sessionId: string;
+  readonly userId: string;
+}) {
+  await db
+    .update(chat)
+    .set({ eveSession: null })
+    .where(and(eq(chat.userId, userId), sql`${chat.eveSession}->>'sessionId' = ${sessionId}`));
 }
 
 export async function appendChatEvent({
@@ -354,57 +420,62 @@ export async function appendChatEvent({
     });
 }
 
+/**
+ * Saves the chat's events from `fromIndex` on (earlier rows are unchanged) and
+ * drops any rows past the new end.
+ */
 export async function saveChatSnapshot({
   chatId,
   events,
+  fromIndex = 0,
   session,
   userId,
 }: {
   readonly chatId: string;
   readonly events: readonly MessageStreamEvent[];
+  readonly fromIndex?: number;
   readonly session: ClientSessionState | undefined;
   readonly userId: string;
 }) {
-  const [ownedChat] = await db
-    .select({ id: chat.id })
-    .from(chat)
-    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
-    .limit(1);
+  const owned = and(eq(chat.id, chatId), eq(chat.userId, userId));
+  // One transaction, like the SQLite store: a failed step leaves the chat as
+  // it was instead of new events with a stale tail or session.
+  const [locked] = await db.batch([
+    lockOwnedChat(chatId, userId),
+    insertOwnedEvents({ chatId, events, firstIndex: sql`${fromIndex}::integer`, userId }),
+    db
+      .delete(chatEvent)
+      .where(
+        and(
+          eq(chatEvent.chatId, chatId),
+          gte(chatEvent.eventIndex, fromIndex + events.length),
+          exists(db.select({ id: chat.id }).from(chat).where(owned)),
+        ),
+      ),
+    db
+      .update(chat)
+      .set({
+        eveSession: session ?? null,
+        pendingUserMessage: null,
+        pendingUserMessageCreatedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(owned),
+  ]);
 
-  if (!ownedChat) {
+  if (locked.length === 0) {
     throw new Error("Chat not found.");
   }
+}
 
-  if (events.length > 0) {
-    await db
-      .insert(chatEvent)
-      .values(
-        events.map((event, eventIndex) => ({
-          chatId,
-          event,
-          eventIndex,
-          id: randomUUID(),
-        })),
-      )
-      .onConflictDoUpdate({
-        set: { event: sql`excluded.event` },
-        target: [chatEvent.chatId, chatEvent.eventIndex],
-      });
-  }
-
-  await db
-    .delete(chatEvent)
-    .where(and(eq(chatEvent.chatId, chatId), gte(chatEvent.eventIndex, events.length)));
-
-  await db
+export async function renameChatForUser(chatId: string, userId: string, title: string) {
+  // Leaves updatedAt alone: a rename should not reorder the history.
+  const rows = await db
     .update(chat)
-    .set({
-      eveSession: session ?? null,
-      pendingUserMessage: null,
-      pendingUserMessageCreatedAt: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)));
+    .set({ title })
+    .where(and(eq(chat.id, chatId), eq(chat.userId, userId)))
+    .returning({ id: chat.id });
+  return rows.length > 0;
 }
 
 export async function deleteChatForUser(chatId: string, userId: string) {

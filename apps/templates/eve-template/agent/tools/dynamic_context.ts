@@ -1,9 +1,12 @@
 import { defineDynamic, defineTool } from "eve/tools";
 import { z } from "zod";
+import { examplesEnabled } from "../lib/examples";
 
 export default defineDynamic({
   events: {
     "session.started": (_event, ctx) => {
+      // Reference example; off in production (agent/lib/examples.ts).
+      if (!examplesEnabled) return null;
       const channel = ctx.channel.kind ?? "unknown";
       return defineTool({
         description:

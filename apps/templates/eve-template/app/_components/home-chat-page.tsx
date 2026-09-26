@@ -1,34 +1,56 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowUpRightIcon, SearchIcon, PencilLineIcon, ListChecksIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type AgentChatControllerStatus } from "@/app/_components/agent-chat";
 import { ComposerFooterControls } from "@/components/chat/composer-footer-controls";
 import { ErrorToast } from "@/components/chat/error-toast";
 import { useChatShell } from "@/app/_components/chat-shell-context";
 import { ChatComposer } from "@/components/chat/composer";
+import {
+  ComposerDock,
+  ConversationFrame,
+  ThinkingLine,
+  UserBubble,
+} from "@/components/chat/pending-turn";
 import { getChatMessageLengthError } from "@/lib/chat/limits";
 import { createProvisionalChatId, writePendingChatMessage } from "@/lib/chat/provisional-chat";
 import type { SetupStatus } from "@/lib/chat/types";
 import { moveComposerDraft } from "@/lib/chat/composer-draft";
+import { readDraftText, saveDraftText } from "@/lib/chat/draft-text";
+import { cn } from "@/lib/utils";
 
 const IDLE_CONTROLLER_STATUS: AgentChatControllerStatus = {
   canSteer: false,
   isBusy: false,
   isDisabled: false,
   isEmpty: true,
+  isSyncing: false,
 };
+
+/** How long the home page takes to become the chat page (the composer's glide). */
+const LEAVE_MS = 340;
+const LEAVE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+/**
+ * A chat that could not be created sends the message back here (as the
+ * eve-chat-draft) with the reason under this key, shown once in the error toast.
+ */
+export const START_CHAT_ERROR_KEY = "aegentica-start-chat-error";
+/** Set with the error when the chat could not be created because the sign-in expired. */
+export const START_CHAT_SIGN_IN_KEY = "aegentica-start-chat-sign-in";
 
 export function HomeChatPage() {
   const { requestSignIn, setActiveChatId, setupStatus, viewer } = useChatShell();
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The message on its way to a new chat: the page already looks like that
+  // chat while the route loads, so nothing flashes or jumps.
+  const [leaving, setLeaving] = useState<{ message: string; from: DOMRect } | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const submittingRef = useRef(false);
+  const composerRef = useRef<HTMLDivElement>(null);
   const setupReady = setupStatus.appReady;
   const pathname = usePathname();
   const router = useRouter();
@@ -42,8 +64,21 @@ export function HomeChatPage() {
     if (pathname === "/") {
       submittingRef.current = false;
       setSubmitting(false);
+      setLeaving(null);
+      let startError: string | null = null;
+      let signIn = false;
+      let draft = "";
+      try {
+        startError = window.sessionStorage.getItem(START_CHAT_ERROR_KEY);
+        signIn = window.sessionStorage.getItem(START_CHAT_SIGN_IN_KEY) === "1";
+        draft = window.sessionStorage.getItem("eve-chat-draft") ?? "";
+        window.sessionStorage.removeItem(START_CHAT_ERROR_KEY);
+        window.sessionStorage.removeItem(START_CHAT_SIGN_IN_KEY);
+      } catch {}
+      if (startError) setClientError(startError);
+      if (signIn) requestSignIn(draft);
     }
-  }, [pathname]);
+  }, [pathname, requestSignIn]);
 
   useEffect(() => {
     // The manifest's share target opens /?title=&text=&url=; keep it as a draft until sign-in.
@@ -69,12 +104,36 @@ export function HomeChatPage() {
     if (restoredDraft) {
       setDraft(restoredDraft);
       window.sessionStorage.removeItem("eve-chat-draft");
+    } else {
+      const saved = readDraftText("new");
+      if (saved) setDraft(saved);
     }
   }, [viewer]);
 
   useEffect(() => {
+    if (viewer) saveDraftText("new", draft);
+  }, [draft, viewer]);
+
+  useEffect(() => {
     setDismissedError(null);
   }, [clientError]);
+
+  // The composer glides from where it was to the bottom of the page (a FLIP
+  // move: the new layout is applied, then played from the old position), the
+  // greeting fades and the sent message settles above.
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (!leaving || !composer) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const to = composer.getBoundingClientRect();
+    const dy = leaving.from.top - to.top;
+    if (Math.abs(dy) < 1) return;
+    const animation = composer.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+      { duration: LEAVE_MS, easing: LEAVE_EASING, fill: "both" },
+    );
+    return () => animation.cancel();
+  }, [leaving]);
 
   const handleSubmit = useCallback(
     async (text: string) => {
@@ -131,105 +190,133 @@ export function HomeChatPage() {
         return;
       }
 
+      const href = `/chat/${provisionalChatId}`;
+      const from = composerRef.current?.getBoundingClientRect();
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setActiveChatId(provisionalChatId);
-      router.push(`/chat/${provisionalChatId}`, { scroll: false });
+      if (!from || reduced) {
+        router.push(href, { scroll: false });
+        return;
+      }
+      // The chat route loads while the page turns into it, so the switch at
+      // the end of the move is between two identical frames.
+      // "full" fetches a dynamic route's whole payload; Next exports the enum only internally.
+      router.prefetch(href, { kind: "full" } as Parameters<typeof router.prefetch>[1]);
+      setLeaving({ message, from });
+      window.setTimeout(() => router.push(href, { scroll: false }), LEAVE_MS);
     },
     [requestSignIn, router, setActiveChatId, setupReady, setupStatus, submitting, viewer],
   );
 
-  const composerDisabled = !setupReady;
-  const composerDisabledReason = getHomeComposerDisabledReason({
-    setupStatus,
-    submitting,
-  });
+  const composerDisabled = !setupReady || Boolean(leaving);
+  const composerDisabledReason = leaving
+    ? undefined
+    : getHomeComposerDisabledReason({
+        setupStatus,
+        submitting,
+      });
 
   if (pathname !== "/") {
     return null;
   }
 
+  const composer = (
+    <ChatComposer
+      autoFocus
+      disabled={composerDisabled}
+      disabledReason={composerDisabledReason}
+      footerStart={<ComposerFooterControls setupStatus={setupStatus} />}
+      isBusy={IDLE_CONTROLLER_STATUS.isBusy}
+      isPreparing={submitting && !leaving}
+      onChange={setDraft}
+      onStop={() => {}}
+      onSubmit={handleSubmit}
+      placeholder="Message Ægentica"
+      value={draft}
+    />
+  );
+
+  if (leaving) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ConversationFrame>
+          <UserBubble
+            className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
+            text={leaving.message}
+          />
+          <ThinkingLine className="animate-in fade-in-0 delay-150 duration-300 fill-mode-both" />
+        </ConversationFrame>
+        <ComposerDock>
+          <div ref={composerRef}>{composer}</div>
+        </ComposerDock>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col pt-14 md:pt-8">
+    <div className="flex min-h-0 flex-1 flex-col pt-14 md:pt-8 [@media(max-height:520px)]:pt-12">
       {toastError ? (
         <ErrorToast message={toastError} onDismiss={() => setDismissedError(toastError)} />
       ) : null}
 
-      <div className="flex min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
-        <div className="flex min-h-0 flex-1 items-center justify-center py-6 sm:pb-[8vh]">
-          <div className="w-full max-w-2xl space-y-5 sm:space-y-6">
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-5 flex justify-center">
-                <img
-                  alt="Ægentica"
-                  className="size-11 select-none invert sm:size-12 dark:invert-0"
-                  draggable={false}
-                  src="/aegentica.svg"
-                />
-              </div>
-              <h1 className="text-2xl font-medium tracking-tight sm:text-[28px]">
-                What should we work on?
-              </h1>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                Ask, research, build, or hand off a task.
-              </p>
-            </div>
-            <ChatComposer
-              autoFocus
-              disabled={composerDisabled}
-              disabledReason={composerDisabledReason}
-              footerStart={<ComposerFooterControls setupStatus={setupStatus} />}
-              isBusy={IDLE_CONTROLLER_STATUS.isBusy}
-              isPreparing={submitting}
-              onChange={setDraft}
-              onStop={() => {}}
-              onSubmit={handleSubmit}
-              placeholder="Message Ægentica"
-              value={draft}
-            />
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-3">
-              {[
-                {
-                  icon: SearchIcon,
-                  title: "Explore a topic",
-                  text: "Help me research a topic. First ask me what I want to understand, then make a clear plan.",
-                },
-                {
-                  icon: PencilLineIcon,
-                  title: "Make something clear",
-                  text: "Help me turn a rough idea into a clear piece of writing. Ask me what I have in mind.",
-                },
-                {
-                  icon: ListChecksIcon,
-                  title: "Plan my next step",
-                  text: "Help me break a task into practical next steps. Ask me what I want to accomplish.",
-                },
-              ].map(({ icon: Icon, title, text }) => (
-                <Button
-                  key={title}
-                  variant="ghost"
-                  className="h-11 justify-start gap-2.5 rounded-xl border-0 bg-muted/45 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => {
-                    setDraft(text);
-                    document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
-                  }}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  {title}
-                </Button>
-              ))}
-            </div>
-            <div className="flex justify-center">
-              <Link
-                href="/capabilities"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-              >
-                Explore capabilities
-                <ArrowUpRightIcon className="size-3" />
-              </Link>
-            </div>
-          </div>
+      <HomeStage>
+        <HomeGreeting />
+        <div className="shrink-0 px-4 sm:px-0" ref={composerRef}>
+          {composer}
         </div>
-      </div>
+        <HomeHint />
+      </HomeStage>
     </div>
+  );
+}
+
+/**
+ * The greeting, the composer and the hint sit in the upper part of the page,
+ * where the eye lands, until the first message moves the composer to the
+ * bottom for the conversation. Shared with the loading skeleton.
+ */
+export function HomeStage({ children }: { readonly children: React.ReactNode }) {
+  return (
+    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col pt-[7vh] sm:px-6 sm:pt-[13vh] md:pt-[15vh] [@media(max-height:520px)]:pt-1">
+      {children}
+    </div>
+  );
+}
+
+/** Shared with the loading skeleton so the first paint and the live page match. */
+export function HomeGreeting() {
+  return (
+    // Hidden when the keyboard leaves too little room, so the page never scrolls.
+    <div className="flex shrink-0 flex-col items-center px-4 pb-5 text-center sm:pb-6 [@media(max-height:520px)]:hidden">
+      <img
+        alt="Ægentica"
+        className="mb-5 size-11 select-none invert sm:size-12 dark:invert-0"
+        draggable={false}
+        src="/aegentica.svg"
+      />
+      <h1 className="text-2xl font-medium tracking-tight sm:text-[28px]">
+        What should we work on?
+      </h1>
+      <p className="mt-1.5 hidden text-sm leading-6 text-muted-foreground sm:block">
+        Ask, research, build, or hand off a task.
+      </p>
+    </div>
+  );
+}
+
+/** How to reach skills and agents now that the box has no menus. */
+export function HomeHint({ className }: { readonly className?: string }) {
+  return (
+    <p
+      className={cn(
+        "px-4 pt-3 text-center text-xs leading-5 text-muted-foreground sm:px-0 [@media(max-height:520px)]:hidden",
+        className,
+      )}
+    >
+      Type <kbd className="rounded border border-border/70 bg-muted/50 px-1 font-sans">/</kbd> for a
+      skill or <kbd className="rounded border border-border/70 bg-muted/50 px-1 font-sans">@</kbd>{" "}
+      for an agent.
+    </p>
   );
 }
 

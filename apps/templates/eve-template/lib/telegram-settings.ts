@@ -75,23 +75,28 @@ export async function connectTelegram(botToken: string, origin: string) {
     throw new TelegramSetupError(
       "Telegram could not register this site as the bot's webhook. The site must be public over HTTPS.",
     );
-  const previous = await readTelegram().catch(() => undefined);
-  const sameBot = previous?.botUsername === botUsername;
-  await withSettingsLock(FILE, () =>
-    writeEncrypted(FILE, {
+  // Read under the lock, so an owner linked meanwhile is kept rather than overwritten.
+  await withSettingsLock(FILE, async () => {
+    const previous = await readTelegram().catch(() => undefined);
+    await writeEncrypted(FILE, {
       botToken,
       webhookSecret,
       botUsername,
-      owner: sameBot ? previous?.owner : undefined,
+      owner: previous?.botUsername === botUsername ? previous.owner : undefined,
       updatedAt: new Date().toISOString(),
-    } satisfies TelegramConfig),
-  );
+    } satisfies TelegramConfig);
+  });
 }
 
 export async function disconnectTelegram() {
-  const config = await readTelegram().catch(() => undefined);
+  // Removed under the lock, so a pairing or update in flight cannot write it
+  // back; the webhook removed is the one of the bot that was disconnected.
+  const config = await withSettingsLock(FILE, async () => {
+    const current = await readTelegram().catch(() => undefined);
+    await removeSetting(FILE);
+    return current;
+  });
   if (config) await botApi(config.botToken, "deleteWebhook").catch(() => undefined);
-  await removeSetting(FILE);
 }
 
 export async function startPairing() {

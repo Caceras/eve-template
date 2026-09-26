@@ -3,80 +3,124 @@
     "reason": "Self-hosted variables: operator password, session secret, memory directory, provider keys.",
     "upstream": "5df7cf4c6aa7"
   },
+  ".gitignore": {
+    "reason": "Flat single-app layout: no apps/web build folders to ignore.",
+    "upstream": "eedacdfe0b88"
+  },
   "AGENTS.md": {
     "reason": "Product guide for agents working on Ægentica.",
     "upstream": "ea82bf6920a7"
   },
   "README.md": {
     "reason": "Product README.",
-    "upstream": "10ed10d6973b"
+    "upstream": "317bbeda0f59"
   },
   "agent/agent.ts": {
     "reason": "Step-level model routing (provider switching), session cost limits and compaction.",
     "upstream": "8aafb586ad41"
   },
   "agent/channels/eve.ts": {
-    "reason": "Internal task auth, and attachments enabled like the current Web Chat scaffold.",
-    "upstream": "0f351e284677"
+    "reason": "Internal task auth, Vercel OIDC only on Vercel (no discovery fetches for forged tokens when self-hosted), and attachments enabled like the current Web Chat scaffold.",
+    "upstream": "2d03f1ebc036"
+  },
+  "agent/connections/linear.ts": {
+    "reason": "Offered to the model only when a Vercel Connect connector is set: self-hosted without one, every call fails and the listing costs tokens each turn.",
+    "upstream": "72a22ad2ddcb"
+  },
+  "agent/connections/notion.ts": {
+    "reason": "Offered to the model only when a Vercel Connect connector is set: self-hosted without one, every call fails and the listing costs tokens each turn.",
+    "upstream": "f544918dc270"
+  },
+  "agent/connections/sentry.ts": {
+    "reason": "Offered to the model only when a Vercel Connect connector is set: self-hosted without one, every call fails and the listing costs tokens each turn.",
+    "upstream": "507b92bb9ae6"
   },
   "agent/instructions.md": {
-    "reason": "Ægentica identity and capabilities.",
+    "reason": "Ægentica identity and capabilities; sample-weather guard; no developer-facing framework guidance in the model's context.",
     "upstream": "81ce7edfe5ff"
   },
   "agent/memory/profile.ts": {
     "reason": "Durable SQLite memory for self-hosting.",
     "upstream": "0a138c155d34"
   },
+  "agent/skills/plan_a_trip.md": {
+    "reason": "Trip plans use a real forecast from web search; get_weather returns sample data only.",
+    "upstream": "624dbe97bdb9"
+  },
+  "agent/tools/get_weather.ts": {
+    "reason": "The description says the data is a fixed sample, so the model never presents it as a forecast.",
+    "upstream": "2fa38a94ded8"
+  },
+  "app/(chat)/chat/[id]/page.tsx": {
+    "reason": "Only checks that the chat exists: the page loads the chat itself, so a history with photos (data URLs) is sent once instead of also in the route data, and first content does not wait for the route data to hydrate.",
+    "upstream": "0387c213a267"
+  },
   "app/(chat)/layout.tsx": {
     "reason": "Request-time auth and history (Docker runtime env) and the product shell.",
     "upstream": "9e7c1aa7f3e8"
   },
   "app/_components/agent-chat-shell.tsx": {
-    "reason": "Product navigation, mobile drawer with swipe, command menu.",
+    "reason": "Product navigation, finger-following phone drawer, command menu, chat rename; desktop shortcuts on ⌘ for Apple devices and Ctrl elsewhere (never Ctrl on a Mac, where Ctrl+B/K edit text) with matching hints; opens a notification's chat when the service worker cannot navigate the window. A skip link to the page; a collapsed desktop sidebar is inert and hands focus to the button that reopens it. A refused chat rename or delete reaches the sidebar's dialog, which stays open and says so. Chat pages carry a visually hidden h1 with the chat's title. The top bar's Sign in steps aside for a page's own Sign in button, so a signed-out page has one obvious sign-in action.",
     "upstream": "2d8fd45e88d9"
   },
   "app/_components/agent-chat-skeleton.tsx": {
-    "reason": "Skeleton mirrors the product layout.",
+    "reason": "Skeleton mirrors the product layout, including the remembered model name. Dense sizes only under a fine pointer, like the live page.",
     "upstream": "85550f43a604"
   },
   "app/_components/agent-chat.tsx": {
-    "reason": "Saved agents, modes, attachments, steering and voice; streamed fragments skip per-event saves.",
+    "reason": "Saved agents, modes, attachments, steering and voice; streamed fragments skip per-event saves and are joined in the end-of-turn save, which uploads only the new turn; a turn interrupted by leaving the page resumes from the saved cursor without duplicates; readable provider errors; a failed Stop is reported instead of an unhandled rejection. Connect and Skip are finger-sized under a coarse pointer. The conversation never scrolls sideways.",
     "upstream": "e61b8eb8564a"
+  },
+  "app/_components/chat-shell-context.tsx": {
+    "reason": "Carries the model name this device showed last, so the composer never renders a placeholder. Pages claim the one sign-in action while they show their own Sign in button.",
+    "upstream": "83bde4c1150b"
   },
   "app/_components/eve-image-mark.tsx": {
     "reason": "Replaced by the Ægentica mark (DESIGN brand rules).",
     "upstream": "928273a16666"
   },
   "app/_components/home-chat-page.tsx": {
-    "reason": "Product home: share-target drafts, suggestions, shared composer.",
+    "reason": "Product home: composer under the thumb on phones, suggestion chips, share-target drafts; shows why a new chat could not be created. With the keyboard up on a short screen the suggestions hide, so Send stays in view.",
     "upstream": "be196e16859d"
   },
   "app/_components/session-chat-page.tsx": {
-    "reason": "Draft transfer to the canonical chat, steering, safe-area padding, branding.",
+    "reason": "Draft transfer to the canonical chat, steering, safe-area padding, branding; a reload never resends a message eve already received; a page shown again by Back never replays its first render (no resend, no shorter history); a failed chat creation hands its reason to the home page, which is the one left visible.",
     "upstream": "65e137f70420"
   },
   "app/actions/chat.ts": {
-    "reason": "One-time import of chats stored in the browser before server history.",
+    "reason": "One-time import of chats stored in the browser before server history; renaming a chat; snapshot saves upload only the events after an unchanged prefix.",
     "upstream": "e5258ecfb5bd"
   },
   "app/api/bootstrap/route.ts": {
-    "reason": "connection() so per-viewer data is not prerendered at build.",
+    "reason": "connection() so per-viewer data is not prerendered at build; signed-out callers get only appReady, authMode and authReady, not the setup details.",
     "upstream": "c374b0858560"
   },
+  "app/api/chats/[id]/route.ts": {
+    "reason": "Gzips the chat JSON (a long chat is hundreds of KB): route handler bodies are not compressed at the origin.",
+    "upstream": "a65ed1078ab7"
+  },
   "app/api/chats/route.ts": {
-    "reason": "connection() so per-viewer data is not prerendered at build.",
+    "reason": "connection() so per-viewer data is not prerendered at build; gzipped JSON.",
     "upstream": "ac4f9ef37edc"
   },
   "app/api/password-auth/login/route.ts": {
-    "reason": "Username, rate limit, bounded body, same-origin check, auth hint cookie.",
+    "reason": "Username, rate limit, bounded body, same-origin check, auth hint and known-device cookies.",
     "upstream": "1ea9dc4da4d7"
+  },
+  "app/api/password-auth/logout/route.ts": {
+    "reason": "Sign-out revokes the presented session token on the server, so a copied cookie stops working.",
+    "upstream": "e11a6750cc37"
   },
   "app/apple-icon.tsx": {
     "reason": "Ægentica mark.",
     "upstream": "3f1f6daa73be"
   },
+  "app/auth/error/page.tsx": {
+    "reason": "Pinned to the viewport instead of min-h-dvh, which exceeds the screen in Chrome's edge-to-edge installed-app mode. In password mode it speaks of the operator's username and password, with no Vercel OAuth wording or links; finger-sized actions under a coarse pointer.",
+    "upstream": "702b0e5dcca2"
+  },
   "app/globals.css": {
-    "reason": "tw-animate-css for shadcn animations; white surfaces and higher-contrast muted text (DESIGN).",
+    "reason": "tw-animate-css for shadcn animations; white surfaces and higher-contrast muted text (DESIGN); app-like touch behavior. A focus ring token strong enough to see (oklch 0.556 light, 0.708 dark), which links take as a 2px outline.",
     "upstream": "32065600c17f"
   },
   "app/icon.svg": {
@@ -84,11 +128,11 @@
     "upstream": "963cab18091b"
   },
   "app/layout.tsx": {
-    "reason": "PWA metadata, viewport, service worker, Vercel-only analytics.",
+    "reason": "PWA metadata, per-page title template, viewport, service worker, boot hints for the skeleton, Vercel-only analytics, noindex for a private app, the mono font loaded when code shows instead of preloaded.",
     "upstream": "874f985e999f"
   },
   "components/auth/password-sign-in-form.tsx": {
-    "reason": "Username and password operator sign-in.",
+    "reason": "Username and password operator sign-in. A refused sign-in marks the fields invalid, describes them with the error and returns focus to the password.",
     "upstream": "f1d45e41bd6f"
   },
   "components/auth/sign-in-modal.tsx": {
@@ -96,56 +140,80 @@
     "upstream": "9d07f703b445"
   },
   "components/auth/user-menu.tsx": {
-    "reason": "Password-mode label, drafts cleared on logout, 40px touch target.",
+    "reason": "Password-mode label; logout clears drafts, removes this device's notifications and reloads the page (Back cannot show private pages); 40px touch target.",
     "upstream": "677aa4b253ea"
   },
   "components/chat/composer.tsx": {
-    "reason": "Agent, mode, attachments, dictation, read-aloud and model picker.",
+    "reason": "Agent, mode, attachments, dictation, read-aloud and model picker; IME-safe Enter (isComposing or Safari's keyCode 229); no silent maxLength cut, the length limit is explained inline; placeholder at full muted-foreground contrast, since it alone says Listening or Add a correction. Dense controls only under a fine pointer (pointer-fine:md:), so touch tablets keep 44px buttons. The message box grows to at most a quarter of the screen.",
     "upstream": "b5a0472f8335"
   },
   "components/chat/integrations-menu.tsx": {
-    "reason": "Only configured connections are listed.",
+    "reason": "Only configured connections are listed. Finger-sized under a coarse pointer.",
     "upstream": "1c13b3b11d69"
   },
+  "components/chat/markdown.tsx": {
+    "reason": "Replies wrap long words and links (tables keep their own sideways scroll), so a reply never scrolls the conversation sideways or blocks the swipe that opens the phone drawer; images show only from the app's own media, data: and blob: URLs and any other image is a link (lib/markdown-images.ts), so injected text cannot load a tracking image; math, diagram and CJK plugins load only when a reply contains them (lib/markdown-plugins.ts), so a chat without them never downloads KaTeX or mermaid.",
+    "upstream": "b03f72e1cc8a"
+  },
   "components/chat/message.tsx": {
-    "reason": "Read aloud, generated images, attachments and product tool labels.",
+    "reason": "Read aloud, generated images, attachments and product tool labels; Enter that confirms an IME composition does not send an answer to a question. Reply actions stay visible and finger-sized under a coarse pointer; question options, the labelled reply field and Reply are 44px under a finger. Each message is an article named You or Ægentica; a streaming reply is aria-busy.",
     "upstream": "c756ad1ea2d5"
   },
   "components/chat/sidebar.tsx": {
-    "reason": "Product navigation groups and chat actions.",
+    "reason": "Product navigation groups and chat actions. The fallback mirrors the pointer-based row sizes and hides shortcut hints from touch. Section labels and hints at full muted-foreground contrast.",
     "upstream": "b2ded4728340"
   },
   "components/ui/command.tsx": {
     "reason": "Dialog title inside DialogContent so Radix finds it (accessibility).",
     "upstream": "1d24c826bdec"
   },
+  "components/ui/dialog.tsx": {
+    "reason": "On touch devices dialogs take focus themselves instead of their first field, so the keyboard waits for a tap. Focus returns to what opened the dialog (or the menu's button) when there is no Trigger, instead of the page body. The close button's hit area widens to about 44px under a coarse pointer.",
+    "upstream": "c75132d97010"
+  },
+  "components/ui/dropdown-menu.tsx": {
+    "reason": "Under a finger menus open on tap, not touch-down, so scrolls and swipes never pop a menu.",
+    "upstream": "d96bf716ba84"
+  },
   "docs/how-the-chatbot-works.md": {
     "reason": "Ægentica notes on server history and composer additions.",
-    "upstream": "206566a9411b"
+    "upstream": "d8f72358a7a1"
   },
   "docs/setup-and-deploy.md": {
     "reason": "Self-hosted production section.",
-    "upstream": "626cef510d1d"
+    "upstream": "052fc43894a8"
+  },
+  "drizzle.config.ts": {
+    "reason": "Flat layout: the schema and migrations live under lib/db at the root.",
+    "upstream": "44e7c1faf362"
   },
   "lib/auth.ts": {
     "reason": "Trusted production host and proxy headers behind Traefik.",
-    "upstream": "8915d4bcf537"
+    "upstream": "ecb86fae0b95"
+  },
+  "lib/chat/local-store.ts": {
+    "reason": "Keeps the @/ import alias of the flat layout (upstream switched to relative imports when it moved to apps/web); renaming a chat in browser storage.",
+    "upstream": "5f516500aa6b"
   },
   "lib/chat/persistence-client.ts": {
-    "reason": "Paged chat list for search and navigation.",
-    "upstream": "df5ea1288d19"
+    "reason": "Paged chat list for search and navigation; renaming a chat; snapshot saves upload only the new turn.",
+    "upstream": "86bdaaedfbf7"
   },
   "lib/chat/types.ts": {
     "reason": "Configured connections in the setup status.",
     "upstream": "73cb3719a92f"
   },
+  "lib/db/client.ts": {
+    "reason": "Keeps the @/ import alias of the flat layout (upstream switched to relative imports when it moved to apps/web).",
+    "upstream": "9e5d7bd57eae"
+  },
   "lib/db/queries.ts": {
-    "reason": "SQLite store for self-hosting next to Postgres.",
-    "upstream": "9238f140ee54"
+    "reason": "SQLite store for self-hosting next to Postgres; renaming a chat.",
+    "upstream": "819f01f52165"
   },
   "lib/eve-auth.ts": {
     "reason": "Model, saved-agent and mode attributes; internal task auth; operator identity.",
-    "upstream": "3aad65c772f6"
+    "upstream": "0c6bd11a377b"
   },
   "lib/password-auth.ts": {
     "reason": "Operator username, scrypt hash, password rotation and session revocation.",
@@ -153,30 +221,34 @@
   },
   "lib/session.ts": {
     "reason": "Operator name on the viewer.",
-    "upstream": "b10a55054d2a"
+    "upstream": "bccd78b13d88"
   },
   "lib/setup.ts": {
     "reason": "Self-hosted setup status: password mode, storage, configured connections.",
-    "upstream": "8f0f52ae52f2"
+    "upstream": "46790b627e6e"
   },
   "next.config.ts": {
-    "reason": "Service worker headers; workflow routes to the local eve runtime.",
-    "upstream": "bebecbf77cf1"
+    "reason": "withEve(eve/next) mounts eve in the one self-hosted Next.js app (upstream now runs eve as a Vercel service); service worker headers; a server-action body limit that fits attachments.",
+    "upstream": "f4b8a55d93a1"
   },
   "package.json": {
-    "reason": "Product dependencies and scripts.",
-    "upstream": "f8de041fdeef"
+    "reason": "Product dependencies and scripts. No microsandbox devDependency: the sandbox is pinned to just-bash, and as eve's optional peer it would survive `pnpm prune --prod` and ship its 74 MB binary in the image. shiki is pinned to the 3.x that @streamdown/code uses, without the template's unused @shikijs/* 4.x packages: the Live session's code block would otherwise bundle a second copy of every grammar and the Oniguruma WASM. katex is a direct dependency only so the on-demand math chunk can import its stylesheet (lib/markdown-math.ts).",
+    "upstream": "e8c350725e39"
   },
   "pnpm-lock.yaml": {
-    "reason": "Product dependencies.",
-    "upstream": "6319af628fa7"
+    "reason": "Product dependencies; one shiki major (see package.json).",
+    "upstream": "ca1cd1b03747"
   },
   "pnpm-workspace.yaml": {
     "reason": "Product workspace settings.",
-    "upstream": "d78de14c088a"
+    "upstream": "5a61de939dd7"
   },
   "public/eve.svg": {
     "reason": "Replaced by public/aegentica.svg (DESIGN brand rules).",
     "upstream": "1980724c3d9c"
+  },
+  "vercel.ts": {
+    "reason": "Self-hosted as one container (Next.js and eve under scripts/start-self-hosted.mjs); no Vercel service graph.",
+    "upstream": "c76a88e2ee52"
   }
 }

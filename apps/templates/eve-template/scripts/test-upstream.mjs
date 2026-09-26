@@ -2,30 +2,35 @@
 // must carry a reason in docs/upstream-divergence.json, pinned to the upstream
 // version it was reviewed against. When upstream changes such a file, this
 // fails so the change gets ported. Run with --write after a review to record
-// new divergences (reason "TODO") and refresh fingerprints.
+// new divergences (reason "TODO") and refresh fingerprints. The baseline is the
+// live template that `pnpm upstream:sync` fetches into node_modules/.cache/.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const base = resolve(root, "../eve-chat-template");
+const base = join(root, "node_modules/.cache/eve-chat-template");
 const listPath = join(root, "docs/upstream-divergence.json");
 if (!existsSync(base)) {
-  console.log("SKIP: the upstream eve-chat-template is only available inside the eve monorepo");
+  console.log("SKIP: run `pnpm upstream:sync` to fetch the official eve-chat-template baseline");
   process.exit(0);
 }
-const files = (dir) =>
+const baseFiles = () =>
+  readdirSync(base, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(base, join(entry.parentPath, entry.name)));
+const productFiles = () =>
   new Set(
-    execFileSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" }).split("\n").filter(Boolean),
+    execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean),
   );
 const read = (dir, file) => (existsSync(join(dir, file)) ? readFileSync(join(dir, file)) : null);
 const fingerprint = (file) =>
   createHash("sha256").update(read(base, file)).digest("hex").slice(0, 12);
 
-const product = files(root);
-const diverged = [...files(base)]
+const product = productFiles();
+const diverged = baseFiles()
   .filter((file) => !product.has(file) || !read(base, file).equals(read(root, file)))
   .sort();
 const list = JSON.parse(readFileSync(listPath, "utf8"));

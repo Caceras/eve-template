@@ -69,21 +69,19 @@ try {
   assert(!encrypted.includes(input.knowledge), "reference context encrypted at rest");
   const attrs = await store.profileAttributes(
     new Request("https://app.test/eve/v1/sessions", {
-      headers: { "x-aegentica-profile": profile.id, "x-aegentica-mode": "research" },
+      headers: { "x-aegentica-profile": profile.id },
     }),
   );
   assert.equal(attrs.agentProfileId, profile.id);
   assert.equal(attrs.chatModel, profile.model);
-  assert.equal(attrs.composerMode, "research");
   assert.match(attrs.agentProfileInstructions, /does not grant permissions/);
-  assert.equal(
-    (
-      await store.profileAttributes(
-        new Request("https://app.test", { headers: { "x-aegentica-mode": "admin" } }),
-      )
-    ).composerMode,
-    undefined,
-  );
+  const { skillAttribute } = await import("../lib/skills.ts");
+  const skill = (value) =>
+    skillAttribute(new Request("https://app.test", { headers: { "x-aegentica-skill": value } }));
+  assert.deepEqual(skill("deep-research"), { composerSkill: "deep-research" });
+  assert.deepEqual(skill("plan_a_trip"), { composerSkill: "plan_a_trip" });
+  for (const unsafe of ["../secrets", "a b", "x".repeat(65), "-flag", ""])
+    assert.deepEqual(skill(unsafe), {}, `rejects ${JSON.stringify(unsafe)}`);
   const update = await call({
     action: "save",
     id: profile.id,

@@ -1,24 +1,22 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 import { isOperator } from "@/lib/operator";
+
+// A saved agent's instructions are standing rules for the turn, so they are a
+// system-role instruction: a user-role one would be appended to the durable
+// history again on every turn (up to ~8k characters each time).
 export default defineDynamic({
   events: {
     "turn.started": (_event, ctx) => {
+      // Delegated copies inherit the caller's auth; their brief arrives in the delegation message.
+      if (ctx.channel.kind === "subagent") return null;
       if (!isOperator(ctx.session.auth.current)) return null;
       const attributes = ctx.session.auth.current!.attributes;
-      if (typeof attributes.agentProfileError === "string")
-        throw new Error(attributes.agentProfileError);
-      const content = [
-        attributes.agentProfileInstructions,
-        attributes.composerMode === "image"
-          ? "For this turn, help create an image using generate_image. If image generation is unavailable, report that accurately; never claim an image was created without a successful tool result."
-          : "",
-        attributes.composerMode === "research"
-          ? "For this turn, investigate the question with sources. Delegate substantial research to the researcher or a saved agent when useful. Separate evidence, inference, and unanswered questions."
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      return content ? defineInstructions({ role: "user", content }) : null;
+      // A deleted saved agent is stopped by agent/hooks/saved-agent.ts.
+      if (typeof attributes.agentProfileError === "string") return null;
+      return typeof attributes.agentProfileInstructions === "string" &&
+        attributes.agentProfileInstructions
+        ? defineInstructions({ role: "system", content: attributes.agentProfileInstructions })
+        : null;
     },
   },
 });

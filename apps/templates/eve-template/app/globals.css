@@ -53,7 +53,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.925 0 0);
   --input: oklch(0.925 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.556 0 0);
   --radius: 0.625rem;
 }
 
@@ -76,15 +76,24 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.708 0 0);
 }
 
 * {
   border-color: var(--border);
 }
 
+/* An app, not a page: no pull-to-refresh, no rubber-band past the edges, and
+   the canvas under Android's gesture bar matches the app. */
 html {
   height: 100%;
+  background: var(--background);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Taps never wait for or trigger double-tap zoom; pinch zoom stays. */
+  touch-action: manipulation;
+  /* Native checkboxes, radios and sliders take the product's ink, not browser blue. */
+  accent-color: var(--primary);
 }
 
 body {
@@ -93,6 +102,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), var(--font-sans);
+  overscroll-behavior: none;
 }
 
 code,
@@ -113,18 +123,30 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* Links take the focus colour buttons use, at full strength so it reads on any
+   surface; a link styled as a button keeps the button's ring (utilities win). */
+@layer base {
+  a:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Controls behave like app controls: a long press never selects their label
+   or opens the browser's callout. Links and media keep theirs. */
+button,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 button:disabled,
 [role="button"][aria-disabled="true"] {
   cursor: not-allowed;
-}
-
-/* On phones a horizontal swipe opens or closes the navigation drawer; keep the
-   browser's overscroll history navigation from competing with it. */
-@media (max-width: 767px) {
-  html,
-  body {
-    overscroll-behavior-x: none;
-  }
 }
 
 html[data-eve-chat-sidebar="closed"] [data-desktop-sidebar] {
@@ -179,5 +201,53 @@ html[data-eve-chat-sidebar="closed"] [data-desktop-sidebar] {
   * {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
+}
+
+/* Third-party logos (components/brand-icon.tsx): the SVG masks the text colour. */
+.brand-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: var(--brand) center / contain no-repeat;
+  mask: var(--brand) center / contain no-repeat;
+}
+
+.brand-icon[hidden] {
+  display: none;
+}
+
+/* Horizontal chip rows bleed to the screen edge on phones; the fade shows they scroll. */
+@utility scroll-row {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 1rem,
+    #000 calc(100% - 1rem),
+    transparent
+  );
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  & > * {
+    scroll-snap-align: start;
+  }
+}
+
+/* Menu, select and search rows keep their dense desktop size but reach ~44px under a finger. */
+@media (pointer: coarse) {
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="select-item"],
+  [data-slot="command-item"] {
+    min-height: 2.75rem;
   }
 }

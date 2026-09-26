@@ -74,7 +74,11 @@ export async function removeDevice(endpoint: string) {
 
 export type PushMessage = { title: string; body: string; url: string; tag?: string };
 
-/** Sends to every registered device; drops devices the push service reports as gone. */
+/**
+ * Sends to every registered device; drops devices the push service reports as
+ * gone (404, 410) or refuses for this server's key (401, 403: subscribed with a
+ * key pair the server no longer has). Settings on that device renews them.
+ */
 export async function sendPush(message: PushMessage) {
   const state = await load();
   if (state.devices.length === 0) return { sent: 0 };
@@ -82,7 +86,7 @@ export async function sendPush(message: PushMessage) {
   const payload = JSON.stringify({
     title: message.title.slice(0, 120),
     body: message.body.slice(0, 300),
-    url: message.url.startsWith("/") ? message.url : "/",
+    url: message.url.startsWith("/") && !/^\/[/\\]/.test(message.url) ? message.url : "/",
     tag: message.tag,
   });
   const gone: string[] = [];
@@ -98,8 +102,18 @@ export async function sendPush(message: PushMessage) {
         });
         sent += 1;
       } catch (error) {
-        const status = (error as { statusCode?: number }).statusCode;
-        if (status === 404 || status === 410) gone.push(device.endpoint);
+        const { statusCode: status, body } = error as { statusCode?: number; body?: unknown };
+        if (status === 401 || status === 403 || status === 404 || status === 410) {
+          gone.push(device.endpoint);
+          return;
+        }
+        // The endpoint URL is the device's credential, so only its host is logged.
+        const service = device.endpoint.split("/")[2];
+        console.error(
+          `[push] Delivery through ${service} failed${status ? ` (HTTP ${status})` : ""}:`,
+          error instanceof Error ? error.message : String(error),
+          typeof body === "string" ? body.slice(0, 300) : "",
+        );
       }
     }),
   );

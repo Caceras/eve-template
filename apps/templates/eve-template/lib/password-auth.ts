@@ -4,10 +4,18 @@ import { dirname, join } from "node:path";
 
 export const PASSWORD_SESSION_COOKIE_NAME = "eve_chat_session";
 export const PASSWORD_SESSION_MAX_AGE = 60 * 60 * 24 * 30;
-const TOKEN_VERSION = "v2";
+// v3 adds a random id, so two sign-ins in the same second get different
+// tokens and signing out one never signs out the other; v2 stays valid until
+// the cookies issued before it expire.
+const TOKEN_VERSION = "v3";
+const LEGACY_TOKEN_VERSION = "v2";
 const TEMPORARY_USERNAME = "Riki";
 const TEMPORARY_PASSWORD = "1010";
 export const PASSWORD_RECORD_NAME = "operator-password.json";
+/** Hashes of signed-out session tokens, each with its expiry (seconds). */
+export const REVOKED_SESSIONS_NAME = "revoked-sessions.json";
+/** Extra signing input that "Sign out everywhere" rotates while no password is saved. */
+export const SESSION_NONCE_NAME = "session-nonce.json";
 export type PasswordRecord = {
   version: 1;
   salt: string;
@@ -25,14 +33,18 @@ export function getChatPassword() {
 }
 
 /** Same path as secure-settings.settingsDirectory; also usable in standalone auth. */
-function readPasswordRecord(): PasswordRecord | undefined {
+function settingsFile(name: string) {
   const directory =
     process.env.EVE_SETTINGS_DIR ||
     join(
       process.env.EVE_MEMORY_DIR ? dirname(process.env.EVE_MEMORY_DIR) : ".eve/.workflow-data",
       "settings",
     );
-  const file = join(directory, PASSWORD_RECORD_NAME);
+  return join(directory, name);
+}
+
+export function readPasswordRecord(): PasswordRecord | undefined {
+  const file = settingsFile(PASSWORD_RECORD_NAME);
   try {
     if (statSync(file).size > 2048) throw new Error("Invalid password settings.");
     const value = JSON.parse(readFileSync(file, "utf8")) as Partial<PasswordRecord>;
@@ -54,6 +66,55 @@ function readPasswordRecord(): PasswordRecord | undefined {
     throw error;
   }
 }
+
+const cachedFiles = new Map<string, { version: string; value: unknown }>();
+
+/**
+ * A small settings file, parsed again only when it changed on disk: every
+ * request checks it, and the other process (Next.js or eve) may rewrite it.
+ */
+function readCachedJson(name: string, maxBytes: number): unknown {
+  const file = settingsFile(name);
+  let info;
+  try {
+    info = statSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  if (info.size > maxBytes) throw new Error("Invalid session settings.");
+  const version = `${info.ino}:${info.size}:${info.mtimeMs}`;
+  const cached = cachedFiles.get(file);
+  if (cached?.version === version) return cached.value;
+  const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  cachedFiles.set(file, { version, value });
+  return value;
+}
+
+/** Signed-out tokens (`lib/password-sessions.ts` writes them): hash to expiry. */
+export function readRevokedSessions(): Record<string, unknown> {
+  const value = readCachedJson(REVOKED_SESSIONS_NAME, 256 * 1024);
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid session settings.");
+  return value as Record<string, unknown>;
+}
+
+function sessionNonce(): string | undefined {
+  const value = readCachedJson(SESSION_NONCE_NAME, 1024) as
+    | { version?: unknown; nonce?: unknown }
+    | undefined;
+  if (value === undefined) return undefined;
+  if (
+    value?.version !== 1 ||
+    typeof value.nonce !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.nonce)
+  )
+    throw new Error("Invalid session settings.");
+  return value.nonce;
+}
+
+export const sessionTokenId = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export function passwordSettings() {
   const stored = readPasswordRecord();
@@ -112,34 +173,48 @@ export async function verifyChatPassword(candidate: string, username: string) {
 
 export function createPasswordSessionToken(now = Date.now()) {
   const expiresAt = Math.floor(now / 1000) + PASSWORD_SESSION_MAX_AGE;
-  const payload = `${TOKEN_VERSION}.${expiresAt}`;
+  const payload = `${TOKEN_VERSION}.${expiresAt}.${randomBytes(12).toString("base64url")}`;
   return `${payload}.${sign(payload)}`;
 }
 
 export function verifyPasswordSessionToken(token: string | undefined, now = Date.now()) {
   if (!token || !isChatPasswordConfigured()) return false;
-  const [version, expiresAtRaw, signature, ...extra] = token.split(".");
-  const expiresAt = Number(expiresAtRaw);
+  const parts = token.split(".");
+  // v3.<expiry>.<id>.<signature>, or the older v2.<expiry>.<signature>.
+  const legacy = parts[0] === LEGACY_TOKEN_VERSION && parts.length === 3;
+  if (!legacy && !(parts[0] === TOKEN_VERSION && parts.length === 4)) return false;
+  const signature = parts.at(-1)!;
+  const expiresAt = Number(parts[1]);
   if (
-    version !== TOKEN_VERSION ||
     !signature ||
-    extra.length > 0 ||
+    (!legacy && !/^[\w-]{16}$/.test(parts[2]!)) ||
     !Number.isSafeInteger(expiresAt) ||
     expiresAt <= Math.floor(now / 1000)
   )
     return false;
-  return timingSafeEqual(hash(signature), hash(sign(`${version}.${expiresAt}`)));
+  const payload = parts.slice(0, -1).join(".");
+  if (!timingSafeEqual(hash(signature), hash(sign(payload)))) return false;
+  // A signed-out cookie stays refused even if someone copied it.
+  return !Object.hasOwn(readRevokedSessions(), sessionTokenId(token));
+}
+
+/** A cookie's value as sent, verified or not. */
+export function readCookie(headers: Headers, name: string) {
+  const value = headers
+    .get("cookie")
+    ?.split(";")
+    .map((cookie) => cookie.trim().split("="))
+    .find(([key]) => key === name)?.[1];
+  try {
+    return value ? decodeURIComponent(value) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function getPasswordSessionFromHeaders(headers: Headers) {
-  const cookieHeader = headers.get("cookie");
-  if (!cookieHeader) return false;
-  const token = cookieHeader
-    .split(";")
-    .map((cookie) => cookie.trim().split("="))
-    .find(([name]) => name === PASSWORD_SESSION_COOKIE_NAME)?.[1];
   try {
-    return verifyPasswordSessionToken(token ? decodeURIComponent(token) : undefined);
+    return verifyPasswordSessionToken(readCookie(headers, PASSWORD_SESSION_COOKIE_NAME));
   } catch {
     return false;
   }
@@ -169,10 +244,14 @@ function sign(payload: string) {
   const key = process.env.EVE_SESSION_SECRET?.trim();
   if (!key) throw new Error("Session signing is not configured.");
   const stored = readPasswordRecord();
-  // Revoke old cookies on password changes without orphaning encrypted API keys.
+  const nonce = sessionNonce();
+  // Revoke old cookies on password changes and Sign out everywhere without
+  // orphaning encrypted API keys. Without a nonce the identity is as before,
+  // so existing sessions stay valid.
   const identity = JSON.stringify([
     operatorUsername(),
     stored ? stored.revision + stored.digest : hash(getChatPassword()).toString("hex"),
+    ...(nonce ? [nonce] : []),
   ]);
   return createHmac("sha256", key)
     .update(identity)

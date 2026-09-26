@@ -35,7 +35,7 @@ for (const doc of docs) {
   for (const [, script] of text.matchAll(/`(?:node |bash )?(scripts\/[\w./-]+\.(?:mjs|sh|ts))/g))
     if (!existsSync(join(root, script))) problems.push(`${doc}: missing ${script}`);
   for (const [, name] of text.matchAll(/`pnpm ([a-z][\w:-]*)/g))
-    if (!(name in scripts) && !["install", "exec", "dlx", "add"].includes(name))
+    if (!(name in scripts) && !["install", "exec", "dlx", "add", "patch", "audit"].includes(name))
       problems.push(`${doc}: unknown command pnpm ${name}`);
 }
 

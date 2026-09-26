@@ -17,9 +17,9 @@ pnpm dlx vercel@latest login
 
 The commands below use `vercel`. If you do not have a global install, replace `vercel` with `pnpm dlx vercel@latest`.
 
-## One-Click Deploy
+## Password Starter
 
-The README deploy button creates a working starter without Marketplace products or migrations. It asks for:
+The smallest deployment needs no Marketplace products or migrations, only:
 
 ```bash
 EVE_CHAT_USERNAME=
@@ -27,15 +27,15 @@ EVE_CHAT_PASSWORD=
 EVE_SESSION_SECRET=
 ```
 
-Use a strong value; 16+ characters are recommended. The app exchanges it for a secure, HTTP-only session cookie. Chats and eve session cursors are stored in the current browser's localStorage, so history does not follow the user to another browser.
+Use a strong password; 16+ characters are recommended. The app exchanges it for a secure, HTTP-only session cookie. In password mode chats are stored on the server in SQLite (`chats.sqlite` beside `EVE_MEMORY_DIR`, or `EVE_CHAT_DB_PATH`), so the operator sees the same history in every browser and on every device.
 
-The deploy button does not provision storage for long-term memory. The agent runs normally, but memory is disabled on Vercel until you complete [Long-Term Memory](#long-term-memory). That step works in starter mode and does not require the production upgrade.
+The starter does not provision storage for long-term memory. The agent runs normally, but memory is disabled on Vercel until you complete [Long-Term Memory](#long-term-memory). That step works in starter mode and does not require the production upgrade.
 
 Starter mode is for one trusted operator. Everyone who knows the password shares
 the same eve principal and any user-scoped connection grants. Upgrade to
 production mode before giving independent users access.
 
-For this temporary operator release, the default credentials are Riki / 1010. Environment values override them. A separate random `EVE_SESSION_SECRET` is mandatory; without it password authentication fails closed. Generate at least 32 random bytes. The login route allows ten attempts per minute across this single-replica app.
+For this temporary operator release, the default credentials are Riki / 1010. Environment values override them. A separate random `EVE_SESSION_SECRET` is mandatory; without it password authentication fails closed. Generate at least 32 random bytes. The login route allows ten failed attempts per minute from each client address (the right-most `X-Forwarded-For` entry, which the reverse proxy sets; an IPv6 client counts as its whole /64) and 100 attempts per minute in total, so one guessing address cannot lock the operator out. A browser that signed in before carries a signed, HTTP-only known-device cookie (a year, sent only to the login route) and is outside the overall cap, so an attacker who fills it from many addresses still cannot keep the operator out. The counters are per process, which suits this single-replica app.
 
 ## Long-Term Memory
 
@@ -60,7 +60,7 @@ Configure Vercel Blob, Neon, Upstash, and Sign in with Vercel to switch the same
 # Or: ./scripts/setup.sh --scope <team-slug>
 ```
 
-Password mode takes precedence when `EVE_SESSION_SECRET` is configured. Remove the temporary operator mode before switching to independent OAuth users. Run migrations after the first production deployment:
+Password mode takes precedence when `EVE_SESSION_SECRET` is configured. With `DATABASE_URL` also set, the password operator's chats and scheduled-task runs are stored in Postgres under the operator principal (`eve-chat-user`), whose `user` row the app adds itself before its first chat. Remove the temporary operator mode before switching to independent OAuth users. Run migrations after the first production deployment:
 
 ```bash
 vercel env run -e production -- pnpm db:migrate
@@ -251,7 +251,7 @@ Open the matching local URL and make sure the Vercel App contains the same callb
 
 ## Optional Vercel Connect Integrations
 
-Slack, Notion, Linear, and Sentry are optional and are not part of the required deploy button flow.
+Slack, Notion, Linear, and Sentry are optional and are not needed for the password starter.
 
 Create any connectors you want to use:
 
@@ -287,8 +287,6 @@ For local development, the connections fall back to `slack/eve-chat-template`, `
 The composer only shows its connections menu when at least one MCP connector environment variable is configured. A password-only starter deployment omits the menu and tells eve that no external connections are available.
 
 If a chat requires MCP authorization, use the Connect card in the chat UI. If you want to manage a connector directly, open the project integrations/settings page in Vercel and find the connector.
-
-See [Deploy Button integrations](https://vercel.com/docs/integrations/deploy-button/integrations) for how storage products are declared in the deploy URL.
 
 ## Deploy
 
@@ -343,9 +341,9 @@ The production app has two cooperating services inside the same container:
 - Next.js on `PORT` (normally `3000`)
 - the built eve runtime on `EVE_NEXT_PRODUCTION_PORT` (normally `4274`)
 
-Run `pnpm build:eve && pnpm build`, then `pnpm start`. The self-hosted start script supervises both processes and starts Next only after eve is ready. `/api/health` verifies both the product shell and the eve runtime.
+Run `pnpm build:eve && pnpm build`, then `pnpm start`. The self-hosted start script supervises both processes and starts Next only after eve is ready. `/api/health` returns 200 only when the eve runtime answers, sign-in is set up and the chat database answers a read, and 503 otherwise ([release verification](./RELEASE_VERIFICATION.md)). Started as root (the Docker image), the start script re-owns the data directories for the unprivileged `node` user and runs both servers as that user; see [SELF_HOSTING.md](./SELF_HOSTING.md#user-and-file-ownership).
 
-Persistent data (chat history, memory, encrypted settings and eve's workflow data) lives under `.eve/.workflow-data`; mount it on a volume and set `EVE_MEMORY_DIR` inside it. [SELF_HOSTING.md](./SELF_HOSTING.md) and [production-release.md](./production-release.md) cover the variables, the volume layout and post-deploy checks.
+Persistent data (chat history, memory, encrypted settings and eve's workflow data) lives under `.eve/.workflow-data`; mount it on a volume and set `EVE_MEMORY_DIR` inside it. [SELF_HOSTING.md](./SELF_HOSTING.md#deployment-environment-dokploy) lists the variables; [production-release.md](./production-release.md) covers the volume layout and post-deploy checks.
 
 For a custom HTTPS domain, set `BETTER_AUTH_URL` to that origin. If `EVE_CHAT_PASSWORD` is configured, password auth is the preferred self-hosted sign-in mode even when optional Vercel OAuth variables are also present.
 

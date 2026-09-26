@@ -56,7 +56,12 @@ export async function handleOperatorSettings(
     if (body === "too-large") return json({ error: "Request too large." }, 413);
     if (!body) return json({ error: "Invalid request." }, 400);
     return await handlers.write(body, request);
-  } catch {
+  } catch (error) {
+    // The stack only: never the request body, nor error properties that can hold a URL with a token.
+    console.error(
+      `[settings] ${request.method} ${new URL(request.url).pathname} failed:`,
+      error instanceof Error ? (error.stack ?? error.message) : String(error),
+    );
     return json(
       { error: "Could not complete the request. Try again or check your server configuration." },
       503,

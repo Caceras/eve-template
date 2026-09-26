@@ -3,13 +3,15 @@ import type { UserContent } from "ai";
 import { isModelId, pickModel } from "../model-catalog";
 import { modelRequestHeaders, readModelPreference, setModelPreference } from "./model-preference";
 import type { AgentProfile } from "../agent-profiles";
+import { SKILL_HEADER } from "../skills";
 
 export type ComposerDraft = {
   id: string;
   files: File[];
   profileId: string;
   profileName: string;
-  mode: "chat" | "research" | "image";
+  /** Skill the next turn follows; "" lets the agent choose. */
+  skill: string;
   updatedAt: number;
 };
 export const DRAFT_EVENT = "aegentica:draft-changed";
@@ -19,18 +21,42 @@ const empty = (id: string): ComposerDraft => ({
   files: [],
   profileId: "",
   profileName: "",
-  mode: "chat",
+  skill: "",
   updatedAt: Date.now(),
 });
+/**
+ * IndexedDB cannot be opened at all (site data blocked, some private windows):
+ * nothing was ever stored, so reads find an empty draft and text still sends;
+ * only attachments and agent or skill choices need the storage.
+ */
+class DraftStorageUnavailable extends Error {
+  constructor() {
+    super(
+      "This browser blocks site storage, which attachments and agent or skill choices need. Allow it for this site; text messages send without it.",
+    );
+  }
+}
 let database: Promise<IDBDatabase> | undefined;
 function db() {
   if (!database) {
     database = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("aegentica-composer", 1);
+      let request: IDBOpenDBRequest;
+      try {
+        request = indexedDB.open("aegentica-composer", 1);
+      } catch {
+        // Blocked site data throws here (SecurityError) instead of failing the request.
+        return reject(new DraftStorageUnavailable());
+      }
       request.onupgradeneeded = () => request.result.createObjectStore("drafts", { keyPath: "id" });
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () =>
-        reject(new Error("Draft storage is unavailable. Enable site storage and retry."));
+      request.onsuccess = () => {
+        // A connection the browser drops (storage cleared, Safari losing its
+        // database server) is reopened on the next use instead of failing forever.
+        request.result.onclose = () => {
+          database = undefined;
+        };
+        resolve(request.result);
+      };
+      request.onerror = () => reject(new DraftStorageUnavailable());
       request.onblocked = () => reject(new Error("Close other app tabs and retry."));
     }).catch((error) => {
       database = undefined;
@@ -38,6 +64,15 @@ function db() {
     });
   }
   return database;
+}
+/** Reads from the draft store; storage that cannot be opened at all holds `nothing`. */
+async function orNothingStored<T>(work: () => Promise<T>, nothing: T): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof DraftStorageUnavailable) return nothing;
+    throw error;
+  }
 }
 async function transaction<T>(
   mode: IDBTransactionMode,
@@ -56,7 +91,10 @@ export function composerKey(path: string) {
   return path.startsWith("/chat/") ? path.slice(6) : "new";
 }
 export async function readComposerDraft(id: string): Promise<ComposerDraft> {
-  const value = await transaction<ComposerDraft | undefined>("readonly", (store) => store.get(id));
+  const value = await orNothingStored(
+    () => transaction<ComposerDraft | undefined>("readonly", (store) => store.get(id)),
+    undefined,
+  );
   return value ?? empty(id);
 }
 export async function updateComposerDraft(id: string, patch: Partial<Omit<ComposerDraft, "id">>) {
@@ -78,7 +116,8 @@ export async function updateComposerDraft(id: string, patch: Partial<Omit<Compos
   return next;
 }
 export async function moveComposerDraft(from: string, to: string) {
-  const database = await db();
+  const database = await orNothingStored(db, null);
+  if (!database) return;
   await new Promise<void>((resolve, reject) => {
     const tx = database.transaction("drafts", "readwrite");
     const store = tx.objectStore("drafts");
@@ -99,12 +138,20 @@ export async function chooseProfile(id: string, profile: AgentProfile | null) {
   await updateComposerDraft(id, { profileId: profile?.id ?? "", profileName: profile?.name ?? "" });
   if (profile?.model && isModelId(profile.model)) setModelPreference(profile.model);
 }
+/** File types a turn can carry; the service worker's share target mirrors it. */
+export const ATTACHABLE = /^(image\/(png|jpeg|webp|gif)|application\/pdf|text\/[a-z0-9.+-]+)$/;
+const TEXT_NAME = /\.(txt|md|markdown|csv|log)$/i;
+/** Some systems leave plain-text files untyped; they attach as text. */
+export function asAttachment(file: File) {
+  if (file.type || !TEXT_NAME.test(file.name)) return file;
+  return new File([file], file.name, { type: "text/plain", lastModified: file.lastModified });
+}
 export function validateFiles(files: File[]) {
   if (files.length > 4) throw new Error("Attach up to four files per message.");
   if (files.reduce((sum, file) => sum + file.size, 0) > MAX_BYTES)
     throw new Error("Attachments must total 6 MB or less.");
   for (const file of files) {
-    if (!/^(image\/(png|jpeg|webp|gif)|application\/pdf|text\/[a-z0-9.+-]+)$/.test(file.type))
+    if (!ATTACHABLE.test(file.type))
       throw new Error("Use PNG, JPEG, WebP, GIF, PDF or a plain-text file.");
     if (!file.size) throw new Error("Empty files cannot be attached.");
   }
@@ -116,6 +163,13 @@ function dataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error(`Could not read ${file.name}. Attach it again.`));
     reader.readAsDataURL(file);
   });
+}
+/** Per-turn choices the server turns into eve session attributes. */
+export function composerHeaders(draft: ComposerDraft): Record<string, string> {
+  const headers = modelRequestHeaders();
+  if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
+  if (draft.skill) headers[SKILL_HEADER] = draft.skill;
+  return headers;
 }
 export async function composerTurn(
   id: string,
@@ -134,11 +188,7 @@ export async function composerTurn(
         "The selected model cannot read images. Choose a model marked Vision; your attachments are saved.",
       );
   }
-  const headers: Record<string, string> = {
-    ...modelRequestHeaders(),
-    "x-aegentica-mode": draft.mode,
-  };
-  if (draft.profileId) headers["x-aegentica-profile"] = draft.profileId;
+  const headers = composerHeaders(draft);
   if (!draft.files.length) return { message: text, headers };
   const parts: UserContent = [{ type: "text", text }];
   for (const file of draft.files)

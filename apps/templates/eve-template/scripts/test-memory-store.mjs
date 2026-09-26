@@ -83,6 +83,23 @@ try {
     "eve continues after the page's last index",
   );
 
+  // Removing the last memory leaves a document eve still reads: the header alone.
+  for (const entry of store.readOperatorMemory().entries) store.removeMemory(entry.index);
+  assert.equal(store.readOperatorMemory().entries.length, 0);
+  assert.match(await recall(), /No memories are saved/, "an emptied memory still recalls");
+  await tool("save_memory").execute({ text: "Has a Pixel 10" }, {});
+  assert.equal(store.readOperatorMemory().entries.at(-1).index, 4);
+  // A document an older release emptied (with a trailing blank line) loads again.
+  const { DatabaseSync } = await import("node:sqlite");
+  const raw = new DatabaseSync(join(directory, "profile.sqlite"));
+  raw
+    .prepare("UPDATE memory SET content = ? WHERE key = ?")
+    .run("<!-- eve-memory-file-v1 lastAllocatedIndex=4 -->\n\n", key);
+  raw.close();
+  assert.match(await recall(), /No memories are saved/, "a legacy emptied document is healed");
+  await tool("save_memory").execute({ text: "Has a Pixel 10" }, {});
+  assert.equal(store.readOperatorMemory().entries.at(-1).index, 5);
+
   // Limits match the provider: long entries and a full memory are refused.
   assert.throws(() => store.addMemories(["x".repeat(2100)]), store.MemoryLimitError);
   assert.throws(
@@ -121,10 +138,29 @@ try {
   const listed = await (await call({ action: "import", text: "Likes sauna\nLikes sauna" })).json();
   assert(listed.entries.some((e) => e.text === "Likes sauna"));
   assert.equal(listed.usage.limit, 8000);
+  assert.deepEqual(listed.imported, { added: 1, skipped: 1 }, "a repeated line is counted");
+  // An import says what it saved and what it skipped as already saved.
+  const again = await (
+    await call({ action: "import", text: "- Likes sauna\n- Drinks tea" })
+  ).json();
+  assert.deepEqual(again.imported, { added: 1, skipped: 1 });
+  // More lines than one import takes are refused whole, never cut off unseen.
+  const tooMany = Array.from({ length: 61 }, (_, i) => `Note ${i}`).join("\n");
+  const refused = await call({ action: "import", text: tooMany });
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /up to 60 lines.*this has 61/);
+  assert(!store.readOperatorMemory().entries.some((e) => e.text === "Note 0"), "nothing saved");
+  // A paste past the memory limit gets that answer, not a request-size error.
+  const huge = await call({
+    action: "import",
+    text: Array.from({ length: 20 }, (_, i) => `${i} ${"z".repeat(1000)}`).join("\n"),
+  });
+  assert.equal(huge.status, 422);
+  assert.match((await huge.json()).error, /full/);
   assert.equal((await call({ action: "remove", index: -1 })).status, 400);
   assert.match(await recall(), /Likes sauna/);
   console.log(
-    "PASS: Memory page and eve fileMemory share one document (save/recall/edit both ways, index continuity, limits), import parsing, operator-only API",
+    "PASS: Memory page and eve fileMemory share one document (save/recall/edit both ways, index continuity, limits), import parsing and counts, operator-only API",
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

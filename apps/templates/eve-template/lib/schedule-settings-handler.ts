@@ -16,6 +16,7 @@ function taskInput(body: Record<string, unknown>): Partial<TaskInput> {
   return {
     title: text(body.title),
     prompt: text(body.prompt),
+    skill: nullableText(body.skill),
     cron: nullableText(body.cron),
     runAt: nullableText(body.runAt),
     timezone: text(body.timezone),

@@ -1,57 +1,59 @@
 # eve feature matrix
 
-This matrix is the coverage contract for the Ultimate eve template. “Included” means the generated template contains a runnable example. Only the live Agent overview may report “Active”, after runtime inspection; a declaration does not prove an integration is connected or tested. “Built in” means eve supplies the behavior without authored replacement code. “Surfaced” means the UI exposes the effective/runtime or official registry capability. “Reference” means the docs/UI point to the official capability without activating credentials or an unsafe integration by default.
+This matrix is Ægentica's coverage contract for eve's public surface. “Included” means the generated template contains a runnable example. Only the live Agent overview may report “Active”, after runtime inspection; a declaration does not prove an integration is connected or tested. “Built in” means eve supplies the behavior without authored replacement code. “Surfaced” means the UI exposes the effective/runtime or official registry capability. “Reference” means the docs/UI point to the official capability without activating credentials or an unsafe integration by default.
+
+Reference examples that only demonstrate a pattern (`confirm_demo`, `session_counter`, `dynamic_context` and the Petstore connection) run in development and evals and stay out of production chats unless `AEGENTICA_EXAMPLES=1` (`agent/lib/examples.ts`).
 
 ## Core runtime and client
 
-| Capability                         | Coverage                 | Implementation                                                  |
-| ---------------------------------- | ------------------------ | --------------------------------------------------------------- |
-| Durable sessions / turns / steps   | Built in + surfaced      | `useEveAgent`, eve HTTP channel                                 |
-| Streaming + reconnect / rewind     | Built in                 | official Chat Template and Web Chat                             |
-| Session prewarm                    | Reference                | eve React/client API                                            |
-| Steering active turns              | Built in                 | current `channel/web` scaffold                                  |
-| Cancellation                       | Built in + UI            | both chat surfaces                                              |
-| Compact context                    | Built in / reference     | eve session API                                                 |
-| Clear context                      | Built in / reference     | eve session API                                                 |
-| Reset session                      | Built in / reference     | eve session API                                                 |
-| Structured output schema           | Reference                | `defineAgent.outputSchema` / per-turn client schema             |
-| Compaction                         | Included                 | `agent/agent.ts`, threshold 0.8                                 |
-| Session token budgets              | Included                 | `agent/agent.ts`                                                |
-| Session cost budget                | Included                 | `agent/agent.ts`                                                |
-| Session timeout                    | Included                 | `agent/agent.ts`                                                |
-| Workflow world selection           | Reference                | official docs, self-host/Vercel options                         |
-| Workflow checkpoint batching       | Reference / experimental | official `defineAgent.experimental.workflow`                    |
-| Run retention                      | Reference / experimental | official `defineAgent.experimental.workflow.retention`          |
-| Gateway model                      | Active                   | `agent/lib/routed-model.ts`, AI Gateway key in Settings         |
-| OpenRouter model (AI SDK provider) | Active                   | `agent/lib/routed-model.ts`, OpenRouter key in Settings         |
-| direct OpenAI / Anthropic          | Reference                | public model helpers                                            |
-| local ChatGPT subscription         | Reference                | `chatgpt()` local-only helper                                   |
-| automatic model selection          | Reference                | `auto()`                                                        |
-| dynamic model selection            | Active                   | `defineDynamic` `step.started` in root, researcher and reviewer |
-| reasoning effort                   | Included                 | root and subagents                                              |
-| provider model options             | Reference                | public agent config                                             |
+| Capability                         | Coverage                 | Implementation                                          |
+| ---------------------------------- | ------------------------ | ------------------------------------------------------- |
+| Durable sessions / turns / steps   | Built in + surfaced      | `useEveAgent`, eve HTTP channel                         |
+| Streaming + reconnect / rewind     | Built in                 | official Chat Template and Web Chat                     |
+| Session prewarm                    | Reference                | eve React/client API                                    |
+| Steering active turns              | Built in                 | current `channel/web` scaffold                          |
+| Cancellation                       | Built in + UI            | both chat surfaces                                      |
+| Compact context                    | Built in / reference     | eve session API                                         |
+| Clear context                      | Built in / reference     | eve session API                                         |
+| Reset session                      | Built in / reference     | eve session API                                         |
+| Structured output schema           | Reference                | per-turn `outputSchema`: session API or `ctx.agent()`   |
+| Compaction                         | Included                 | `agent/agent.ts`, threshold 0.8                         |
+| Session token budgets              | Included                 | `agent/agent.ts`                                        |
+| Session cost budget                | Included                 | `agent/agent.ts`                                        |
+| Session timeout                    | Included                 | `agent/agent.ts`                                        |
+| Workflow world selection           | Reference                | official docs, self-host/Vercel options                 |
+| Workflow checkpoint batching       | Reference / experimental | official `defineAgent.experimental.workflow`            |
+| Run retention                      | Reference / experimental | official `defineAgent.experimental.workflow.retention`  |
+| Gateway model                      | Active                   | `agent/lib/routed-model.ts`, AI Gateway key in Settings |
+| OpenRouter model (AI SDK provider) | Active                   | `agent/lib/routed-model.ts`, OpenRouter key in Settings |
+| direct OpenAI / Anthropic          | Reference                | public model helpers                                    |
+| local ChatGPT subscription         | Reference                | `chatgpt()` local-only helper                           |
+| automatic model selection          | Reference                | `auto()`                                                |
+| dynamic model selection            | Active                   | `defineDynamic` `step.started` in root and reviewer     |
+| reasoning effort                   | Included                 | root and subagents                                      |
+| provider model options             | Reference                | public agent config                                     |
 
 ## Context and authoring
 
-| Capability                         | Coverage           | Implementation                                                                                                               |
-| ---------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| Markdown instructions              | Included           | `agent/instructions.md`                                                                                                      |
-| TypeScript instructions            | Reference          | official API/docs                                                                                                            |
-| system/user instruction roles      | Reference          | official API/docs                                                                                                            |
-| dynamic instructions               | Included           | `instructions/runtime.ts`                                                                                                    |
-| turn-scoped user-role instructions | Active             | `instructions/clock.ts` (current time)                                                                                       |
-| flat skill                         | Inherited + Active | Chat Template `plan_a_trip`, `daily-briefing.md`                                                                             |
-| packaged skill + resources         | Active             | `skills/deep-research/`, `review-a-pull-request/`, `investigate-a-failing-check/`, `research-a-question/` (ported from sol0) |
-| dynamic skill                      | Included           | `skills/caller-note.ts`                                                                                                      |
-| `load_skill`                       | Built in           | eve default harness                                                                                                          |
-| durable per-session state          | Included           | `defineState` + `session_counter`                                                                                            |
-| cross-session memory               | Active             | `memory/profile.ts`, fileMemory on a SQLite backend; Memory page edits the same document                                     |
-| memory scoping                     | Active             | operator scope shared by web, Telegram and schedules                                                                         |
-| custom memory provider             | Reference          | official memory provider contract                                                                                            |
-| File Memory                        | Active             | official eve provider with `agent/lib/durable-memory.ts` backend                                                             |
-| Supermemory                        | Surfaced           | official registry                                                                                                            |
-| Upstash AgentKit                   | Surfaced           | official registry                                                                                                            |
-| Arcana                             | Surfaced           | official registry                                                                                                            |
+| Capability                         | Coverage           | Implementation                                                                                                                                 |
+| ---------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Markdown instructions              | Included           | `agent/instructions.md`                                                                                                                        |
+| TypeScript instructions            | Reference          | official API/docs                                                                                                                              |
+| system/user instruction roles      | Active             | `instructions/operator-profile.ts` (saved agent, system), `composer-skill.ts` and `clock.ts` (user)                                            |
+| dynamic instructions               | Included           | `instructions/runtime.ts`                                                                                                                      |
+| turn-scoped user-role instructions | Active             | `instructions/clock.ts` (current time)                                                                                                         |
+| flat skill                         | Inherited + Active | Chat Template `plan_a_trip`, `daily-briefing.md`                                                                                               |
+| packaged skill + resources         | Active             | `skills/deep-research/`, `review-a-pull-request/`, `investigate-a-failing-check/`, `research-a-question/`, `make-an-image/` (ported from sol0) |
+| dynamic skill                      | Included           | `skills/caller-note.ts`                                                                                                                        |
+| `load_skill`                       | Built in           | eve default harness                                                                                                                            |
+| durable per-session state          | Included           | `defineState` + `session_counter`                                                                                                              |
+| cross-session memory               | Active             | `memory/profile.ts`, fileMemory on a SQLite backend; Memory page edits the same document                                                       |
+| memory scoping                     | Active             | operator scope shared by web, Telegram and schedules                                                                                           |
+| custom memory provider             | Reference          | official memory provider contract                                                                                                              |
+| File Memory                        | Active             | official eve provider with `agent/lib/durable-memory.ts` backend                                                                               |
+| Supermemory                        | Surfaced           | official registry                                                                                                                              |
+| Upstash AgentKit                   | Surfaced           | official registry                                                                                                                              |
+| Arcana                             | Surfaced           | official registry                                                                                                                              |
 
 ## Tools and HITL
 
@@ -75,7 +77,7 @@ This matrix is the coverage contract for the Ultimate eve template. “Included�
 | labels / progress / model projection      | Reference                       | official tool API + Web Chat renderer                                                   |
 | `availableInSubagents`                    | Included indirectly             | `agentRouter()`/official behavior                                                       |
 | `always()` approval                       | Included                        | `confirm_demo`, `write_file`                                                            |
-| custom approval policy                    | Active                          | `lib/operator-only.ts` on scheduled-task tools                                          |
+| custom approval policy                    | Active                          | `agent/lib/operator-only.ts` on scheduled-task tools                                    |
 | `once()` / `never()` / `auto()` approval  | Reference                       | public approval API                                                                     |
 | questions                                 | Included/built in               | `ask_question`, workflow `ctx.ask()`                                                    |
 | connection authorization                  | Built in + native UI            | official connection lifecycle                                                           |
@@ -100,26 +102,27 @@ This matrix is the coverage contract for the Ultimate eve template. “Included�
 
 ## Workflows and tasks
 
-| Capability                         | Coverage                                      | Implementation                    |
-| ---------------------------------- | --------------------------------------------- | --------------------------------- |
-| blocking workflow tool             | Included                                      | `confirm_then_research`           |
-| background workflow tool           | Included                                      | `background_review`               |
-| `ctx.ask()`                        | Included                                      | `confirm_then_research`           |
-| `ctx.agent()`                      | Included                                      | both workflow tools               |
-| `ctx.agents`                       | Used by official router                       | `agentRouter()`                   |
-| workflow progress/yield            | Reference                                     | official API                      |
-| durable timers/sleep               | Included opt-in tool + reference workflow API | eve Workflow                      |
-| webhooks/hooks in Workflow         | Reference                                     | official Workflow SDK integration |
-| cancellation / abort signal        | Reference                                     | official workflow tool context    |
-| runtime-generated workflow program | Included                                      | `tools/workflow.ts`               |
-| background task receipts/outcomes  | Included                                      | `background_review`               |
+| Capability                          | Coverage                                      | Implementation                                                                          |
+| ----------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| blocking workflow tool              | Included                                      | `confirm_then_research`                                                                 |
+| background workflow tool            | Included                                      | `background_review`                                                                     |
+| `ctx.ask()`                         | Included                                      | `confirm_then_research`                                                                 |
+| `ctx.agent()`                       | Included                                      | both workflow tools                                                                     |
+| `ctx.agents`                        | Used by official router                       | `agentRouter()`                                                                         |
+| workflow progress/yield             | Reference                                     | official API                                                                            |
+| durable timers/sleep                | Included opt-in tool + reference workflow API | eve Workflow                                                                            |
+| webhooks/hooks in Workflow          | Reference                                     | official Workflow SDK integration                                                       |
+| cancellation / abort signal         | Reference                                     | official workflow tool context                                                          |
+| runtime-generated workflow program  | Included                                      | `tools/workflow.ts`                                                                     |
+| background task receipts/outcomes   | Included                                      | `background_review`; scheduled runs wait for the `cohort` report (`lib/task-runner.ts`) |
+| conditional `<eve-empty-delivery/>` | Used by scheduled runs                        | a quiet run is saved without a notification (`lib/task-runner.ts`)                      |
 
 ## Subagents
 
 | Capability                            | Coverage                           | Implementation                  |
 | ------------------------------------- | ---------------------------------- | ------------------------------- |
-| built-in root copy                    | Built in / router target           | eve root target                 |
-| declared visible subagent             | Included                           | `researcher`                    |
+| built-in root copy                    | Active                             | `delegate_to_agent`, router     |
+| declared visible subagent             | Reference                          | official filesystem model       |
 | hidden `tool:false` subagent          | Included                           | `reviewer`                      |
 | `agentRouter()`                       | Included                           | `tools/agent.ts`                |
 | persistent child sessions / `agentId` | Built in                           | eve runtime                     |
@@ -128,23 +131,23 @@ This matrix is the coverage contract for the Ultimate eve template. “Included�
 | dynamic subagent                      | Included, caller-gated             | `subagents/conditional-helper/` |
 | nested subagents                      | Reference                          | official filesystem model       |
 | remote agents                         | Reference + surfaced in agent-info | `defineRemoteAgent`             |
-| structured child output               | Reference                          | child `outputSchema`            |
+| structured child output               | Reference                          | `ctx.agent()` + `outputSchema`  |
 
 ## Connections and auth
 
-| Capability                               | Coverage                    | Implementation                    |
-| ---------------------------------------- | --------------------------- | --------------------------------- |
-| MCP connection                           | Included from Chat Template | Linear/Notion/Sentry examples     |
-| OpenAPI connection                       | Included                    | public Petstore example           |
-| dynamic connection                       | Included                    | `connections/dynamic-petstore.ts` |
-| static bearer/token auth                 | Reference                   | connection API                    |
-| per-caller auth/headers                  | Reference                   | connection API                    |
-| Vercel Connect OAuth                     | Included from Chat Template | official connector patterns       |
-| provided arguments / idempotency call ID | Reference                   | MCP/OpenAPI API                   |
-| connection filters                       | Reference                   | MCP/OpenAPI API                   |
-| per-connection approval                  | Reference                   | MCP/OpenAPI API                   |
-| interactive authorization                | Built in + native UI        | eve connection lifecycle          |
-| official connection registry             | Surfaced                    | generated from registry           |
+| Capability                               | Coverage                    | Implementation                                                                             |
+| ---------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
+| MCP connection                           | Included from Chat Template | Linear/Notion/Sentry, offered to the model only when their Vercel Connect connector is set |
+| OpenAPI connection                       | Included                    | public Petstore example (development and evals only)                                       |
+| dynamic connection                       | Included                    | `connections/dynamic-petstore.ts`                                                          |
+| static bearer/token auth                 | Reference                   | connection API                                                                             |
+| per-caller auth/headers                  | Reference                   | connection API                                                                             |
+| Vercel Connect OAuth                     | Included from Chat Template | official connector patterns                                                                |
+| provided arguments / idempotency call ID | Reference                   | MCP/OpenAPI API                                                                            |
+| connection filters                       | Reference                   | MCP/OpenAPI API                                                                            |
+| per-connection approval                  | Reference                   | MCP/OpenAPI API                                                                            |
+| interactive authorization                | Built in + native UI        | eve connection lifecycle                                                                   |
+| official connection registry             | Surfaced                    | generated from registry                                                                    |
 
 ## Channels
 
@@ -168,8 +171,8 @@ This matrix is the coverage contract for the Ultimate eve template. “Included�
 
 | Capability                      | Coverage                         | Implementation                                                                                                                        |
 | ------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| static TypeScript schedule      | Included                         | `schedules/heartbeat.ts`                                                                                                              |
-| handler schedule                | Active                           | `schedules/scheduled-tasks.ts`, one-minute dispatcher                                                                                 |
+| static TypeScript schedule      | Reference                        | official scheduler syntax                                                                                                             |
+| handler schedule                | Active                           | `schedules/scheduled-tasks.ts`, one-minute dispatcher; `schedules/nightly-backup.ts`, nightly on-volume backup                        |
 | dynamic scheduling pattern      | Active                           | `/tasks` page + `schedule_task` tools + `lib/schedule-store.ts`; each run is an eve session saved as a web chat, notified by Web Push |
 | Markdown schedule               | Reference                        | official scheduler syntax                                                                                                             |
 | global lifecycle hook           | Included                         | `hooks/audit.ts`                                                                                                                      |
@@ -213,12 +216,12 @@ The generated surface file records every current public package export and offic
 | Capability                              | Coverage                                | Boundary                                                            |
 | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
 | Saved agents                            | Implemented in `/agents`                | 64 encrypted operator profiles; not separate tenants or deployments |
-| Profile instructions and reference text | Dynamic user-role context               | No permission grants or retrieval index                             |
+| Profile instructions and reference text | Dynamic system-role context             | No permission grants or retrieval index                             |
 | Profile model / reasoning choice        | Main chat through existing router       | The active provider must support the model                          |
 | Profile creation in chat                | `create_saved_agent`, approval required | Operator only; editing remains in the form                          |
-| Saved-profile delegation                | Background eve workflow                 | Compiled researcher, current conversation model                     |
+| Saved-profile delegation                | Background eve workflow                 | Root-agent copy (`ctx.agent("agent")`), current conversation model  |
 | Main-chat files                         | Structured eve client content           | Four files / 6 MB; unsent drafts stay on this device                |
-| Chat / Research / Image                 | Per-turn composer intent                | One runtime; generation requires working credentials                |
+| Skill picker (`/` in the box, Tasks)    | Runtime skill list + turn instruction   | Lists `/eve/v1/info` skills; loading grants no permissions          |
 | Image library                           | Authenticated `/images`                 | Existing volume; bounded scan, confirmed deletion                   |
 | Global command search                   | Cmd/Ctrl+K                              | Shared pages/actions and up to 100 recent chats                     |
 | Capability directory                    | Searchable Live / Built in / Explore    | Declarations and registry availability are not connection tests     |

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ClientSessionState, MessageStreamEvent } from "eve/client";
 import { isChatTurnSettledEvent } from "@/lib/chat/events";
+import { CHAT_PAGE_SIZE, chatPageSize } from "@/lib/chat/paging";
 import type { ActiveChat, ChatListItem, ChatListPage } from "@/lib/chat/types";
 import { createFallbackTitle, DEFAULT_CHAT_TITLE } from "@/lib/chat/title";
 
@@ -13,7 +14,6 @@ import { createFallbackTitle, DEFAULT_CHAT_TITLE } from "@/lib/chat/title";
  * process (scheduled tasks). Mirrors `pg-queries.ts` so either backend serves
  * the same server actions and API routes.
  */
-const PAGE_SIZE = 20;
 
 export function chatDatabasePath() {
   if (process.env.EVE_CHAT_DB_PATH?.trim()) return process.env.EVE_CHAT_DB_PATH.trim();
@@ -28,30 +28,38 @@ function db() {
   if (database) return database;
   const path = chatDatabasePath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  database = new DatabaseSync(path);
-  database.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA busy_timeout = 5000;
-    PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS chat (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      eve_session TEXT,
-      pending_user_message TEXT,
-      pending_created_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_chat_user_updated ON chat (user_id, updated_at DESC, id DESC);
-    CREATE TABLE IF NOT EXISTS chat_event (
-      chat_id TEXT NOT NULL REFERENCES chat (id) ON DELETE CASCADE,
-      event_index INTEGER NOT NULL,
-      event TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (chat_id, event_index)
-    );
-  `);
+  // The busy timeout applies from the first statement: switching to WAL and
+  // creating tables wait for the other process instead of failing at once.
+  const connection = new DatabaseSync(path, { timeout: 5000 });
+  try {
+    connection.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE IF NOT EXISTS chat (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        eve_session TEXT,
+        pending_user_message TEXT,
+        pending_created_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_user_updated ON chat (user_id, updated_at DESC, id DESC);
+      CREATE TABLE IF NOT EXISTS chat_event (
+        chat_id TEXT NOT NULL REFERENCES chat (id) ON DELETE CASCADE,
+        event_index INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (chat_id, event_index)
+      );
+    `);
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+  // Cached only once set up, so a failed first attempt is retried on the next call.
+  database = connection;
   return database;
 }
 
@@ -63,8 +71,24 @@ function transaction<T>(work: () => T): T {
     connection.exec("COMMIT");
     return result;
   } catch (error) {
-    connection.exec("ROLLBACK");
+    // SQLite has already rolled back after some errors (SQLITE_FULL); a second
+    // ROLLBACK would throw "no transaction is active" and hide the real error.
+    if (connection.isTransaction) connection.exec("ROLLBACK");
     throw error;
+  }
+}
+
+/**
+ * For `/api/health`: whether the chat database opens and answers a read. A
+ * missing volume, a file that is not a database or a broken schema fail it.
+ */
+export function probeChatDatabase() {
+  try {
+    db().prepare("SELECT 1 FROM chat LIMIT 1").get();
+    return true;
+  } catch (error) {
+    console.error("[health] chat database unavailable", error);
+    return false;
   }
 }
 
@@ -102,7 +126,9 @@ export async function listChatsByUser(userId: string): Promise<ChatListItem[]> {
 export async function listChatsPageByUser(
   userId: string,
   cursor?: string | null,
+  limit: number = CHAT_PAGE_SIZE,
 ): Promise<ChatListPage> {
+  const size = chatPageSize(limit);
   const [updatedRaw, cursorId] = cursor?.trim().split("::") ?? [];
   const cursorUpdated = updatedRaw ? Date.parse(updatedRaw) : Number.NaN;
   const rows = (
@@ -111,19 +137,19 @@ export async function listChatsPageByUser(
           .prepare(
             "SELECT id, title, updated_at FROM chat WHERE user_id = ? AND (updated_at < ? OR (updated_at = ? AND id < ?)) ORDER BY updated_at DESC, id DESC LIMIT ?",
           )
-          .all(userId, cursorUpdated, cursorUpdated, cursorId, PAGE_SIZE + 1)
+          .all(userId, cursorUpdated, cursorUpdated, cursorId, size + 1)
       : db()
           .prepare(
             "SELECT id, title, updated_at FROM chat WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?",
           )
-          .all(userId, PAGE_SIZE + 1)
+          .all(userId, size + 1)
   ) as ChatRow[];
-  const page = rows.slice(0, PAGE_SIZE);
+  const page = rows.slice(0, size);
   const last = page.at(-1);
   return {
     items: page.map(toListItem),
     nextCursor:
-      rows.length > PAGE_SIZE && last
+      rows.length > size && last
         ? `${new Date(Number(last.updated_at)).toISOString()}::${last.id}`
         : null,
   };
@@ -149,6 +175,10 @@ export async function createChat(
     )
     .run(row.id, userId, row.title, pending, pending ? now : null, now, now);
   return toListItem(row);
+}
+
+export async function chatExistsForUser(chatId: string, userId: string) {
+  return owned(chatId, userId);
 }
 
 export async function getChatForUser(chatId: string, userId: string): Promise<ActiveChat | null> {
@@ -266,6 +296,21 @@ export async function saveChatSessionState({
     .run(JSON.stringify(session), chatId, userId);
 }
 
+/** Forgets an eve session that can no longer take messages in every chat of the user. */
+export async function forgetChatSession({
+  sessionId,
+  userId,
+}: {
+  readonly sessionId: string;
+  readonly userId: string;
+}) {
+  db()
+    .prepare(
+      "UPDATE chat SET eve_session = NULL WHERE user_id = ? AND json_extract(eve_session, '$.sessionId') = ?",
+    )
+    .run(userId, sessionId);
+}
+
 export async function appendChatEvent({
   chatId,
   event,
@@ -281,29 +326,43 @@ export async function appendChatEvent({
   upsertEvents(chatId, [event], eventIndex);
 }
 
+/**
+ * Saves the chat's events from `fromIndex` on (earlier rows are unchanged) and
+ * drops any rows past the new end.
+ */
 export async function saveChatSnapshot({
   chatId,
   events,
+  fromIndex = 0,
   session,
   userId,
 }: {
   readonly chatId: string;
   readonly events: readonly MessageStreamEvent[];
+  readonly fromIndex?: number;
   readonly session: ClientSessionState | undefined;
   readonly userId: string;
 }) {
   transaction(() => {
     requireOwned(chatId, userId);
-    upsertEvents(chatId, events, 0);
+    upsertEvents(chatId, events, fromIndex);
     db()
       .prepare("DELETE FROM chat_event WHERE chat_id = ? AND event_index >= ?")
-      .run(chatId, events.length);
+      .run(chatId, fromIndex + events.length);
     db()
       .prepare(
         "UPDATE chat SET eve_session = ?, pending_user_message = NULL, pending_created_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?",
       )
       .run(session ? JSON.stringify(session) : null, Date.now(), chatId, userId);
   });
+}
+
+export async function renameChatForUser(chatId: string, userId: string, title: string) {
+  // Leaves updated_at alone: a rename should not reorder the history.
+  const result = db()
+    .prepare("UPDATE chat SET title = ? WHERE id = ? AND user_id = ?")
+    .run(title, chatId, userId);
+  return result.changes > 0;
 }
 
 export async function deleteChatForUser(chatId: string, userId: string) {

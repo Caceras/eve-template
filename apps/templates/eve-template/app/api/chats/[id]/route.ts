@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getChatForUser } from "@/lib/db/queries";
+import { jsonResponse } from "@/lib/http/json";
 import { getServerViewer } from "@/lib/session";
 import { getSetupStatus } from "@/lib/setup";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { readonly params: Promise<{ readonly id: string }> },
 ) {
   const setupStatus = await getSetupStatus();
@@ -26,5 +27,5 @@ export async function GET(
     return NextResponse.json({ chat: null }, { status: 404 });
   }
 
-  return NextResponse.json({ chat });
+  return jsonResponse(request, { chat });
 }

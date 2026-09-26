@@ -1,11 +1,14 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 import { DEFAULT_TIMEZONE } from "@/lib/schedule-store";
+import { resumesApproval } from "../lib/resumed-approval";
 
 // Per-turn user-role context keeps the system prompt stable (prompt caching)
-// while letting the agent resolve "tomorrow at 8" into an exact time.
+// while letting the agent resolve "tomorrow at 8" into an exact time. Skipped
+// on the turn that carries out an answered approval, which would not run.
 export default defineDynamic({
   events: {
-    "turn.started": () => {
+    "turn.started": (_event, ctx) => {
+      if (resumesApproval(ctx.messages)) return null;
       const now = new Date();
       const local = new Intl.DateTimeFormat("en-GB", {
         timeZone: DEFAULT_TIMEZONE,

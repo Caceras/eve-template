@@ -7,11 +7,27 @@ export default function manifest(): MetadataRoute.Manifest {
     dir: "ltr",
     name: "Ægentica",
     short_name: "Ægentica",
-    description: "Your persistent AI agent: chat, research, scheduled tasks and memory.",
+    description:
+      "Your own AI agent on your own server: chat, research, voice, scheduled tasks and memory, on every device.",
     start_url: "/",
     scope: "/",
     display: "standalone",
     launch_handler: { client_mode: "navigate-existing" },
+    // Desktop: Ægentica appears under "Open with" for these files, which
+    // arrive as attachments of a new chat (lib/pwa/file-launch.ts).
+    file_handlers: [
+      {
+        action: "/",
+        accept: {
+          "image/png": [".png"],
+          "image/jpeg": [".jpg", ".jpeg"],
+          "image/webp": [".webp"],
+          "image/gif": [".gif"],
+          "application/pdf": [".pdf"],
+          "text/plain": [".txt", ".md", ".csv", ".log"],
+        },
+      },
+    ],
     background_color: "#ffffff",
     theme_color: "#ffffff",
     categories: ["productivity", "utilities"],
@@ -38,17 +54,25 @@ export default function manifest(): MetadataRoute.Manifest {
         ],
       },
     },
+    // Branded install-dialog images from scripts/install-screenshots.mjs.
     screenshots: [
-      {
-        src: "/screenshots/mobile-chat.png",
-        sizes: "780x1688",
+      ...(
+        [
+          ["phone-home", "Your own AI agent"],
+          ["phone-chat", "Ask anything"],
+          ["phone-tasks", "Runs tasks for you"],
+          ["phone-memory", "Remembers what matters"],
+        ] as const
+      ).map(([name, label]) => ({
+        src: `/screenshots/${name}.png`,
+        sizes: "1080x1920",
         type: "image/png",
-        form_factor: "narrow",
-        label: "Chat with Ægentica",
-      },
+        form_factor: "narrow" as const,
+        label,
+      })),
       {
         src: "/screenshots/desktop-chat.png",
-        sizes: "1440x900",
+        sizes: "1920x1080",
         type: "image/png",
         form_factor: "wide",
         label: "Ægentica on desktop",
@@ -59,16 +83,35 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-    ],
-    shortcuts: [
-      { name: "New chat", url: "/", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Agents", url: "/agents", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Tasks", url: "/tasks", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      // Android's themed icons tint this silhouette to match the wallpaper.
       {
-        name: "Settings",
-        url: "/settings",
-        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+        src: "/icons/monochrome-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "monochrome",
       },
     ],
+    // Android shows the first shortcuts on a long-press of the home-screen icon,
+    // each with the glyph the sidebar uses.
+    shortcuts: (
+      [
+        ["New chat", "/", "chat"],
+        ["Tasks", "/tasks", "tasks"],
+        ["Agents", "/agents", "agents"],
+        ["Settings", "/settings", "settings"],
+      ] as const
+    ).map(([name, url, glyph]) => ({
+      name,
+      url,
+      icons: [
+        {
+          src: `/icons/shortcut-${glyph}.png`,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "maskable" as const,
+        },
+        { src: `/icons/shortcut-${glyph}.png`, sizes: "192x192", type: "image/png" },
+      ],
+    })),
   };
 }

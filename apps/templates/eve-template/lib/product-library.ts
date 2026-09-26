@@ -8,7 +8,7 @@ export const productLibrary = [
     example:
       "Open Agents, create a profile, then choose Chat. Or ask to list saved agents and delegate a research task.",
     requirements:
-      "One operator workspace; profiles do not grant permissions. Delegation uses the compiled researcher and current conversation model. Model execution requires a working key.",
+      "One operator workspace; profiles do not grant permissions. Delegation runs in a copy of Ægentica with the current conversation model. Model execution requires a working key.",
     path: "subagents",
   },
   {
@@ -153,7 +153,8 @@ export const productLibrary = [
     description:
       "Reminders, briefings and recurring jobs that run on their own and arrive as a chat and a notification.",
     status: "Configured",
-    example: "Open Tasks → New task, or ask: “Every weekday at 8, give me a short briefing.”",
+    example:
+      "Open Tasks → Create → Set up manually, or ask: “Every weekday at 8, give me a short briefing.”",
     requirements:
       "Turn on notifications in Settings → Notifications on each phone or computer that should be told.",
     path: "patterns/dynamic-scheduling",

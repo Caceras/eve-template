@@ -8,7 +8,7 @@ description: Run a structured deep-research pass only when the task genuinely ne
 2. Search broadly, then prefer primary or authoritative sources for material claims.
 3. Track disagreements, dates, scope, and uncertainty instead of averaging conflicting claims.
 4. Use the sandbox for notes when the evidence set becomes large rather than placing everything in conversational context.
-5. Delegate a bounded research question to the researcher when an independent context helps.
+5. When an independent context helps, delegate a bounded research question to a copy of yourself with the `agent` tool; copies keep your skills, tools and connections.
 6. Return a synthesis with the strongest evidence first and identify unresolved uncertainty explicitly.
 
 Read `references/source-quality.md` when deciding which evidence to trust.

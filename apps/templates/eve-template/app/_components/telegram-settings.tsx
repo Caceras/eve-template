@@ -1,9 +1,11 @@
 "use client";
+import { BrandIcon } from "@/components/brand-icon";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ExternalLinkIcon, Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmButton } from "./confirm-button";
 
 type Status =
   | { connected: false; unreadable?: true }
@@ -74,6 +76,7 @@ export function TelegramSettings() {
   return (
     <section aria-labelledby="telegram-title" className="rounded-lg border bg-card p-4 sm:p-5">
       <h2 id="telegram-title" className="flex items-center gap-2 font-medium">
+        <BrandIcon brand="telegram" name="Telegram" />
         Telegram
         {status?.connected && status.linked && <Badge variant="secondary">Linked</Badge>}
       </h2>
@@ -175,7 +178,7 @@ export function TelegramSettings() {
             {status.linked && (
               <Button
                 variant="ghost"
-                className="-ml-2 h-11 px-2 md:h-9"
+                className="-ml-2 h-11 px-2 pointer-fine:md:h-9"
                 disabled={Boolean(busy)}
                 onClick={() => void run("test")}
               >
@@ -184,25 +187,31 @@ export function TelegramSettings() {
               </Button>
             )}
             {status.linked && (
-              <Button
+              <ConfirmButton
                 variant="ghost"
-                className="-ml-2 h-11 px-2 text-muted-foreground md:h-9"
+                className="-ml-2 h-11 px-2 text-muted-foreground pointer-fine:md:h-9"
                 disabled={Boolean(busy)}
-                onClick={() => void run("unlink")}
+                title="Unlink your Telegram account?"
+                description="The bot stops answering you until you pair it again with a new code."
+                confirmLabel="Unlink"
+                onConfirm={() => void run("unlink")}
               >
                 {spinner("unlink")}
                 Unlink account
-              </Button>
+              </ConfirmButton>
             )}
-            <Button
+            <ConfirmButton
               variant="ghost"
-              className="-ml-2 h-11 px-2 text-muted-foreground md:h-9"
+              className="-ml-2 h-11 px-2 text-muted-foreground pointer-fine:md:h-9"
               disabled={Boolean(busy)}
-              onClick={() => void run("disconnect")}
+              title="Disconnect the Telegram bot?"
+              description="The bot token and webhook are removed. To use Telegram again, connect the bot and pair your account again."
+              confirmLabel="Disconnect"
+              onConfirm={() => void run("disconnect")}
             >
               {spinner("disconnect")}
               Disconnect bot
-            </Button>
+            </ConfirmButton>
           </div>
         </>
       )}

@@ -11,10 +11,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { StickyBar } from "@/components/chat/sticky-bar";
 import { SecurityNotice } from "./security-notice";
 import { useChatShell } from "./chat-shell-context";
+import { PageSignInButton } from "./page-sign-in";
 
 export type SettingsSection = "general" | "voice" | "notifications" | "integrations" | "security";
 const SECTIONS: { id: SettingsSection; href: string; label: string; icon: LucideIcon }[] = [
@@ -29,7 +30,7 @@ const RELATED = [
   { href: "/tasks", label: "Tasks", icon: CalendarClockIcon },
 ];
 const rowClass =
-  "flex h-11 shrink-0 snap-start items-center gap-2 rounded-lg px-2.5 text-sm transition-colors md:h-9";
+  "flex h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm transition-colors pointer-fine:md:h-9";
 
 export function SettingsShell({
   section,
@@ -44,7 +45,7 @@ export function SettingsShell({
   readonly actions?: ReactNode;
   readonly children: ReactNode;
 }) {
-  const { viewer, requestSignIn } = useChatShell();
+  const { viewer } = useChatShell();
   const navRef = useRef<HTMLElement>(null);
   // On phones the sections are a horizontal strip; keep the current one visible.
   useEffect(() => {
@@ -58,47 +59,52 @@ export function SettingsShell({
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-16 pt-16 sm:px-6 md:flex-row md:gap-12">
-        <nav
-          aria-label="Settings"
-          ref={navRef}
-          className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-1 overflow-x-auto overscroll-x-contain px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:sticky md:top-20 md:mx-0 md:w-48 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0"
+        <StickyBar
+          className="md:top-20 md:w-48 md:shrink-0 md:self-start"
+          mistClassName="md:hidden"
         >
-          <p className="hidden px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/70 md:block">
-            Settings
-          </p>
-          {SECTIONS.map((item) => (
-            <Link
-              aria-current={item.id === section ? "page" : undefined}
-              className={cn(
-                rowClass,
-                item.id === section
-                  ? "bg-foreground/[0.055] text-foreground"
-                  : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
-              )}
-              href={item.href}
-              key={item.id}
-            >
-              <item.icon className="size-4" />
-              <span className="whitespace-nowrap">{item.label}</span>
-            </Link>
-          ))}
-          <p className="hidden px-2.5 pb-1 pt-4 text-[11px] font-medium text-muted-foreground/70 md:block">
-            Also
-          </p>
-          {RELATED.map((item) => (
-            <Link
-              className={cn(
-                rowClass,
-                "hidden text-muted-foreground hover:bg-muted/50 hover:text-foreground md:flex",
-              )}
-              href={item.href}
-              key={item.href}
-            >
-              <item.icon className="size-4" />
-              <span className="whitespace-nowrap">{item.label}</span>
-            </Link>
-          ))}
-        </nav>
+          <nav
+            aria-label="Settings"
+            ref={navRef}
+            className="scroll-row -mx-4 gap-1 px-4 sm:-mx-6 sm:px-6 md:mx-0 md:flex-col md:overflow-visible md:px-0 md:[mask-image:none]"
+          >
+            <p className="hidden px-2.5 pb-1 text-[11px] font-medium text-muted-foreground md:block">
+              Settings
+            </p>
+            {SECTIONS.map((item) => (
+              <Link
+                aria-current={item.id === section ? "page" : undefined}
+                className={cn(
+                  rowClass,
+                  item.id === section
+                    ? "bg-foreground/[0.055] text-foreground"
+                    : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
+                )}
+                href={item.href}
+                key={item.id}
+              >
+                <item.icon className="size-4" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </Link>
+            ))}
+            <p className="hidden px-2.5 pb-1 pt-4 text-[11px] font-medium text-muted-foreground md:block">
+              Also
+            </p>
+            {RELATED.map((item) => (
+              <Link
+                className={cn(
+                  rowClass,
+                  "hidden text-muted-foreground hover:bg-muted/50 hover:text-foreground md:flex",
+                )}
+                href={item.href}
+                key={item.href}
+              >
+                <item.icon className="size-4" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
+        </StickyBar>
         <div className="min-w-0 flex-1 md:max-w-2xl">
           <div className="flex items-start justify-between gap-4">
             <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
@@ -113,7 +119,7 @@ export function SettingsShell({
           ) : (
             <div className="mt-8 rounded-lg border p-5">
               <p className="mb-4 text-sm">Sign in to manage Ægentica.</p>
-              <Button onClick={() => requestSignIn()}>Sign in</Button>
+              <PageSignInButton />
             </div>
           )}
         </div>

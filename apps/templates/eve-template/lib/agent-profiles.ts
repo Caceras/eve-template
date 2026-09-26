@@ -4,7 +4,6 @@ import { isModelId } from "./model-catalog";
 import { readEncrypted, withSettingsLock, writeEncrypted } from "./secure-settings";
 
 export const PROFILE_HEADER = "x-aegentica-profile";
-export const MODE_HEADER = "x-aegentica-mode";
 export const profileInput = z
   .object({
     name: z.string().trim().min(1).max(64),
@@ -80,21 +79,18 @@ export function profileInstructions(profile: AgentProfile) {
 }
 /** Resolve only after authenticating the password operator. Freeze the profile for the turn. */
 export async function profileAttributes(request: Request): Promise<Record<string, string>> {
-  const mode = request.headers.get(MODE_HEADER);
-  const attributes: Record<string, string> =
-    mode === "research" || mode === "image" ? { composerMode: mode } : {};
   const id = request.headers.get(PROFILE_HEADER);
-  if (!id) return attributes;
+  if (!id) return {};
   const profile = await findProfile(id);
   if (!profile)
     return {
-      ...attributes,
       agentProfileError: "This saved agent no longer exists. Choose another agent in the composer.",
     };
-  attributes.agentProfileId = profile.id;
-  attributes.agentProfileName = profile.name;
-  attributes.agentProfileInstructions = profileInstructions(profile);
-  attributes.agentReasoning = profile.reasoning;
-  if (profile.model) attributes.chatModel = profile.model;
-  return attributes;
+  return {
+    agentProfileId: profile.id,
+    agentProfileName: profile.name,
+    agentProfileInstructions: profileInstructions(profile),
+    agentReasoning: profile.reasoning,
+    ...(profile.model ? { chatModel: profile.model } : {}),
+  };
 }

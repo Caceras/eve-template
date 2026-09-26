@@ -7,6 +7,7 @@ import { PwaRegistration } from "@/app/_components/pwa-registration";
 import { AuthDisplayPreHydrationHead } from "@/components/auth/auth-display";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SIDEBAR_COOKIE_NAME } from "@/lib/chat/sidebar-state";
 import "./globals.css";
 
 const title = "Ægentica";
@@ -31,9 +32,12 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
 });
 
+// Only code uses the mono face; it loads when code is shown instead of being
+// preloaded ahead of every page.
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",
+  preload: false,
 });
 
 export const viewport: Viewport = {
@@ -49,9 +53,12 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: resolveMetadataBase(),
-  title,
+  title: { default: title, template: `%s · ${title}` },
   description,
   applicationName: title,
+  // A private app: search engines keep it out of their results. Crawling stays
+  // allowed (no robots.txt Disallow), so they can read this and link previews work.
+  robots: { index: false, follow: false },
   appleWebApp: { capable: true, title, statusBarStyle: "default" },
   manifest: "/manifest.webmanifest",
   icons: {
@@ -74,6 +81,19 @@ export const metadata: Metadata = {
     description,
   },
 };
+
+// Runs before first paint: the loading skeleton shows the home page or a chat
+// only on those routes, and a collapsed desktop sidebar stays collapsed.
+const bootScript = `
+(() => {
+  try {
+    const root = document.documentElement;
+    const path = location.pathname;
+    root.dataset.bootRoute = path === "/" ? "home" : path.startsWith("/chat/") ? "chat" : "page";
+    if (/(?:^|; )${SIDEBAR_COOKIE_NAME}=closed(?:;|$)/.test(document.cookie)) root.dataset.eveChatSidebar = "closed";
+  } catch {}
+})();
+`;
 
 const themeScript = `
 (() => {
@@ -102,6 +122,7 @@ export default function RootLayout({ children }: { readonly children: ReactNode 
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} id="theme-init" />
+        <script dangerouslySetInnerHTML={{ __html: bootScript }} id="boot-init" />
         <AuthDisplayPreHydrationHead />
       </head>
       <body className={`${geistSans.className} antialiased`}>

@@ -1,9 +1,10 @@
 "use client";
 
 import { Loader2Icon } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { focusOpensKeyboard } from "@/lib/pwa/keyboard";
 
 export function PasswordSignInForm({
   callbackPath,
@@ -16,6 +17,18 @@ export function PasswordSignInForm({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
+  const [failures, setFailures] = useState(0);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const errorId = useId();
+
+  // A refused sign-in hands focus back to the password (the disabled button
+  // dropped it), except where focusing would raise the phone keyboard.
+  useEffect(() => {
+    const field = passwordRef.current;
+    if (!failures || !field || focusOpensKeyboard()) return;
+    field.focus();
+    field.select();
+  }, [failures]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +53,7 @@ export function PasswordSignInForm({
       if (!response.ok) {
         setError(result?.error ?? "Unable to sign in.");
         setPending(false);
+        setFailures((count) => count + 1);
         return;
       }
 
@@ -48,6 +62,7 @@ export function PasswordSignInForm({
     } catch {
       setError("Unable to sign in. Check your connection and try again.");
       setPending(false);
+      setFailures((count) => count + 1);
     }
   }
 
@@ -56,8 +71,10 @@ export function PasswordSignInForm({
       <label className="block space-y-1.5 text-sm font-medium">
         <span>Username</span>
         <Input
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={error ? true : undefined}
           autoComplete="username"
-          autoFocus
+          autoFocus={!focusOpensKeyboard()}
           required
           disabled={pending}
           className="h-11"
@@ -69,6 +86,8 @@ export function PasswordSignInForm({
       <label className="block space-y-1.5 text-sm font-medium">
         <span>Password</span>
         <Input
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={error ? true : undefined}
           aria-label="Password"
           autoComplete="current-password"
           required
@@ -77,12 +96,13 @@ export function PasswordSignInForm({
           onChange={(event) => setPassword(event.target.value)}
           className="h-11"
           placeholder="Password"
+          ref={passwordRef}
           type="password"
           value={password}
         />
       </label>
       {error ? (
-        <p aria-live="polite" className="text-sm text-destructive" role="alert">
+        <p aria-live="polite" className="text-sm text-destructive" id={errorId} role="alert">
           {error}
         </p>
       ) : null}

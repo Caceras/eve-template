@@ -50,15 +50,22 @@ const openRouterCompatibility: LanguageModelMiddleware = {
   },
 };
 
+type ReasoningEffort = "xhigh" | "high" | "medium" | "low" | "minimal" | "none";
+const EFFORTS = new Set<unknown>(["xhigh", "high", "medium", "low", "minimal", "none"]);
+
 /** An OpenRouter chat model that behaves like an AI Gateway model inside eve. */
 export function openRouterModel(
   apiKey: string,
   model: CatalogModel,
-  fetch?: typeof globalThis.fetch,
+  options: { fetch?: typeof globalThis.fetch; reasoning?: unknown } = {},
 ) {
   const settings: OpenRouterChatSettings = { usage: { include: true } };
-  // OpenRouter ignores the AI SDK call-level reasoning option; it is a model setting.
-  if (model.reasoning) settings.reasoning = { effort: "high" };
+  // OpenRouter ignores the AI SDK call-level reasoning option; it is a model
+  // setting. "provider-default" leaves the choice to the model.
+  const reasoning = options.reasoning ?? "high";
+  if (model.reasoning && EFFORTS.has(reasoning))
+    settings.reasoning = { effort: reasoning as ReasoningEffort };
+  const { fetch } = options;
   return wrapLanguageModel({
     model: createOpenRouter({
       apiKey,

@@ -6,3 +6,7 @@ node_modules
 .env*
 !.env.example
 *.tsbuildinfo
+.git
+.github
+.claude
+.agents

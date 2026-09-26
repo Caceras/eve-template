@@ -4,13 +4,27 @@ import { join, relative, resolve } from "node:path";
 // Describe what the app actually runs: the installed eve package, and the live
 // registry `eve add` installs from. The monorepo copies can lag both.
 const REGISTRY_URL = "https://eve.dev/r/registry.json";
+// eve.dev serves this file from the eve repository; use it when eve.dev is unreachable.
+const REGISTRY_SOURCE_URL =
+  "https://raw.githubusercontent.com/vercel/eve/main/apps/docs/registry.json";
 const templateRoot = resolve(process.cwd());
 const evePackage = JSON.parse(
   readFileSync(join(templateRoot, "node_modules/eve/package.json"), "utf8"),
 );
-const response = await fetch(REGISTRY_URL);
-if (!response.ok) throw new Error(`Could not read ${REGISTRY_URL}: HTTP ${response.status}`);
-const registry = await response.json();
+async function readRegistry() {
+  const failures = [];
+  for (const url of [REGISTRY_URL, REGISTRY_SOURCE_URL]) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      if (response.ok) return await response.json();
+      failures.push(`${url}: HTTP ${response.status}`);
+    } catch (error) {
+      failures.push(`${url}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  throw new Error(`Could not read the eve registry (${failures.join("; ")})`);
+}
+const registry = await readRegistry();
 
 const items = (registry.items ?? []).map((item) => ({
   name: item.name,

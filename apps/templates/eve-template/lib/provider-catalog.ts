@@ -67,7 +67,11 @@ async function fetchCatalog(provider: ProviderId): Promise<Catalog> {
   return entry.catalog;
 }
 
-/** The provider's live tool-capable models, cached for five minutes with a bundled fallback. */
+/**
+ * The provider's live tool-capable models, cached for five minutes with a
+ * bundled fallback. Once a catalog is known, an expired one is served while it
+ * refreshes in the background, so a model step never waits on the catalog.
+ */
 export async function getCatalog(provider: ProviderId): Promise<Catalog> {
   let entry = state.get(provider);
   if (!entry) state.set(provider, (entry = { expiresAt: 0 }));
@@ -75,5 +79,5 @@ export async function getCatalog(provider: ProviderId): Promise<Catalog> {
   entry.pending ??= fetchCatalog(provider).finally(() => {
     entry.pending = undefined;
   });
-  return entry.pending;
+  return entry.catalog ?? entry.pending;
 }

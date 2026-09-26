@@ -116,6 +116,8 @@ try {
 
   // Connection tests hit the right endpoint with the right key and never leak it.
   const seen = [];
+  let gatewayReply = () =>
+    Response.json({ choices: [{ index: 0, message: { role: "assistant", content: "OK" } }] });
   globalThis.fetch = async (url, options) => {
     seen.push(String(url));
     if (String(url).endsWith("/models")) throw new Error("offline");
@@ -127,7 +129,7 @@ try {
         return new Response(JSON.stringify({ secret: openrouterKey }), { status: 402 });
       }
       assert.equal(options.headers.Authorization, `Bearer ${gatewayKey}`);
-      return new Response("{}", { status: 200 });
+      return gatewayReply();
     }
     if (String(url).endsWith("/credits"))
       return Response.json({ balance: "12.5", total_used: "1" });
@@ -144,7 +146,32 @@ try {
   assert.match(rejectedText, /credits/);
   assert(seen.includes("https://ai-gateway.vercel.sh/v1/chat/completions"));
   assert(seen.includes("https://openrouter.ai/api/v1/chat/completions"));
+  // A 200 that carries an error (OpenRouter does this mid-generation) is a failure.
+  gatewayReply = () => Response.json({ error: { code: 402, message: "Insufficient credits" } });
+  const credits = await call({ action: "test", provider: "gateway" });
+  assert.equal(credits.status, 422);
+  assert.match((await credits.json()).error, /needs credits/);
+  // A timeout or an unreachable provider says so, instead of blaming the server.
+  gatewayReply = () => {
+    throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+  };
+  const slow = await call({ action: "test", provider: "gateway" });
+  assert.equal(slow.status, 502);
+  assert.match((await slow.json()).error, /did not answer within 30 seconds/);
+  gatewayReply = () => {
+    throw new TypeError("fetch failed");
+  };
+  assert.match((await (await call({ action: "test", provider: "gateway" })).json()).error, /reach/);
   globalThis.fetch = originalFetch;
+
+  // Removing the active provider's only key switches to the other provider when it has a key.
+  const environmentKey = process.env.AI_GATEWAY_API_KEY;
+  delete process.env.AI_GATEWAY_API_KEY;
+  status = await (await call({ action: "remove", provider: "gateway" })).json();
+  assert.equal(status.active, "openrouter", "chat keeps working on the other provider");
+  process.env.AI_GATEWAY_API_KEY = environmentKey;
+  status = await (await call({ action: "save", provider: "gateway", apiKey: gatewayKey })).json();
+  assert.equal(status.active, "gateway");
 
   // Tampered or undecryptable keys fail closed per provider and can be removed from the UI.
   const encrypted = await readFile(join(directory, "openrouter.enc"), "utf8");

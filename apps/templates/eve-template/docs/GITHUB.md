@@ -64,4 +64,4 @@ token with environment fallback, and disconnect.
 
 ## Profiles and delegation
 
-Saved agent profiles do not create GitHub credentials or grant repository access. The existing extension's operator-scoped credential and tool-specific approvals remain authoritative. A profile instruction to write does not bypass approval. `delegate_to_agent` uses the compiled researcher's actual tool surface; listing the GitHub extension in the root directory does not prove a child has that connection. Inspect the live capabilities and verify a real call before claiming it works.
+Saved agent profiles do not create GitHub credentials or grant repository access. The existing extension's operator-scoped credential and tool-specific approvals remain authoritative. A profile instruction to write does not bypass approval. `delegate_to_agent` runs in a copy of the root agent, which inherits the GitHub extension; the reviewer does not. Inspect the live capabilities and verify a real call before claiming it works.

@@ -96,6 +96,7 @@ export function ProductLibrary() {
                         rel="noreferrer"
                       >
                         eve documentation
+                        <span className="sr-only"> for {item.title}</span>
                         <ArrowUpRightIcon className="size-3" />
                       </a>
                     </div>

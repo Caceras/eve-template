@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
-import { ShieldCheckIcon, Loader2Icon } from "lucide-react";
+import { LogOutIcon, ShieldCheckIcon, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { clearComposerStorage } from "@/lib/chat/composer-draft";
+import { clearDraftTexts } from "@/lib/chat/draft-text";
 import { useChatShell } from "./chat-shell-context";
+import { LoadError } from "./load-error";
+import { ConfirmButton } from "./confirm-button";
 import { SettingsShell } from "./settings-shell";
 
 type Status = { username: string; requiresChange: boolean; changedAt: string | null };
@@ -18,21 +22,23 @@ export function SecuritySettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
   useEffect(() => {
     if (!viewer) return;
     const controller = new AbortController();
     void fetch("/api/settings/security", { signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "Could not load security settings.");
-        setStatus(body);
+        if (!response.ok) throw new Error("Could not load security settings.");
+        setStatus(await response.json());
       })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Could not load security settings.");
+      .catch(() => {
+        if (!controller.signal.aborted) setLoadFailed(true);
       });
     return () => controller.abort();
-  }, [viewer]);
+  }, [viewer, attempt]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -63,6 +69,28 @@ export function SecuritySettings() {
       setBusy(false);
     }
   }
+  async function signOutEverywhere() {
+    setSignOutError("");
+    setSigningOut(true);
+    try {
+      const response = await fetch("/api/settings/security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signOutEverywhere: true }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not sign out everywhere.");
+      // Like Sign out: this device's drafts go too.
+      await clearComposerStorage().catch(() => {});
+      clearDraftTexts();
+      // A full load, like Sign out: pages kept alive in the background would
+      // otherwise still show private chats on Back.
+      window.location.replace("/");
+    } catch (cause) {
+      setSignOutError(cause instanceof Error ? cause.message : "Could not sign out everywhere.");
+      setSigningOut(false);
+    }
+  }
   return (
     <SettingsShell
       section="security"
@@ -86,8 +114,19 @@ export function SecuritySettings() {
           <p className="text-sm text-muted-foreground">
             Username: {status.username}. Choose a unique passphrase with at least 16 characters.
           </p>
+        ) : loadFailed ? (
+          <LoadError
+            className="mt-0"
+            message="Couldn't load your account. Check the connection and try again."
+            onRetry={() => {
+              setLoadFailed(false);
+              setAttempt((count) => count + 1);
+            }}
+          />
         ) : (
-          <p className="text-sm text-muted-foreground">Loading security settings...</p>
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading security settings...
+          </p>
         )}
         <input
           type="text"
@@ -157,6 +196,33 @@ export function SecuritySettings() {
           intact.
         </p>
       </form>
+      <section className="space-y-4 rounded-xl border p-5 sm:p-6">
+        <div className="flex items-center gap-2">
+          <LogOutIcon className="size-4" />
+          <h2 className="text-sm font-medium">Sessions</h2>
+        </div>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Signing out ends that session on the server. Sign out everywhere ends every session,
+          including this one, on all your devices and anywhere a copy of a sign-in may be.
+        </p>
+        {signOutError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {signOutError}
+          </p>
+        ) : null}
+        <ConfirmButton
+          variant="outline"
+          className="min-h-11"
+          disabled={signingOut || !status}
+          title="Sign out everywhere?"
+          description="Every browser and device signed in to Ægentica is signed out, including this one. Sign in again with your password. Stored keys, agents and conversations stay intact."
+          confirmLabel="Sign out everywhere"
+          onConfirm={() => void signOutEverywhere()}
+        >
+          {signingOut ? <Loader2Icon className="size-4 animate-spin" /> : null}
+          {signingOut ? "Signing out..." : "Sign out everywhere"}
+        </ConfirmButton>
+      </section>
     </SettingsShell>
   );
 }

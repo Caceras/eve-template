@@ -2,10 +2,10 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { DEFAULT_TIMEZONE, createTask } from "@/lib/schedule-store";
 import { deviceCount } from "@/lib/push-notifications";
-import { operatorOnly } from "../lib/operator-only";
+import { operatorConfirms } from "../lib/operator-only";
 
 export default defineTool({
-  description: `Schedule a task that Ægentica runs later: a reminder, a daily brief, a recurring check. Each run becomes a conversation in the user's Ægentica history with a notification on their installed devices. Use cron for recurring tasks (5 fields, evaluated in timezone) or runAt for one time. Timezone defaults to ${DEFAULT_TIMEZONE}. Write prompt as instructions to your future self, including what to send.`,
+  description: `Schedule a task that Ægentica runs later: a reminder, a daily brief, a recurring check. Each run becomes a conversation in the user's Ægentica history with a notification on their installed devices. Use cron for recurring tasks (5 fields, evaluated in timezone) or runAt for one time. Timezone defaults to ${DEFAULT_TIMEZONE}. Write prompt as instructions to your future self, including what to send. The user confirms each new task before it is saved.`,
   inputSchema: z.object({
     title: z.string().min(1).max(120).describe("Short name shown in lists, e.g. 'Morning brief'."),
     prompt: z
@@ -13,6 +13,12 @@ export default defineTool({
       .min(1)
       .max(4000)
       .describe("What to do and send when the task runs, e.g. 'Remind me to call Anna.'"),
+    skill: z
+      .string()
+      .max(64)
+      .nullable()
+      .default(null)
+      .describe("Name of one of your skills that every run should follow, or null."),
     cron: z
       .string()
       .max(100)
@@ -27,7 +33,8 @@ export default defineTool({
       .describe("One-time run as ISO 8601 with offset, e.g. '2026-09-23T08:00:00+02:00'."),
     timezone: z.string().max(60).optional().describe("IANA time zone, e.g. 'Europe/Stockholm'."),
   }),
-  approval: operatorOnly,
+  // Text the agent reads must not be able to plant work that later runs unattended.
+  approval: operatorConfirms,
   async execute(input) {
     const task = await createTask(input);
     const devices = await deviceCount().catch(() => 0);

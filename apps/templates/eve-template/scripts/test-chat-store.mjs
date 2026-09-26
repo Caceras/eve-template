@@ -98,12 +98,48 @@ try {
   const all = [...first.items, ...second.items];
   assert.equal(new Set(all.map((c) => c.id)).size, 26);
   assert(!all.some((c) => c.title === "Not yours"));
+  // Search asks for one larger page instead of walking the pages one by one.
+  const { chatPageSize } = await import("../lib/chat/paging.ts");
+  const wide = await store.listChatsPageByUser("riki", null, chatPageSize("100"));
+  assert.deepEqual(
+    wide.items.map((c) => c.id),
+    all.map((c) => c.id),
+  );
+  assert.equal(wide.nextCursor, null);
+  const narrow = await store.listChatsPageByUser("riki", null, 5);
+  assert.equal(narrow.items.length, 5);
+  assert.deepEqual(
+    (await store.listChatsPageByUser("riki", narrow.nextCursor, 5)).items[0].id,
+    all[5].id,
+  );
+  assert.equal(chatPageSize("100000"), 100, "capped at 100");
+  for (const invalid of [null, "", "0", "-5", "2.5", "ten", "1e3"])
+    assert.equal(chatPageSize(invalid), 20, `${invalid} falls back to the default page`);
+
+  // Rename: owner only, keeps its place in history, survives the next message.
+  const { normalizeChatTitle } = await import("../lib/chat/rename.ts");
+  assert.equal(normalizeChatTitle("  Weekend\n  in   Stockholm "), "Weekend in Stockholm");
+  assert.equal(normalizeChatTitle(" \n "), null);
+  assert.equal(normalizeChatTitle("x".repeat(500)).length, 120);
+  const before = (await store.listChatsPageByUser("riki")).items.map((c) => c.id);
+  assert.equal(await store.renameChatForUser(chat.id, "mallory", "Stolen"), false);
+  assert.equal(await store.renameChatForUser(chat.id, "riki", "Stockholm trip"), true);
+  assert.deepEqual(
+    (await store.listChatsPageByUser("riki")).items.map((c) => c.id),
+    before,
+  );
+  const renamed = await store.markChatPendingMessage({
+    chatId: chat.id,
+    message: "One more thing",
+    userId: "riki",
+  });
+  assert.equal(renamed.title, "Stockholm trip");
 
   // Delete cascades to events.
   await store.deleteChatForUser(chat.id, "riki");
   assert.equal(await store.getChatForUser(chat.id, "riki"), null);
   console.log(
-    "PASS: SQLite chat store — ownership, event order, pending/settled, snapshot truncation, auth skip, paging and isolation, cascade delete",
+    "PASS: SQLite chat store — ownership, event order, pending/settled, snapshot truncation, auth skip, paging (20 by default, up to 100 on request) and isolation, owner-only rename, cascade delete",
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

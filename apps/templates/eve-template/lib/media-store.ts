@@ -37,12 +37,28 @@ export async function saveMedia(
   return { name, url: `/api/media/${name}` };
 }
 
+function mediaTypeOf(name: string) {
+  const extension = name.split(".").pop();
+  return (Object.keys(TYPES) as MediaType[]).find((type) => TYPES[type] === extension)!;
+}
+
 export async function readMedia(name: string) {
   if (!NAME.test(name)) return undefined;
-  const extension = name.split(".").pop();
-  const mediaType = (Object.keys(TYPES) as MediaType[]).find((type) => TYPES[type] === extension)!;
   try {
-    return { data: await readFile(join(directory(), name)), mediaType };
+    return { data: await readFile(join(directory(), name)), mediaType: mediaTypeOf(name) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Size and modification time, for cache validation without reading the file. */
+export async function statMedia(name: string) {
+  if (!NAME.test(name)) return undefined;
+  try {
+    const info = await stat(join(directory(), name));
+    return info.isFile()
+      ? { bytes: info.size, modified: info.mtimeMs, mediaType: mediaTypeOf(name) }
+      : undefined;
   } catch {
     return undefined;
   }
@@ -56,35 +72,61 @@ export type MediaItem = {
   prompt?: string;
   model?: string;
 };
-/** Bounded scan, deterministic newest-first pages. Never follows links or returns arbitrary files. */
+
+const PAGE_SIZE = 48;
+const MAX_LISTED = 1000;
+const MAX_SCANNED = 20_000;
+
+/**
+ * Newest-first pages of the newest 1,000 images. Every image file is dated
+ * before sorting (up to a 20,000-entry safety bound), since directory order
+ * says nothing about age. `next` counts the listed images older than the page,
+ * so an image created or deleted while paging does not shift later pages; only
+ * past 1,000 images can a new one push the oldest out and repeat an item.
+ * Never follows links or returns arbitrary files.
+ */
 export async function listMedia(
   offset = 0,
 ): Promise<{ images: MediaItem[]; next: number | null; truncated: boolean }> {
-  const files: MediaItem[] = [];
+  const names: string[] = [];
   let truncated = false;
-  let scanned = 0;
   try {
+    let scanned = 0;
     const folder = await opendir(directory());
     for await (const entry of folder) {
-      if (++scanned > 3000) {
+      if (++scanned > MAX_SCANNED) {
         truncated = true;
         break;
       }
-      if (!entry.isFile() || !NAME.test(entry.name)) continue;
-      if (files.length >= 1000) {
-        truncated = true;
-        break;
-      }
-      const info = await stat(join(directory(), entry.name)).catch(() => null);
-      if (!info) continue;
+      if (entry.isFile() && NAME.test(entry.name)) names.push(entry.name);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const files: { name: string; bytes: number; modified: number }[] = [];
+  for (let start = 0; start < names.length; start += 100)
+    await Promise.all(
+      names.slice(start, start + 100).map(async (name) => {
+        const info = await stat(join(directory(), name)).catch(() => null);
+        if (info) files.push({ name, bytes: info.size, modified: info.mtimeMs });
+      }),
+    );
+  // Files are written once, so the modification time is when the image was made.
+  files.sort((a, b) => b.modified - a.modified || a.name.localeCompare(b.name));
+  if (files.length > MAX_LISTED) truncated = true;
+  const listed = files.slice(0, MAX_LISTED);
+  const older = offset === 0 ? listed.length : Math.min(offset, listed.length);
+  const page = listed.slice(listed.length - older, listed.length - older + PAGE_SIZE);
+  const images = await Promise.all(
+    page.map(async (file) => {
       const item: MediaItem = {
-        name: entry.name,
-        url: `/api/media/${entry.name}`,
-        bytes: info.size,
-        createdAt: info.birthtime.toISOString(),
+        name: file.name,
+        url: `/api/media/${file.name}`,
+        bytes: file.bytes,
+        createdAt: new Date(file.modified).toISOString(),
       };
       try {
-        const path = join(directory(), `${entry.name}.json`);
+        const path = join(directory(), `${file.name}.json`);
         if ((await stat(path)).size < 24_000) {
           const metadata = JSON.parse(await readFile(path, "utf8"));
           if (typeof metadata.prompt === "string") item.prompt = metadata.prompt.slice(0, 4000);
@@ -93,17 +135,10 @@ export async function listMedia(
       } catch {
         /* Older images have no metadata. */
       }
-      files.push(item);
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  files.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name));
-  return {
-    images: files.slice(offset, offset + 48),
-    next: offset + 48 < files.length ? offset + 48 : null,
-    truncated,
-  };
+      return item;
+    }),
+  );
+  return { images, next: older > PAGE_SIZE ? older - PAGE_SIZE : null, truncated };
 }
 export async function deleteMedia(name: string) {
   if (!NAME.test(name)) return false;

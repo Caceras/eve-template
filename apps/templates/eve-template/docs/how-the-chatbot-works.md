@@ -31,39 +31,39 @@ The template has four major layers:
 
 Important files:
 
-| File                                    | Purpose                                                                                             |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `agent/agent.ts`                        | Defines the eve agent and model.                                                                    |
-| `agent/channels/eve.ts`                 | Configures the eve web channel and auth adapters.                                                   |
-| `agent/channels/slack.ts`               | Configures the Slack channel route and Vercel Connect credentials.                                  |
-| `agent/connections/notion.ts`           | Defines the Notion MCP connection through Vercel Connect.                                           |
-| `agent/connections/linear.ts`           | Defines the Linear MCP connection through Vercel Connect.                                           |
-| `agent/connections/sentry.ts`           | Defines the Sentry MCP connection through Vercel Connect.                                           |
-| `agent/instructions.md`                 | Defines the agent's behavior and long-term-memory rules.                                            |
-| `agent/memory/profile.ts`               | Defines the per-principal long-term-memory slot.                                                    |
-| `next.config.ts`                        | Wraps the app with `withEve(nextConfig)`, which mounts the `/eve/v1/*` routes.                      |
-| `app/(chat)/layout.tsx`                 | Renders the static chat shell immediately, then streams viewer/setup/sidebar data through Suspense. |
-| `app/(chat)/page.tsx`                   | Root chat screen. Creates a new chat row and navigates into `/chat/[id]`.                           |
-| `app/(chat)/chat/[id]/page.tsx`         | Session route. Streams the active chat data into the client shell.                                  |
-| `app/_components/agent-chat-shell.tsx`  | Client shell for sidebar state, history pagination, auth modal, and shared chat context.            |
-| `app/_components/home-chat-page.tsx`    | Root-page composer and logo experience.                                                             |
-| `app/_components/session-chat-page.tsx` | Session-page composer, active chat sync, and controller wiring.                                     |
-| `app/_components/agent-chat.tsx`        | The eve client bridge: sending, streaming, persistence, resume, pending auth, and display state.    |
-| `components/chat/composer.tsx`          | The controlled chat input.                                                                          |
-| `components/chat/message.tsx`           | Renders eve messages, markdown, reasoning, tools, and input requests.                               |
-| `components/chat/sidebar.tsx`           | Paginated chat history sidebar.                                                                     |
-| `components/chat/integrations-menu.tsx` | Per-turn connection toggle UI.                                                                      |
-| `app/actions/chat.ts`                   | Server actions for chat creation, persistence, pending state, skip auth, and rate checks.           |
-| `app/api/chats/route.ts`                | Paginated chat history endpoint.                                                                    |
-| `lib/chat/local-store.ts`               | Versioned browser storage for starter-mode chats and eve session cursors.                           |
-| `lib/chat/persistence-client.ts`        | Routes client persistence calls to browser or database storage.                                     |
-| `lib/db/schema.ts`                      | Drizzle tables for Better Auth, chats, and chat events.                                             |
-| `lib/db/queries.ts`                     | Chat store entry point: SQLite (`sqlite-queries.ts`) or Postgres (`pg-queries.ts`) queries.         |
-| `lib/setup.ts`                          | Selects starter, local development, or production mode and validates readiness.                     |
-| `lib/auth.ts`                           | Better Auth configuration with Sign in with Vercel.                                                 |
-| `lib/password-auth.ts`                  | Shared-password verification and stateless signed session cookies.                                  |
-| `lib/eve-auth.ts`                       | Converts password or Better Auth sessions into eve channel principals.                              |
-| `lib/rate-limit.ts`                     | Upstash Redis based fixed-window rate limiting.                                                     |
+| File                                    | Purpose                                                                                              |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `agent/agent.ts`                        | Defines the eve agent and model.                                                                     |
+| `agent/channels/eve.ts`                 | Configures the eve web channel and auth adapters.                                                    |
+| `agent/channels/slack.ts`               | Configures the Slack channel route and Vercel Connect credentials.                                   |
+| `agent/connections/notion.ts`           | Defines the Notion MCP connection through Vercel Connect.                                            |
+| `agent/connections/linear.ts`           | Defines the Linear MCP connection through Vercel Connect.                                            |
+| `agent/connections/sentry.ts`           | Defines the Sentry MCP connection through Vercel Connect.                                            |
+| `agent/instructions.md`                 | Defines the agent's behavior and long-term-memory rules.                                             |
+| `agent/memory/profile.ts`               | Defines the per-principal long-term-memory slot.                                                     |
+| `next.config.ts`                        | Wraps the app with `withEve(nextConfig)`, which mounts the `/eve/v1/*` routes.                       |
+| `app/(chat)/layout.tsx`                 | Renders the static chat shell immediately, then streams viewer/setup/sidebar data through Suspense.  |
+| `app/(chat)/page.tsx`                   | Root chat screen. Creates a new chat row and navigates into `/chat/[id]`.                            |
+| `app/(chat)/chat/[id]/page.tsx`         | Session route. Streams the active chat data into the client shell.                                   |
+| `app/_components/agent-chat-shell.tsx`  | Client shell for sidebar state, history pagination, auth modal, and shared chat context.             |
+| `app/_components/home-chat-page.tsx`    | Root-page composer and logo experience.                                                              |
+| `app/_components/session-chat-page.tsx` | Session-page composer, active chat sync, and controller wiring.                                      |
+| `app/_components/agent-chat.tsx`        | The eve client bridge: sending, streaming, persistence, resume, pending auth, and display state.     |
+| `components/chat/composer.tsx`          | The controlled chat input.                                                                           |
+| `components/chat/message.tsx`           | Renders eve messages, markdown, reasoning, tools, and input requests.                                |
+| `components/chat/sidebar.tsx`           | Paginated chat history sidebar.                                                                      |
+| `components/chat/integrations-menu.tsx` | Per-turn connection toggle UI.                                                                       |
+| `app/actions/chat.ts`                   | Server actions for chat creation, persistence, pending state, skip auth, and rate checks.            |
+| `app/api/chats/route.ts`                | Paginated chat history endpoint.                                                                     |
+| `lib/chat/local-store.ts`               | Versioned browser storage for starter-mode chats and eve session cursors.                            |
+| `lib/chat/persistence-client.ts`        | Routes client persistence calls to browser or database storage.                                      |
+| `lib/db/schema.ts`                      | Drizzle tables for Better Auth, chats, and chat events.                                              |
+| `lib/db/queries.ts`                     | Chat store entry point: SQLite (`sqlite-queries.ts`) or Postgres (`pg-queries.ts`) queries.          |
+| `lib/setup.ts`                          | Selects starter, local development, or production mode and validates readiness.                      |
+| `lib/auth.ts`                           | Better Auth configuration with Sign in with Vercel.                                                  |
+| `lib/password-auth.ts`                  | Shared-password verification and signed session cookies (a random id each; signed-out ones refused). |
+| `lib/eve-auth.ts`                       | Converts password or Better Auth sessions into eve channel principals.                               |
+| `lib/rate-limit.ts`                     | Upstash Redis based fixed-window rate limiting.                                                      |
 
 ## Runtime Model
 
@@ -158,9 +158,11 @@ shell first:
 </SessionChatPage>
 ```
 
-`ExistingChat` loads the active chat from Postgres in production mode and emits it through
-`AgentChatRouteSync`. `SessionChatPage` listens for that sync event and then
-passes the loaded `ActiveChat` into `AgentChatSession`.
+`ExistingChat` checks that the chat exists (the not-found page otherwise) and
+emits an empty route sync through `AgentChatRouteSync`. `SessionChatPage` loads
+the chat itself from `/api/chats/:id`, once when it opens and again when it is
+shown after Back, and passes the loaded `ActiveChat` into `AgentChatSession`, so
+a history with photos is sent once rather than also in the route data.
 
 This is why the top bar, sidebar, and composer can stay stable while the chat
 body itself waits for data.
@@ -194,12 +196,13 @@ Chat history is paginated. The first page is loaded by `ResolvedChatBootstrap`.
 More pages are loaded from:
 
 ```txt
-GET /api/chats?cursor=<cursor>
+GET /api/chats?cursor=<cursor>&limit=<1-100>
 ```
 
-`listChatsPageByUser` orders by `updatedAt desc, id desc` and fetches
-`CHAT_HISTORY_PAGE_SIZE + 1`, where the page size is currently 20. The extra
-row determines whether there is a next cursor.
+`listChatsPageByUser` orders by `updatedAt desc, id desc` and fetches one row
+more than the page size (`CHAT_PAGE_SIZE`, 20, in `lib/chat/paging.ts`; `limit`
+asks for up to 100, which Search uses to list recent conversations in one
+request). The extra row determines whether there is a next cursor.
 
 The cursor is encoded as:
 
@@ -671,9 +674,10 @@ Production mode uses:
 
 `agent/channels/eve.ts` allows:
 
+- `internalEveAuth` (scheduled tasks, loopback only)
 - `betterAuthEveAuth`
 - `passwordEveAuth`
-- `vercelOidc()`
+- `vercelOidc()`, only when deployed on Vercel (`VERCEL` is set)
 - `localDev()`
 
 That lets the same channel work locally, in authenticated browser sessions, and
@@ -956,4 +960,4 @@ That is the core design.
 
 ## Profiles, modes and attachments
 
-The main composer can select an encrypted saved agent profile, a Chat/Research/Image intent and image/PDF/text attachments. Draft files are held in IndexedDB until the chat obtains its canonical id; they are sent as the existing eve client's standard AI SDK content, not a separate transport. The authenticated server resolves profile instructions before a turn and the existing dynamic router selects the model at each step. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md) for delegation and permission boundaries.
+The main composer can select an encrypted saved agent profile, one of the skills the runtime reports (Chat lets the agent choose) and image/PDF/text attachments. Draft files are held in IndexedDB until the chat obtains its canonical id; they are sent as the existing eve client's standard AI SDK content, not a separate transport. The authenticated server resolves profile instructions before a turn and the existing dynamic router selects the model at each step. See [Agents and orchestration](./AGENTS_AND_ORCHESTRATION.md) for delegation and permission boundaries.

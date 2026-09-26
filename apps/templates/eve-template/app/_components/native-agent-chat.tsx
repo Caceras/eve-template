@@ -169,7 +169,10 @@ export function NativeAgentChat({
                   message={message}
                   onInputResponses={(inputResponses) => {
                     setCancellationError(undefined);
-                    return agent.respond(inputResponses, { headers: modelRequestHeaders() });
+                    // A refused answer leaves its prompt open (eve keeps it pending): say why.
+                    return agent
+                      .respond(inputResponses, { headers: modelRequestHeaders() })
+                      .catch((error: unknown) => setCancellationError(toErrorMessage(error)));
                   }}
                 />
               ),
